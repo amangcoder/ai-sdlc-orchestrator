@@ -335,6 +335,7 @@ _ROLE_MAP: dict[str, AgentRole] = {
     "security engineer": AgentRole.SECURITY_ENGINEER,
     "observability engineer": AgentRole.OBSERVABILITY_ENGINEER,
     "documentation engineer": AgentRole.DOCUMENTATION_ENGINEER,
+    "git manager": AgentRole.GIT_MANAGER,
 }
 
 

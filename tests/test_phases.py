@@ -84,7 +84,7 @@ class TestNewPromptBuilders:
 
 
 class TestPromptBuilderRegistry:
-    def test_all_17_roles_have_builders(self):
+    def test_all_18_roles_have_builders(self):
         for role in AgentRole:
             assert role in PROMPT_BUILDERS, f"Missing prompt builder for {role}"
 

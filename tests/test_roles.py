@@ -14,8 +14,8 @@ from orchestrator.workflows import FEATURE_DEVELOPMENT
 
 
 class TestRoleRegistry:
-    def test_all_17_roles_registered(self):
-        assert len(ROLE_REGISTRY) == 17
+    def test_all_18_roles_registered(self):
+        assert len(ROLE_REGISTRY) == 18
 
     def test_all_agent_roles_have_entry(self):
         for role in AgentRole:

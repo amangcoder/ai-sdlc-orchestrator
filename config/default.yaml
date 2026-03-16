@@ -2,6 +2,7 @@ workspace_dir: workspace
 max_review_cycles: 3
 max_budget_usd: 50.0
 default_workflow: feature_development
+enhanced_perception: false
 
 phases:
   pm:
@@ -173,4 +174,11 @@ agents:
     max_turns: 30
     escalation_model: null
     input_artifacts: [prd, architecture, tasks]
+    output_artifacts: []
+  git_manager:
+    name: Git Manager
+    model: sonnet
+    max_turns: 20
+    escalation_model: null
+    input_artifacts: [prd, tasks]
     output_artifacts: []

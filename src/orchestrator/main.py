@@ -66,6 +66,8 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Path to custom workflow definition file")
     parser.add_argument("--config", type=Path, default=None, metavar="PATH", help="Path to config YAML file")
     parser.add_argument("--log-format", choices=["console", "json"], default="console", help="Log output format")
+    parser.add_argument("--enhanced-perception", action="store_true",
+                        help="Enable enhanced perception mode: enrich prompts via meta-cognitive pre-processing")
     return parser
 
 
@@ -136,6 +138,8 @@ def main() -> None:
 
     _configure_structlog(json_logs=(args.log_format == "json"))
     config = load_config(args.config)
+    if args.enhanced_perception:
+        config.enhanced_perception = True
     console = Console()
 
     # Resolve workflow type

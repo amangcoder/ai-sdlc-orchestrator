@@ -680,6 +680,46 @@ def build_documentation_prompt(
 Focus only on documentation. Do not modify application code."""
 
 
+def build_git_manager_prompt(
+    feature_request: str, workspace: Path, config: OrchestratorConfig,
+    task_data: dict[str, Any] | None = None,
+) -> str:
+    artifacts_dir = workspace / "artifacts"
+
+    return f"""You are the Git Manager for this project.
+
+## Feature Request
+
+{feature_request}
+
+## Context
+
+- PRD: {artifacts_dir}/prd.json
+- Tasks: {artifacts_dir}/tasks.json
+- Review: {artifacts_dir}/review.json (if exists)
+
+## Instructions
+
+1. Run `git status` to see all changed files
+2. Read the PRD and tasks artifacts to understand the context of changes
+3. Stage implementation files using `git add <specific-files>` (never `git add -A`)
+4. Create atomic commits with conventional commit messages:
+   - Format: `feat(TASK-NNN): description` or `fix(TASK-NNN): description`
+   - One commit per logical unit of work
+   - Commit messages should explain WHY, not just WHAT
+5. Verify no secrets, .env files, or workspace/ artifacts are staged
+6. If worktree merges left conflicts, resolve them before committing
+
+## Rules
+
+- NEVER commit secrets, credentials, .env files, or API keys
+- NEVER commit the workspace/ directory (artifacts, logs, state)
+- NEVER force-push or rewrite published history
+- NEVER commit directly to main or master
+- Keep commits atomic — one logical change per commit
+- Resolve any merge conflicts cleanly before committing"""
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -749,6 +789,7 @@ PROMPT_BUILDERS: dict[AgentRole, Callable[..., str]] = {
     AgentRole.SECURITY_ENGINEER: build_security_engineer_prompt,
     AgentRole.OBSERVABILITY_ENGINEER: build_observability_prompt,
     AgentRole.DOCUMENTATION_ENGINEER: build_documentation_prompt,
+    AgentRole.GIT_MANAGER: build_git_manager_prompt,
 }
 
 

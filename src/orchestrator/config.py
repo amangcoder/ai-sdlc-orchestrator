@@ -51,6 +51,7 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
         max_review_cycles=raw.get("max_review_cycles", 3),
         max_budget_usd=raw.get("max_budget_usd", 50.0),
         default_workflow=default_workflow,
+        enhanced_perception=raw.get("enhanced_perception", False),
         phases=phases,
         agents=agents,
     )

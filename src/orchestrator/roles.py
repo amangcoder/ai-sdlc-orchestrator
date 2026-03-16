@@ -141,6 +141,13 @@ ROLE_REGISTRY: dict[AgentRole, RoleDefinition] = {
         access=RoleAccess.READ_WRITE,
         agent_file="documentation_engineer.md",
     ),
+    AgentRole.GIT_MANAGER: RoleDefinition(
+        role=AgentRole.GIT_MANAGER,
+        title="Git Manager",
+        responsibility="Branch management, staging, committing, merging worktree results",
+        access=RoleAccess.READ_WRITE,
+        agent_file="git_manager.md",
+    ),
 }
 
 
@@ -197,5 +204,6 @@ def role_to_legacy_agent_name(role: AgentRole) -> str:
         AgentRole.SECURITY_ENGINEER: "security_engineer",
         AgentRole.OBSERVABILITY_ENGINEER: "observability_engineer",
         AgentRole.DOCUMENTATION_ENGINEER: "documentation_engineer",
+        AgentRole.GIT_MANAGER: "git_manager",
     }
     return mapping[role]

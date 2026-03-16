@@ -92,6 +92,7 @@ class AgentRole(str, Enum):
     SECURITY_ENGINEER = "security_engineer"
     OBSERVABILITY_ENGINEER = "observability_engineer"
     DOCUMENTATION_ENGINEER = "documentation_engineer"
+    GIT_MANAGER = "git_manager"
 
 
 class RoleAccess(str, Enum):
@@ -352,6 +353,7 @@ class OrchestratorConfig(BaseModel):
     max_review_cycles: int = 3
     max_budget_usd: float = 50.0
     default_workflow: WorkflowType = WorkflowType.FEATURE_DEVELOPMENT
+    enhanced_perception: bool = False
     phases: dict[str, PhaseConfig] = Field(default_factory=dict)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
 

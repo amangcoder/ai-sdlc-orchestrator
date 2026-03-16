@@ -474,6 +474,7 @@ Use these strings (case-insensitive) in the `agent:` field:
 | `Security Engineer` | Security Engineer |
 | `Observability Engineer` | Observability Engineer |
 | `Documentation Engineer` | Documentation Engineer |
+| `Git Manager` | Git Manager |
 
 ### 7.4 Example: Documentation Refresh Workflow
 
@@ -514,11 +515,11 @@ orchestrate --workflow-file ./workflows/doc-refresh.txt "Update all API document
 
 ---
 
-## 7. Agent Roles
+## 8. Agent Roles
 
-The orchestrator has 17 specialist agent roles grouped by access level.
+The orchestrator has 18 specialist agent roles grouped by access level.
 
-### 7.1 Planning Roles (Read-Only)
+### 8.1 Planning Roles (Read-Only)
 
 These agents analyze and plan but do not modify code.
 
@@ -531,7 +532,7 @@ These agents analyze and plan but do not modify code.
 | QA Planner | Designs test strategy, edge cases, coverage plan |
 | Security Engineer | Security review of architecture and code |
 
-### 7.2 Implementation Roles (Read-Write)
+### 8.2 Implementation Roles (Read-Write)
 
 These agents can read and write code.
 
@@ -545,8 +546,9 @@ These agents can read and write code.
 | DevOps Engineer | CI/CD, containerization, deployment |
 | Observability Engineer | Logging, monitoring, metrics |
 | Documentation Engineer | Technical docs and developer guides |
+| Git Manager | Branch management, staging, committing, merging worktree results |
 
-### 7.3 Review Roles (Read-Only)
+### 8.3 Review Roles (Read-Only)
 
 These agents evaluate code but do not modify it.
 
@@ -558,11 +560,11 @@ These agents evaluate code but do not modify it.
 
 ---
 
-## 8. Parallel Execution & DAG Scheduling
+## 9. Parallel Execution & DAG Scheduling
 
 Steps marked `parallel: true` (like Implementation) use a dependency-aware scheduler to run tasks concurrently.
 
-### 8.1 How Dependency Waves Work
+### 9.1 How Dependency Waves Work
 
 When a parallel step executes, the orchestrator:
 
@@ -585,7 +587,7 @@ Total: 3 waves, spawning [2, 2, 1] agents respectively
 
 With 20 tasks, the scheduler will **not** spawn 20 agents at once. It groups them into waves based on dependencies, only spawning agents for tasks whose dependencies have completed.
 
-### 8.2 File Conflict Detection
+### 9.2 File Conflict Detection
 
 Within each wave, tasks are further partitioned:
 
@@ -594,21 +596,21 @@ Within each wave, tasks are further partitioned:
 
 This prevents merge conflicts without serializing everything.
 
-### 8.3 Git Worktree Isolation
+### 9.3 Git Worktree Isolation
 
 Each parallel task runs in an isolated git worktree (`isolation: worktree`), giving it its own filesystem copy. Changes are merged back after completion.
 
-### 8.4 Failure Handling
+### 9.4 Failure Handling
 
 If a task in a wave fails, all downstream tasks that depend on it are marked `BLOCKED` and will not execute.
 
 ---
 
-## 9. Artifact Pipeline
+## 10. Artifact Pipeline
 
 Agents communicate through validated JSON artifacts stored in `workspace/artifacts/`.
 
-### 9.1 Artifact Types
+### 10.1 Artifact Types
 
 | Artifact | File | Produced By | Key Fields |
 |----------|------|-------------|------------|
@@ -622,7 +624,7 @@ Agents communicate through validated JSON artifacts stored in `workspace/artifac
 | Benchmark Report | `benchmark_report.json` | Caching Engineer | `results[]` (metric, before, after, improvement_pct), `bottlenecks` |
 | Vulnerability Report | `vulnerability_report.json` | Security Engineer | `vulnerabilities[]`, `scan_tools_used`, `summary` |
 
-### 9.2 Two-Layer Validation
+### 10.2 Two-Layer Validation
 
 Every artifact is validated twice before a step is considered complete:
 
@@ -631,7 +633,7 @@ Every artifact is validated twice before a step is considered complete:
 
 If validation fails, the agent is retried.
 
-### 9.3 Validate Artifacts Manually
+### 10.3 Validate Artifacts Manually
 
 Check artifacts from a previous run:
 
@@ -649,9 +651,9 @@ FAIL tasks.json
 
 ---
 
-## 10. Configuration
+## 11. Configuration
 
-### 10.1 Config File Structure
+### 11.1 Config File Structure
 
 The default config lives at `config/default.yaml`:
 
@@ -709,7 +711,7 @@ agents:
   # ... (all 17 agents configured)
 ```
 
-### 10.2 Key Settings
+### 11.2 Key Settings
 
 | Setting | Default | Description |
 |---------|---------|-------------|
@@ -718,7 +720,7 @@ agents:
 | `max_budget_usd` | `50.0` | Hard budget cap across all agent invocations |
 | `default_workflow` | `feature_development` | Workflow used when `--workflow` is not specified |
 
-### 10.3 Using a Custom Config
+### 11.3 Using a Custom Config
 
 ```bash
 # Override any setting via a custom YAML
@@ -738,9 +740,9 @@ agents: {}
 
 ---
 
-## 11. State Management & Resume
+## 12. State Management & Resume
 
-### 11.1 How State Works
+### 12.1 How State Works
 
 After each step completes, the orchestrator saves its full state to `workspace/state.json`. This includes:
 
@@ -750,7 +752,7 @@ After each step completes, the orchestrator saves its full state to `workspace/s
 - `completed_steps` -- list of step names that finished successfully
 - `total_cost_usd` -- cumulative cost so far
 
-### 11.2 Resuming a Run
+### 12.2 Resuming a Run
 
 If a run fails (e.g., an agent errors out or budget runs out), resume from where it left off:
 
@@ -765,7 +767,7 @@ orchestrate --resume "Build a todo app"
 
 The engine reloads `state.json`, skips all completed steps, and continues from the first incomplete step.
 
-### 11.3 Resume with Different Settings
+### 12.3 Resume with Different Settings
 
 You can change config when resuming (e.g., increase budget):
 
@@ -775,7 +777,7 @@ orchestrate --resume --config high-budget.yaml "Build a todo app"
 
 ---
 
-## 12. Review Feedback Loop
+## 13. Review Feedback Loop
 
 When a Code Review or QA step returns a non-passing verdict, the workflow routes back to Implementation via `on_fail`:
 
@@ -797,7 +799,7 @@ Implementation --> Code Review --+--(approved)--> QA --> Release
 
 ---
 
-## 13. Budget & Cost Tracking
+## 14. Budget & Cost Tracking
 
 Every agent invocation reports its cost. The orchestrator tracks cumulative spend.
 
@@ -817,9 +819,9 @@ The total cost is shown in the summary table after each run and saved in `state.
 
 ---
 
-## 14. Observability & Logging
+## 15. Observability & Logging
 
-### 14.1 Run Logs
+### 15.1 Run Logs
 
 Every run produces a structured log file:
 
@@ -844,7 +846,7 @@ Each line is a JSON object with a timestamp and event data:
 | `budget_warning` | Cost exceeded 80% of budget |
 | `run_complete` | Pipeline finished (total cost, phase results) |
 
-### 14.2 JSON Console Logs
+### 15.2 JSON Console Logs
 
 For CI/CD pipelines or log aggregation:
 
@@ -852,7 +854,7 @@ For CI/CD pipelines or log aggregation:
 orchestrate --log-format json "Build a todo app" 2>&1 | tee run.log
 ```
 
-### 14.3 Reading Logs
+### 15.3 Reading Logs
 
 ```bash
 # Pretty-print the log from the last run
@@ -861,7 +863,7 @@ cat workspace/logs/run-*.jsonl | python -m json.tool
 
 ---
 
-## 15. Progress Tracking
+## 16. Progress Tracking
 
 During execution, the orchestrator displays a real-time progress panel:
 
@@ -880,7 +882,7 @@ The progress display updates after each step completion, every 3rd task completi
 
 ---
 
-## 16. Workspace Layout
+## 17. Workspace Layout
 
 After a run, the workspace directory contains:
 
@@ -905,7 +907,7 @@ Not every artifact is produced by every workflow. For example, `threat_model.jso
 
 ---
 
-## 17. Common Recipes
+## 18. Common Recipes
 
 ### Preview a workflow (no cost)
 
@@ -1000,7 +1002,7 @@ orchestrate --resume --workflow security --log-format json "Audit auth flows"
 
 ---
 
-## 18. Troubleshooting
+## 19. Troubleshooting
 
 ### "Budget exceeded"
 

@@ -45,18 +45,29 @@ class AgentInvocation:
     workspace_dir: str | None = None
     project_root: str | None = None  # cwd for agent — project root so it can explore the codebase
     isolation: str | None = None  # "worktree" for parallel engineers
+    enhanced_perception: bool = False
 
 
 async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
     """Invoke a Claude Code sub-agent via the SDK.
 
     Uses claude_agent_sdk.query() when available, falls back to CLI subprocess.
+    When enhanced_perception is enabled, enriches the prompt via a lightweight
+    Haiku pre-processing call before the main agent invocation.
     """
+    perception_cost = 0.0
+    if invocation.enhanced_perception:
+        from orchestrator.perception import enhance_prompt
+        invocation, perception_cost = await enhance_prompt(invocation)
+
     try:
-        return await _invoke_via_sdk(invocation)
+        result = await _invoke_via_sdk(invocation)
     except ImportError:
         logger.info("claude_agent_sdk not available, falling back to CLI")
-        return await _invoke_via_cli(invocation)
+        result = await _invoke_via_cli(invocation)
+
+    result.cost_usd += perception_cost
+    return result
 
 
 def _log_sdk_message(agent_name: str, message: Any) -> None:
