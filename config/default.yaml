@@ -1,0 +1,67 @@
+workspace_dir: workspace
+max_review_cycles: 3
+max_budget_usd: 50.0
+
+phases:
+  pm:
+    agent: pm
+    parallel: false
+    max_retries: 2
+    timeout_minutes: 15
+  architect:
+    agent: architect
+    parallel: false
+    max_retries: 2
+    timeout_minutes: 20
+  engineer:
+    agent: engineer
+    parallel: true
+    max_retries: 2
+    timeout_minutes: 30
+  qa:
+    agent: qa
+    parallel: false
+    max_retries: 1
+    timeout_minutes: 15
+  reviewer:
+    agent: reviewer
+    parallel: false
+    max_retries: 1
+    timeout_minutes: 15
+
+agents:
+  pm:
+    name: Product Manager
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: []
+    output_artifacts: [prd]
+  architect:
+    name: System Architect
+    model: opus
+    max_turns: 40
+    escalation_model: null
+    input_artifacts: [prd]
+    output_artifacts: [architecture, tasks]
+  engineer:
+    name: Engineer
+    model: sonnet
+    max_turns: 80
+    escalation_model: opus
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: []
+  qa:
+    name: QA Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [prd, tasks]
+    output_artifacts: [qa_report]
+  reviewer:
+    name: Code Reviewer
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture, tasks, qa_report]
+    output_artifacts: [review]

@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "QA Report",
+  "description": "Quality assurance report produced by the QA agent",
+  "type": "object",
+  "required": ["test_results", "lint_clean", "type_check_clean", "issues", "verdict"],
+  "properties": {
+    "test_results": {
+      "type": "object",
+      "required": ["passed", "failed", "skipped"],
+      "properties": {
+        "passed": { "type": "integer", "minimum": 0 },
+        "failed": { "type": "integer", "minimum": 0 },
+        "skipped": { "type": "integer", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "lint_clean": { "type": "boolean" },
+    "type_check_clean": { "type": "boolean" },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["severity", "description"],
+        "properties": {
+          "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
+          "file": { "type": "string" },
+          "line": { "type": "integer", "minimum": 1 },
+          "description": { "type": "string", "minLength": 1 },
+          "suggestion": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "enum": ["pass", "fail"]
+    }
+  },
+  "additionalProperties": false
+}

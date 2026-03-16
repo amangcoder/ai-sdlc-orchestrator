@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PRD",
+  "description": "Product Requirements Document produced by the PM agent",
+  "type": "object",
+  "required": ["title", "overview", "goals", "requirements", "constraints", "acceptance_criteria"],
+  "properties": {
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Feature title"
+    },
+    "overview": {
+      "type": "string",
+      "minLength": 50,
+      "description": "High-level description of the feature"
+    },
+    "goals": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "description": "What this feature aims to achieve"
+    },
+    "requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "priority"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^REQ-\\d+$" },
+          "description": { "type": "string", "minLength": 1 },
+          "priority": { "type": "string", "enum": ["must", "should", "could"] }
+        }
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Technical or business constraints"
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Conditions that must be true for the feature to be considered complete"
+    }
+  },
+  "additionalProperties": false
+}

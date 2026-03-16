@@ -1,0 +1,10 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      { "matcher": "Write|Edit|MultiEdit", "command": ".claude/hooks/block-writes.sh" }
+    ],
+    "TaskCompleted": [
+      { "command": ".claude/hooks/validate-task-completion.sh" }
+    ]
+  }
+}
