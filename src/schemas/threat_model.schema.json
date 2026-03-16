@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Threat Model",
+  "description": "Security threat model produced by the Security Engineer",
+  "type": "object",
+  "required": ["threats", "attack_surface", "recommendations"],
+  "properties": {
+    "threats": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "description", "severity", "mitigation"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^THREAT-\\d+$" },
+          "description": { "type": "string", "minLength": 10 },
+          "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
+          "mitigation": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "attack_surface": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Description of the attack surface"
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Security recommendations"
+    }
+  },
+  "additionalProperties": false
+}

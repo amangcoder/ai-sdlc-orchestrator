@@ -7,12 +7,17 @@ from pathlib import Path
 
 import pytest
 
-from orchestrator.models import OrchestratorConfig
+from orchestrator.models import AgentRole, OrchestratorConfig
 from orchestrator.phases import (
     PHASE_DEFINITIONS,
+    PROMPT_BUILDERS,
+    build_backend_engineer_prompt,
     build_engineer_prompt,
+    build_frontend_engineer_prompt,
     build_pm_prompt,
+    build_principal_engineer_prompt,
     build_reviewer_prompt,
+    build_security_engineer_prompt,
     get_engineer_tasks,
 )
 
@@ -57,13 +62,43 @@ class TestBuildReviewerPrompt:
         assert "request_changes" in prompt
 
 
+class TestNewPromptBuilders:
+    def test_principal_engineer_prompt(self, tmp_workspace, config):
+        prompt = build_principal_engineer_prompt("Add feature", tmp_workspace, config)
+        assert "Principal Engineer" in prompt
+        assert "engineering_plan.json" in prompt
+
+    def test_frontend_engineer_prompt(self, tmp_workspace, config):
+        prompt = build_frontend_engineer_prompt("Add feature", tmp_workspace, config)
+        assert "Frontend Engineer" in prompt
+        assert "accessibility" in prompt.lower()
+
+    def test_backend_engineer_prompt(self, tmp_workspace, config):
+        prompt = build_backend_engineer_prompt("Add feature", tmp_workspace, config)
+        assert "Backend Engineer" in prompt
+
+    def test_security_engineer_prompt(self, tmp_workspace, config):
+        prompt = build_security_engineer_prompt("Add feature", tmp_workspace, config)
+        assert "Security Engineer" in prompt
+        assert "threat_model.json" in prompt
+
+
+class TestPromptBuilderRegistry:
+    def test_all_17_roles_have_builders(self):
+        for role in AgentRole:
+            assert role in PROMPT_BUILDERS, f"Missing prompt builder for {role}"
+
+    def test_builders_are_callable(self):
+        for role, builder in PROMPT_BUILDERS.items():
+            assert callable(builder), f"Builder for {role} is not callable"
+
+
 class TestGetEngineerTasks:
     def test_empty_without_tasks_json(self, tmp_workspace):
         tasks = get_engineer_tasks(tmp_workspace)
         assert tasks == []
 
     def test_filters_to_engineer_role(self, tmp_workspace, valid_tasks_data):
-        # Add a QA task to ensure filtering works
         qa_task = {
             "task_id": "TASK-002",
             "title": "Write tests",
@@ -81,6 +116,37 @@ class TestGetEngineerTasks:
         tasks = get_engineer_tasks(tmp_workspace)
         assert len(tasks) == 1
         assert tasks[0]["task_id"] == "TASK-001"
+
+    def test_includes_expanded_roles(self, tmp_workspace):
+        data = {
+            "tasks": [
+                {
+                    "task_id": "TASK-001",
+                    "title": "Backend work",
+                    "description": "Implement backend API endpoints",
+                    "assigned_role": "backend_engineer",
+                    "dependencies": [],
+                    "acceptance_criteria": ["API works"],
+                    "files_to_modify": ["src/api.py"],
+                    "estimated_complexity": "medium",
+                },
+                {
+                    "task_id": "TASK-002",
+                    "title": "Frontend work",
+                    "description": "Implement frontend components",
+                    "assigned_role": "frontend_engineer",
+                    "dependencies": [],
+                    "acceptance_criteria": ["UI works"],
+                    "files_to_modify": ["src/app.tsx"],
+                    "estimated_complexity": "medium",
+                },
+            ]
+        }
+        tasks_path = tmp_workspace / "artifacts" / "tasks.json"
+        tasks_path.write_text(json.dumps(data))
+
+        tasks = get_engineer_tasks(tmp_workspace)
+        assert len(tasks) == 2
 
 
 class TestPhaseDefinitions:

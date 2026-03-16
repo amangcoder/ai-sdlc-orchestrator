@@ -11,6 +11,7 @@ from orchestrator.models import (
     ModelTier,
     OrchestratorConfig,
     PhaseConfig,
+    WorkflowType,
 )
 
 DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "default.yaml"
@@ -37,10 +38,19 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             agent_data["escalation_model"] = ModelTier(agent_data["escalation_model"])
         agents[name] = AgentConfig(**agent_data)
 
+    default_workflow = WorkflowType.FEATURE_DEVELOPMENT
+    raw_wf = raw.get("default_workflow")
+    if raw_wf:
+        try:
+            default_workflow = WorkflowType(raw_wf)
+        except ValueError:
+            pass
+
     return OrchestratorConfig(
         workspace_dir=raw.get("workspace_dir", "workspace"),
         max_review_cycles=raw.get("max_review_cycles", 3),
         max_budget_usd=raw.get("max_budget_usd", 50.0),
+        default_workflow=default_workflow,
         phases=phases,
         agents=agents,
     )

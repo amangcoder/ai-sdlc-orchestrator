@@ -6,14 +6,14 @@
     "pm": {
       "status": "completed",
       "retry_count": 0,
-      "model_tier": "opus",
+      "model_tier": "sonnet",
       "cost_usd": 0.0,
       "error": null
     },
     "architect": {
       "status": "completed",
       "retry_count": 0,
-      "model_tier": "opus",
+      "model_tier": "sonnet",
       "cost_usd": 0.0,
       "error": null
     },
@@ -34,7 +34,7 @@
     "reviewer": {
       "status": "completed",
       "retry_count": 0,
-      "model_tier": "opus",
+      "model_tier": "sonnet",
       "cost_usd": 0.0,
       "error": null
     }

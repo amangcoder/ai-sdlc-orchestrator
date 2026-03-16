@@ -1,4 +1,4 @@
-"""Core orchestration engine — runs the SDLC pipeline."""
+"""Core orchestration engine — runs the SDLC pipeline via workflow engine."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from orchestrator.models import (
     ReviewVerdict,
     RunState,
     TaskStatus,
+    WorkflowType,
 )
 from orchestrator.observability import RunLogger
 from orchestrator.phases import (
@@ -27,14 +28,33 @@ from orchestrator.phases import (
     get_engineer_tasks,
 )
 from orchestrator.validation import validate_artifact_file
+from orchestrator.workflows import BUILTIN_WORKFLOWS, parse_custom_workflow, select_workflow
+from orchestrator.workflow_engine import WorkflowEngine
 
 logger = logging.getLogger(__name__)
 
 PHASE_ORDER = ["pm", "architect", "engineer", "qa", "reviewer"]
 
+# Maps legacy phase names to workflow step names for backward compat
+_PHASE_TO_STEP: dict[str, str] = {
+    "pm": "PRD",
+    "architect": "Architecture",
+    "engineer": "Implementation",
+    "qa": "QA",
+    "reviewer": "Code Review",
+}
+
 
 class OrchestratorEngine:
-    """Runs the full SDLC orchestration pipeline."""
+    """Runs the full SDLC orchestration pipeline.
+
+    Supports two execution modes:
+    1. Workflow mode (new) — uses WorkflowEngine with workflow definitions
+    2. Legacy mode — uses the original hardcoded PHASE_ORDER pipeline
+
+    Legacy mode is used when single_phase or from_phase are specified
+    with old phase names.
+    """
 
     def __init__(self, config: OrchestratorConfig, dry_run: bool = False) -> None:
         self.config = config
@@ -47,9 +67,11 @@ class OrchestratorEngine:
         single_phase: str | None = None,
         from_phase: str | None = None,
         resume: bool = False,
+        workflow_type: WorkflowType | None = None,
+        custom_workflow: str | None = None,
     ) -> RunState:
         """Execute the orchestration pipeline."""
-        self.project_root = Path.cwd()  # where orchestrate was invoked — the actual codebase
+        self.project_root = Path.cwd()
         workspace = Path(self.config.workspace_dir).resolve()
         workspace.mkdir(parents=True, exist_ok=True)
         (workspace / "artifacts").mkdir(exist_ok=True)
@@ -61,11 +83,13 @@ class OrchestratorEngine:
                         f"{[p for p, s in state.phases.items() if s.status == PhaseStatus.COMPLETED]}")
         else:
             run_id = uuid.uuid4().hex[:12]
+            wf_type = workflow_type or self.config.default_workflow
             state = RunState(
                 run_id=run_id,
                 feature_request=feature_request,
                 workspace_dir=str(workspace),
                 max_review_cycles=self.config.max_review_cycles,
+                workflow_type=wf_type,
             )
 
         self.run_logger = RunLogger(workspace / "logs", state.run_id)
@@ -73,8 +97,59 @@ class OrchestratorEngine:
             "feature_request": feature_request,
             "config": self.config.model_dump(),
             "resume": resume,
+            "workflow_type": state.workflow_type.value,
         })
 
+        # Decide execution mode
+        use_legacy = single_phase in PHASE_ORDER or from_phase in PHASE_ORDER
+
+        if use_legacy:
+            await self._run_legacy(state, workspace, feature_request, single_phase, from_phase, resume)
+        else:
+            await self._run_workflow(state, workspace, feature_request, custom_workflow)
+
+        self.run_logger.log_event("run_complete", {
+            "total_cost_usd": state.total_cost_usd,
+            "phases": {k: v.model_dump() for k, v in state.phases.items()},
+        })
+
+        self._save_state(state, workspace)
+        return state
+
+    async def _run_workflow(
+        self,
+        state: RunState,
+        workspace: Path,
+        feature_request: str,
+        custom_workflow: str | None = None,
+    ) -> None:
+        """Execute using the new workflow engine."""
+        if custom_workflow:
+            workflow = parse_custom_workflow(custom_workflow)
+        else:
+            workflow = select_workflow(state.workflow_type)
+
+        engine = WorkflowEngine(
+            workflow=workflow,
+            state=state,
+            config=self.config,
+            run_logger=self.run_logger,
+            project_root=self.project_root,
+            dry_run=self.dry_run,
+        )
+
+        await engine.execute()
+
+    async def _run_legacy(
+        self,
+        state: RunState,
+        workspace: Path,
+        feature_request: str,
+        single_phase: str | None,
+        from_phase: str | None,
+        resume: bool,
+    ) -> None:
+        """Execute using the legacy phase-based pipeline (backward compat)."""
         if single_phase:
             phases = [single_phase]
         elif from_phase:
@@ -89,7 +164,6 @@ class OrchestratorEngine:
                 logger.error(f"Unknown phase: {phase_name}")
                 continue
 
-            # Skip phases already completed in a prior run
             if resume and state.phases.get(phase_name, PhaseState()).status == PhaseStatus.COMPLETED:
                 logger.info(f"Skipping {phase_name} (already completed)")
                 continue
@@ -97,24 +171,14 @@ class OrchestratorEngine:
             state.phases[phase_name] = PhaseState()
             await self._run_phase(phase_name, state, workspace, feature_request)
 
-            # Checkpoint after every phase
             self._save_state(state, workspace)
 
             if state.phases[phase_name].status == PhaseStatus.FAILED:
                 logger.error(f"Phase {phase_name} failed, stopping pipeline")
                 break
 
-            # Handle review cycle loop
             if phase_name == "reviewer" and not single_phase:
                 await self._handle_review_cycle(state, workspace, feature_request)
-
-        self.run_logger.log_event("run_complete", {
-            "total_cost_usd": state.total_cost_usd,
-            "phases": {k: v.model_dump() for k, v in state.phases.items()},
-        })
-
-        self._save_state(state, workspace)
-        return state
 
     async def _run_phase(
         self,
@@ -165,7 +229,6 @@ class OrchestratorEngine:
             phase_state.error = result.error
             return
 
-        # Validate output artifacts
         for artifact_name in phase_def.output_artifacts:
             artifact_path = workspace / "artifacts" / f"{artifact_name}.json"
             validation = validate_artifact_file(artifact_path, artifact_name)
@@ -206,7 +269,6 @@ class OrchestratorEngine:
             phase_state.status = PhaseStatus.COMPLETED
             return
 
-        # Check for file conflicts to decide parallel vs sequential
         parallel_ok = self.config.phases.get("engineer", None)
         use_parallel = parallel_ok and parallel_ok.parallel and not _tasks_have_file_conflicts(tasks)
 
@@ -308,7 +370,6 @@ class OrchestratorEngine:
                 logger.warning("Max review cycles reached, escalating to human")
                 break
 
-            # Re-run engineer phase with review feedback
             state.phases["engineer"] = PhaseState()
             engineer_prompt = build_engineer_prompt(
                 feature_request, workspace, self.config
@@ -330,13 +391,11 @@ class OrchestratorEngine:
                     state.phases["engineer"].status = PhaseStatus.FAILED
                     break
 
-            # Re-run QA
             state.phases["qa"] = PhaseState()
             await self._run_phase("qa", state, workspace, feature_request)
             if state.phases["qa"].status == PhaseStatus.FAILED:
                 break
 
-            # Re-run reviewer with previous review context
             state.phases["reviewer"] = PhaseState()
             reviewer_prompt = build_reviewer_prompt(
                 feature_request, workspace, self.config,
@@ -349,7 +408,7 @@ class OrchestratorEngine:
                 result = await self._invoke_with_retry(
                     agent_name="reviewer",
                     prompt=reviewer_prompt,
-                    model=agent_config.model if agent_config else ModelTier.OPUS,
+                    model=agent_config.model if agent_config else ModelTier.sonnet,
                     max_turns=agent_config.max_turns if agent_config else 30,
                     max_retries=1,
                     escalation_model=None,
@@ -378,7 +437,6 @@ class OrchestratorEngine:
                     "attempt": attempt + 1,
                 })
 
-            # Budget check
             if self.config.max_budget_usd and self.run_logger:
                 status = self.run_logger.check_budget(self.config.max_budget_usd)
                 if status == "exceeded":
@@ -414,7 +472,6 @@ class OrchestratorEngine:
 
             logger.warning(f"Agent {agent_name} failed (attempt {attempt + 1}): {result.error}")
 
-            # Escalate model on retry
             if escalation_model and current_model != escalation_model:
                 logger.info(f"Escalating {agent_name} from {current_model.value} to {escalation_model.value}")
                 current_model = escalation_model
@@ -425,7 +482,7 @@ class OrchestratorEngine:
         """Save the run state to disk."""
         state_path = workspace / "state.json"
         with open(state_path, "w") as f:
-            json.dump(state.model_dump(), f, indent=2)
+            json.dump(state.model_dump(), f, indent=2, default=str)
 
     def _load_state(self, workspace: Path) -> RunState | None:
         """Load a prior run state from disk, if it exists."""

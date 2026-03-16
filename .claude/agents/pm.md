@@ -1,6 +1,6 @@
 ---
 name: Product Manager
-model: opus
+model: sonnet
 ---
 
 # Product Manager Agent

@@ -1,6 +1,7 @@
 workspace_dir: workspace
 max_review_cycles: 3
 max_budget_usd: 50.0
+default_workflow: feature_development
 
 phases:
   pm:
@@ -30,16 +31,17 @@ phases:
     timeout_minutes: 15
 
 agents:
+  # --- Core roles (legacy compat) ---
   pm:
     name: Product Manager
-    model: opus
+    model: sonnet
     max_turns: 30
     escalation_model: null
     input_artifacts: []
     output_artifacts: [prd]
   architect:
     name: System Architect
-    model: opus
+    model: sonnet
     max_turns: 40
     escalation_model: null
     input_artifacts: [prd]
@@ -48,20 +50,127 @@ agents:
     name: Engineer
     model: sonnet
     max_turns: 80
-    escalation_model: opus
+    escalation_model: sonnet
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   qa:
     name: QA Engineer
     model: sonnet
     max_turns: 40
-    escalation_model: opus
+    escalation_model: sonnet
     input_artifacts: [prd, tasks]
     output_artifacts: [qa_report]
   reviewer:
     name: Code Reviewer
-    model: opus
+    model: sonnet
     max_turns: 30
     escalation_model: null
     input_artifacts: [prd, architecture, tasks, qa_report]
     output_artifacts: [review]
+
+  # --- Expanded roles ---
+  principal_engineer:
+    name: Principal Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: null
+    input_artifacts: [prd, architecture]
+    output_artifacts: [engineering_plan, tasks]
+  tpm:
+    name: Technical Project Manager
+    model: sonnet
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture, engineering_plan]
+    output_artifacts: [tasks]
+  frontend_engineer:
+    name: Frontend Engineer
+    model: sonnet
+    max_turns: 80
+    escalation_model: sonnet
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: []
+  backend_engineer:
+    name: Backend Engineer
+    model: sonnet
+    max_turns: 80
+    escalation_model: sonnet
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: []
+  database_engineer:
+    name: Database Engineer
+    model: sonnet
+    max_turns: 60
+    escalation_model: sonnet
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: []
+  caching_engineer:
+    name: Caching & Performance Engineer
+    model: sonnet
+    max_turns: 60
+    escalation_model: sonnet
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: [benchmark_report]
+  backend_reviewer:
+    name: Backend Code Reviewer
+    model: sonnet
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture, tasks, qa_report]
+    output_artifacts: [review]
+  frontend_reviewer:
+    name: Frontend Code Reviewer
+    model: sonnet
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: [review]
+  qa_planner:
+    name: QA Planner
+    model: sonnet
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: [prd]
+  qa_executor:
+    name: QA Executor
+    model: sonnet
+    max_turns: 40
+    escalation_model: sonnet
+    input_artifacts: [prd, tasks]
+    output_artifacts: [qa_report]
+  automation_engineer:
+    name: Automation Engineer
+    model: sonnet
+    max_turns: 60
+    escalation_model: sonnet
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: []
+  devops_engineer:
+    name: DevOps Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: null
+    input_artifacts: [qa_report, review]
+    output_artifacts: []
+  security_engineer:
+    name: Security Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: null
+    input_artifacts: [prd, architecture]
+    output_artifacts: [threat_model, vulnerability_report]
+  observability_engineer:
+    name: Observability Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: null
+    input_artifacts: [prd, architecture]
+    output_artifacts: []
+  documentation_engineer:
+    name: Documentation Engineer
+    model: sonnet
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: []

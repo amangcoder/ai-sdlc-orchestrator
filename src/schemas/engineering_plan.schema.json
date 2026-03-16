@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Engineering Plan",
+  "description": "Engineering strategy and implementation plan produced by the Principal Engineer",
+  "type": "object",
+  "required": ["strategy", "implementation_order", "testing_strategy"],
+  "properties": {
+    "strategy": {
+      "type": "string",
+      "minLength": 20,
+      "description": "Overall engineering approach"
+    },
+    "implementation_order": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Ordered list of implementation steps"
+    },
+    "risk_areas": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Identified risks and concerns"
+    },
+    "testing_strategy": {
+      "type": "string",
+      "minLength": 10,
+      "description": "How to test the implementation"
+    }
+  },
+  "additionalProperties": false
+}

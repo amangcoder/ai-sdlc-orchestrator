@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Benchmark Report",
+  "description": "Performance benchmark results produced by the Caching & Performance Engineer",
+  "type": "object",
+  "required": ["results"],
+  "properties": {
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["metric", "unit"],
+        "properties": {
+          "metric": { "type": "string", "minLength": 1 },
+          "before": { "type": ["number", "null"] },
+          "after": { "type": ["number", "null"] },
+          "unit": { "type": "string", "minLength": 1 },
+          "improvement_pct": { "type": ["number", "null"] }
+        },
+        "additionalProperties": false
+      },
+      "minItems": 1
+    },
+    "bottlenecks": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Identified performance bottlenecks"
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Performance improvement recommendations"
+    }
+  },
+  "additionalProperties": false
+}

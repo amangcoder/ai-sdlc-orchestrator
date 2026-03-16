@@ -14,7 +14,7 @@ An **AI SDLC Orchestrator** — a Python-based pipeline that coordinates special
 
 - **Structured workflow with validation checkpoints** — not "deterministic" (LLMs are inherently non-deterministic), but reproducible workflows with enforced quality gates
 - **Bounded statefulness** — agents maintain session context during their active phase but checkpoint results as artifacts for cross-phase communication
-- **Model routing by task complexity** — Opus for architecture/review, Sonnet for implementation/QA, Haiku for simple tasks. Route at assignment time, not by failure-retry
+- **Model routing by task complexity** — sonnet for architecture/review, Sonnet for implementation/QA, Haiku for simple tasks. Route at assignment time, not by failure-retry
 - **Isolated parallel execution** — engineers use `isolation: worktree` to prevent file conflicts during parallel work
 - **Schema-validated artifacts** — every inter-agent artifact has a JSON schema; phase completion blocks until validation passes
 - **Cost-controlled** — per-agent `max_turns`, per-run budget ceiling, cost tracking in observability logs
@@ -56,21 +56,21 @@ User Feature Request
 
 | Agent | Model | Max Turns | Input Artifacts | Output Artifacts | Notes |
 |---|---|---|---|---|---|
-| PM | opus | 30 | — | `prd.json` | Read-only access to codebase |
-| Architect | opus | 40 | `prd.json` | `architecture.json`, `tasks.json` | Read-only access to codebase |
+| PM | sonnet | 30 | — | `prd.json` | Read-only access to codebase |
+| Architect | sonnet | 40 | `prd.json` | `architecture.json`, `tasks.json` | Read-only access to codebase |
 | Engineer | sonnet | 80 | `prd.json`, `architecture.json`, `tasks.json` | code changes | Write access; parallel with worktrees |
 | QA | sonnet | 40 | `prd.json`, `tasks.json` | `qa_report.json` | Read-only; blocked from writes via hook |
-| Reviewer | opus | 30 | `prd.json`, `architecture.json`, `tasks.json`, `qa_report.json` | `review.json` | Read-only access |
+| Reviewer | sonnet | 30 | `prd.json`, `architecture.json`, `tasks.json`, `qa_report.json` | `review.json` | Read-only access |
 
 ### 2.3 Model Routing & Escalation
 
 | Agent | Default Model | On Retry | Rationale |
 |---|---|---|---|
-| PM | opus | human escalation | Requirements need deep reasoning |
-| Architect | opus | human escalation | System design is highest complexity |
-| Engineer | sonnet | opus | Volume task; balance cost/quality |
-| QA | sonnet | opus | Needs reasoning but not architecture-level |
-| Reviewer | opus | human escalation | Final quality gate must be highest quality |
+| PM | sonnet | human escalation | Requirements need deep reasoning |
+| Architect | sonnet | human escalation | System design is highest complexity |
+| Engineer | sonnet | sonnet | Volume task; balance cost/quality |
+| QA | sonnet | sonnet | Needs reasoning but not architecture-level |
+| Reviewer | sonnet | human escalation | Final quality gate must be highest quality |
 
 ### 2.4 Review Cycle
 
@@ -475,14 +475,14 @@ phases:
 agents:
   pm:
     name: Product Manager
-    model: opus
+    model: sonnet
     max_turns: 30
     escalation_model: null
     input_artifacts: []
     output_artifacts: [prd]
   architect:
     name: System Architect
-    model: opus
+    model: sonnet
     max_turns: 40
     escalation_model: null
     input_artifacts: [prd]
@@ -491,19 +491,19 @@ agents:
     name: Engineer
     model: sonnet
     max_turns: 80
-    escalation_model: opus
+    escalation_model: sonnet
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   qa:
     name: QA Engineer
     model: sonnet
     max_turns: 40
-    escalation_model: opus
+    escalation_model: sonnet
     input_artifacts: [prd, tasks]
     output_artifacts: [qa_report]
   reviewer:
     name: Code Reviewer
-    model: opus
+    model: sonnet
     max_turns: 30
     escalation_model: null
     input_artifacts: [prd, architecture, tasks, qa_report]
@@ -516,7 +516,7 @@ agents:
 
 ### 7.1 PM Agent (`.claude/agents/pm.md`)
 
-**Model**: opus | **Max turns**: 30 | **Access**: read-only
+**Model**: sonnet | **Max turns**: 30 | **Access**: read-only
 
 **System prompt instructs**:
 - Analyze the feature request thoroughly
@@ -529,7 +529,7 @@ agents:
 
 ### 7.2 Architect Agent (`.claude/agents/architect.md`)
 
-**Model**: opus | **Max turns**: 40 | **Access**: read-only
+**Model**: sonnet | **Max turns**: 40 | **Access**: read-only
 
 **Inputs**: `artifacts/prd.json`
 
@@ -545,7 +545,7 @@ agents:
 
 ### 7.3 Engineer Agent (`.claude/agents/engineer.md`)
 
-**Model**: sonnet (escalate to opus) | **Max turns**: 80 | **Access**: read-write
+**Model**: sonnet (escalate to sonnet) | **Max turns**: 80 | **Access**: read-write
 
 **Inputs**: Specific task data + `prd.json`, `architecture.json`, `tasks.json`
 
@@ -562,7 +562,7 @@ agents:
 
 ### 7.4 QA Agent (`.claude/agents/qa.md`)
 
-**Model**: sonnet (escalate to opus) | **Max turns**: 40 | **Access**: read-only (enforced by hook)
+**Model**: sonnet (escalate to sonnet) | **Max turns**: 40 | **Access**: read-only (enforced by hook)
 
 **Inputs**: `prd.json`, `tasks.json`, implemented code
 
@@ -577,7 +577,7 @@ agents:
 
 ### 7.5 Reviewer Agent (`.claude/agents/reviewer.md`)
 
-**Model**: opus | **Max turns**: 30 | **Access**: read-only
+**Model**: sonnet | **Max turns**: 30 | **Access**: read-only
 
 **Inputs**: All artifacts + implemented code
 
@@ -654,11 +654,11 @@ Estimated per-run costs (rough, varies by feature complexity):
 
 | Phase | Model | Est. Tokens | Est. Cost |
 |---|---|---|---|
-| PM | Opus | ~10K | $1-3 |
-| Architect | Opus | ~15K | $2-5 |
+| PM | sonnet | ~10K | $1-3 |
+| Architect | sonnet | ~15K | $2-5 |
 | Engineer (per task) | Sonnet | ~20K | $1-3 |
 | QA | Sonnet | ~10K | $0.50-2 |
-| Reviewer | Opus | ~10K | $1-3 |
+| Reviewer | sonnet | ~10K | $1-3 |
 | **Total (3 tasks, no review cycles)** | | | **$7-20** |
 | **Total (3 tasks, 2 review cycles)** | | | **$15-40** |
 

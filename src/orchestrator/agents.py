@@ -19,7 +19,7 @@ AGENTS_DIR = Path(__file__).resolve().parents[2] / ".claude" / "agents"
 MODEL_MAP: dict[ModelTier, str] = {
     ModelTier.HAIKU: "haiku",
     ModelTier.SONNET: "sonnet",
-    ModelTier.OPUS: "opus",
+    ModelTier.sonnet: "sonnet",
 }
 
 

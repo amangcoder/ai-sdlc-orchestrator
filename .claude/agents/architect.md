@@ -1,6 +1,6 @@
 ---
 name: System Architect
-model: opus
+model: sonnet
 ---
 
 # System Architect Agent

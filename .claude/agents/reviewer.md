@@ -1,6 +1,6 @@
 ---
 name: Code Reviewer
-model: opus
+model: sonnet
 ---
 
 # Code Reviewer Agent

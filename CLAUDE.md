@@ -35,6 +35,6 @@ orchestrate "Build a todo app"
 
 - **Structured workflow with validation checkpoints** — not "deterministic" (LLMs are inherently non-deterministic)
 - **Bounded statefulness** — agents maintain session context during active phase, checkpoint as artifacts for cross-phase communication
-- **Model routing by complexity** — Opus for architecture/review, Sonnet for implementation/QA, Haiku for simple tasks
+- **Model routing by complexity** — sonnet for architecture/review, Sonnet for implementation/QA, Haiku for simple tasks
 - **Isolated parallel execution** — engineers use `isolation: worktree` to prevent file conflicts
 - **Schema-validated artifacts** — every inter-agent artifact has a JSON schema; phase completion blocks until validation passes
