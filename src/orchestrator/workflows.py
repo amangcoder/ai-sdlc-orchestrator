@@ -315,28 +315,108 @@ _STEP_RE = re.compile(
 )
 
 _ROLE_MAP: dict[str, AgentRole] = {
+    # Core roles
     "product manager": AgentRole.PRODUCT_MANAGER,
+    "pm": AgentRole.PRODUCT_MANAGER,
     "software architect": AgentRole.SOFTWARE_ARCHITECT,
+    "system architect": AgentRole.SOFTWARE_ARCHITECT,
+    "architect": AgentRole.SOFTWARE_ARCHITECT,
     "principal engineer": AgentRole.PRINCIPAL_ENGINEER,
     "technical project manager": AgentRole.TECHNICAL_PROJECT_MANAGER,
+    "tpm": AgentRole.TECHNICAL_PROJECT_MANAGER,
+    # Implementation roles
     "frontend engineer": AgentRole.FRONTEND_ENGINEER,
     "backend engineer": AgentRole.BACKEND_ENGINEER,
     "database engineer": AgentRole.DATABASE_ENGINEER,
     "caching & performance engineer": AgentRole.CACHING_PERFORMANCE_ENGINEER,
     "caching engineer": AgentRole.CACHING_PERFORMANCE_ENGINEER,
+    "performance engineer": AgentRole.CACHING_PERFORMANCE_ENGINEER,
+    "automation engineer": AgentRole.AUTOMATION_ENGINEER,
+    "devops engineer": AgentRole.DEVOPS_ENGINEER,
+    "observability engineer": AgentRole.OBSERVABILITY_ENGINEER,
+    # Review roles
     "backend code reviewer": AgentRole.BACKEND_CODE_REVIEWER,
+    "backend reviewer": AgentRole.BACKEND_CODE_REVIEWER,
     "frontend code reviewer": AgentRole.FRONTEND_CODE_REVIEWER,
+    "frontend reviewer": AgentRole.FRONTEND_CODE_REVIEWER,
+    "security engineer": AgentRole.SECURITY_ENGINEER,
+    # QA roles
     "qa planner": AgentRole.QA_PLANNER,
     "qa engineer (planner)": AgentRole.QA_PLANNER,
     "qa executor": AgentRole.QA_EXECUTOR,
     "qa engineer (executor)": AgentRole.QA_EXECUTOR,
-    "automation engineer": AgentRole.AUTOMATION_ENGINEER,
-    "devops engineer": AgentRole.DEVOPS_ENGINEER,
-    "security engineer": AgentRole.SECURITY_ENGINEER,
-    "observability engineer": AgentRole.OBSERVABILITY_ENGINEER,
+    # Lightweight roles
     "documentation engineer": AgentRole.DOCUMENTATION_ENGINEER,
     "git manager": AgentRole.GIT_MANAGER,
+    # Specialist roles
+    "api contract designer": AgentRole.API_CONTRACT_DESIGNER,
+    "api designer": AgentRole.API_CONTRACT_DESIGNER,
+    "migration engineer": AgentRole.MIGRATION_ENGINEER,
+    "ux specifier": AgentRole.UX_SPECIFIER,
+    "ux specialist": AgentRole.UX_SPECIFIER,
+    "tech debt assessor": AgentRole.TECH_DEBT_ASSESSOR,
+    "release engineer": AgentRole.RELEASE_ENGINEER,
+    "incident analyst": AgentRole.INCIDENT_ANALYST,
+    "load test engineer": AgentRole.LOAD_TEST_ENGINEER,
+    "compliance auditor": AgentRole.COMPLIANCE_AUDITOR,
+    "dependency auditor": AgentRole.DEPENDENCY_AUDITOR,
+    "accessibility auditor": AgentRole.ACCESSIBILITY_AUDITOR,
+    "integration test engineer": AgentRole.INTEGRATION_TEST_ENGINEER,
+    # Advisory & cloud roles
+    "legal advisor": AgentRole.LEGAL_ADVISOR,
+    "user behavior psychologist": AgentRole.USER_BEHAVIOR_PSYCHOLOGIST,
+    "ci/cd pipeline specialist": AgentRole.CICD_SPECIALIST,
+    "cicd specialist": AgentRole.CICD_SPECIALIST,
+    "ci/cd specialist": AgentRole.CICD_SPECIALIST,
+    "aws specialist": AgentRole.AWS_SPECIALIST,
+    "azure specialist": AgentRole.AZURE_SPECIALIST,
+    "gcp specialist": AgentRole.GCP_SPECIALIST,
+    "runpod specialist": AgentRole.RUNPOD_SPECIALIST,
+    "llm specialist": AgentRole.LLM_SPECIALIST,
+    "agentic ai specialist": AgentRole.AGENTIC_AI_SPECIALIST,
+    "ml specialist": AgentRole.ML_SPECIALIST,
+    "ml algorithm specialist": AgentRole.ML_SPECIALIST,
 }
+
+# Also map enum values (e.g. "product_manager") so LLMs can use either format
+for _role in AgentRole:
+    _ROLE_MAP.setdefault(_role.value, _role)
+
+
+def _resolve_role(agent_str: str, step_name: str) -> AgentRole:
+    """Resolve an agent string to an AgentRole, with fuzzy fallback.
+
+    Tries exact match first, then normalized matching (strip punctuation,
+    collapse whitespace), then substring matching against known role names.
+    """
+    # Exact match
+    role = _ROLE_MAP.get(agent_str)
+    if role is not None:
+        return role
+
+    # Normalize: strip punctuation and extra whitespace
+    import string
+    normalized = agent_str.translate(str.maketrans("", "", string.punctuation)).strip()
+    normalized = " ".join(normalized.split())  # collapse whitespace
+    role = _ROLE_MAP.get(normalized)
+    if role is not None:
+        return role
+
+    # Substring match: find the longest key that's contained in agent_str (or vice versa)
+    candidates: list[tuple[str, AgentRole]] = []
+    for key, r in _ROLE_MAP.items():
+        if key in agent_str or agent_str in key:
+            candidates.append((key, r))
+    if candidates:
+        # Prefer the longest matching key (most specific)
+        candidates.sort(key=lambda x: len(x[0]), reverse=True)
+        return candidates[0][1]
+
+    available = sorted({r.value for r in AgentRole})
+    raise ValueError(
+        f"Unknown agent role '{agent_str}' in step '{step_name}'. "
+        f"Available roles: {', '.join(available)}"
+    )
 
 
 def _parse_field(body: str, key: str) -> str:
@@ -377,10 +457,8 @@ def parse_custom_workflow(definition: str, name: str = "Custom Workflow") -> Wor
         step_name = match.group("name").strip()
         body = match.group("body")
 
-        agent_str = _parse_field(body, "agent").lower()
-        role = _ROLE_MAP.get(agent_str)
-        if role is None:
-            raise ValueError(f"Unknown agent role '{agent_str}' in step '{step_name}'")
+        agent_str = _parse_field(body, "agent").lower().strip()
+        role = _resolve_role(agent_str, step_name)
 
         inputs = _parse_list_field(body, "inputs")
         outputs = _parse_list_field(body, "outputs")

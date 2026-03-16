@@ -68,6 +68,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-format", choices=["console", "json"], default="console", help="Log output format")
     parser.add_argument("--enhanced-perception", action="store_true",
                         help="Enable enhanced perception mode: enrich prompts via meta-cognitive pre-processing")
+    parser.add_argument("--self-orchestrate", action="store_true",
+                        help="Let the AI design the optimal pipeline for your request before executing")
+    parser.add_argument("-y", "--yes", action="store_true",
+                        help="Skip confirmation prompts (auto-approve self-orchestrate plan)")
+    parser.add_argument("--max-concurrent-agents", type=int, default=None, metavar="N",
+                        help="Max agents to run in parallel (0=unlimited, default from config)")
     return parser
 
 
@@ -97,6 +103,64 @@ def _print_summary(state, console: Console) -> None:
     console.print(f"Workflow: {state.workflow_type.value} | Total cost: ${state.total_cost_usd:.4f} | Review cycles: {state.review_cycles}")
     console.print(f"Artifacts: {state.workspace_dir}/artifacts/")
     console.print(f"Log: {state.workspace_dir}/logs/run-{state.run_id}.jsonl")
+
+
+def _print_orchestration_plan(plan, console: Console) -> None:
+    """Display the self-orchestration plan for user confirmation."""
+    from rich.panel import Panel
+    from rich.text import Text
+
+    from orchestrator.workflows import BUILTIN_WORKFLOWS, parse_custom_workflow
+
+    # Header
+    wf_label = plan.workflow_type.value.replace("_", " ").title()
+    flags = []
+    if plan.custom_workflow:
+        flags.append("custom pipeline")
+    if plan.enhanced_perception:
+        flags.append("enhanced perception")
+    flags_str = f"  ({', '.join(flags)})" if flags else ""
+
+    console.print(f"[bold cyan]Proposed Pipeline:[/bold cyan] [bold]{wf_label}[/bold]{flags_str}")
+    console.print(f"[dim]Rationale: {plan.rationale}[/dim]\n")
+
+    # Resolve steps to display
+    if plan.custom_workflow:
+        try:
+            workflow = parse_custom_workflow(plan.custom_workflow)
+        except Exception:
+            console.print(f"[yellow]Custom workflow definition:[/yellow]\n{plan.custom_workflow}\n")
+            return
+    else:
+        workflow = BUILTIN_WORKFLOWS.get(plan.workflow_type)
+        if workflow is None:
+            return
+
+    # Build a step table
+    step_table = Table(title=f"Workflow: {workflow.name} ({len(workflow.steps)} steps)", show_lines=False)
+    step_table.add_column("#", style="dim", width=3)
+    step_table.add_column("Step", style="bold")
+    step_table.add_column("Agent")
+    step_table.add_column("Inputs", style="dim")
+    step_table.add_column("Outputs", style="dim")
+    step_table.add_column("Flags", style="dim")
+
+    for i, step in enumerate(workflow.steps, 1):
+        role_label = step.agent_role.value.replace("_", " ").title()
+        inputs = ", ".join(step.inputs) if step.inputs else "-"
+        outputs = ", ".join(step.outputs) if step.outputs else "-"
+        step_flags = []
+        if step.parallel:
+            step_flags.append("parallel")
+        if step.gate:
+            step_flags.append(f"gate:{step.gate}")
+        if step.on_fail != "escalate":
+            step_flags.append(f"on_fail:{step.on_fail}")
+        flags_cell = ", ".join(step_flags) if step_flags else "-"
+        step_table.add_row(str(i), step.name, role_label, inputs, outputs, flags_cell)
+
+    console.print(step_table)
+    console.print()
 
 
 def _cmd_validate(artifacts_dir: Path) -> None:
@@ -140,23 +204,120 @@ def main() -> None:
     config = load_config(args.config)
     if args.enhanced_perception:
         config.enhanced_perception = True
+    if args.max_concurrent_agents is not None:
+        config.max_concurrent_agents = args.max_concurrent_agents
     console = Console()
 
-    # Resolve workflow type
+    # Self-orchestrate: let the AI design the pipeline
     workflow_type = None
-    if args.workflow:
-        wf_key = args.workflow.lower().replace("-", "_")
-        workflow_type = WORKFLOW_ALIASES.get(wf_key)
-        if workflow_type is None:
-            parser.error(f"Unknown workflow type: {args.workflow}. Choose from: {list(WORKFLOW_ALIASES.keys())}")
-
-    # Load custom workflow definition
     custom_workflow = None
-    if args.workflow_file:
-        if not args.workflow_file.exists():
-            parser.error(f"Workflow file not found: {args.workflow_file}")
-        custom_workflow = args.workflow_file.read_text()
-        workflow_type = WorkflowType.CUSTOM
+
+    if args.self_orchestrate:
+        from orchestrator.self_orchestrate import clarify, revise_plan, self_orchestrate
+
+        feature_request = args.feature_request
+        project_root = Path.cwd()
+
+        # Phase 1: Clarifying questions loop
+        if not args.yes:
+            conversation: list[tuple[str, str]] = []
+            console.print("[bold cyan]Self-Orchestrate:[/bold cyan] Analyzing your request...\n")
+
+            while True:
+                result = asyncio.run(clarify(
+                    feature_request=args.feature_request,
+                    conversation=conversation,
+                    project_root=project_root,
+                ))
+
+                if result.ready or not result.questions:
+                    if result.refined_request != args.feature_request:
+                        feature_request = result.refined_request
+                    if conversation:
+                        console.print("[green]All clear — proceeding to pipeline design.[/green]\n")
+                    break
+
+                # Display questions
+                console.print("[bold cyan]Clarifying Questions:[/bold cyan]")
+                for i, q in enumerate(result.questions, 1):
+                    console.print(f"  {i}. {q}")
+                console.print()
+
+                try:
+                    answer = console.input(
+                        "[bold]Your answers (or 'skip' to proceed without answering): [/bold]"
+                    ).strip()
+                except (EOFError, KeyboardInterrupt):
+                    console.print("\nAborted.")
+                    sys.exit(0)
+
+                if answer.lower() in ("skip", "s", "proceed", "done"):
+                    feature_request = result.refined_request
+                    console.print()
+                    break
+
+                # Record Q&A and loop
+                questions_text = "\n".join(f"{i}. {q}" for i, q in enumerate(result.questions, 1))
+                conversation.append((questions_text, answer))
+                feature_request = result.refined_request
+                console.print()
+
+        # Phase 2: Pipeline design
+        console.print("[bold cyan]Self-Orchestrate:[/bold cyan] Designing the optimal pipeline...\n")
+        plan = asyncio.run(self_orchestrate(feature_request, project_root=project_root))
+
+        # Phase 3: Interactive approval / revision loop
+        while True:
+            _print_orchestration_plan(plan, console)
+
+            if args.yes:
+                break
+
+            try:
+                answer = console.input(
+                    "[bold]Proceed? [Y]es / [n]o / or type changes: [/bold]"
+                ).strip()
+            except (EOFError, KeyboardInterrupt):
+                console.print("\nAborted.")
+                sys.exit(0)
+
+            if not answer or answer.lower() in ("y", "yes"):
+                console.print()
+                break
+            if answer.lower() in ("n", "no", "q", "quit"):
+                console.print("Aborted.")
+                sys.exit(0)
+
+            # User typed modification feedback — revise the plan
+            console.print(f"\n[bold cyan]Self-Orchestrate:[/bold cyan] Revising plan...\n")
+            plan = asyncio.run(revise_plan(
+                feature_request=feature_request,
+                current_plan=plan,
+                user_feedback=answer,
+                project_root=project_root,
+            ))
+
+        workflow_type = plan.workflow_type
+        custom_workflow = plan.custom_workflow
+        if plan.enhanced_perception:
+            config.enhanced_perception = True
+
+        # Use the enriched feature request for the actual run
+        args.feature_request = feature_request
+    else:
+        # Resolve workflow type from CLI args
+        if args.workflow:
+            wf_key = args.workflow.lower().replace("-", "_")
+            workflow_type = WORKFLOW_ALIASES.get(wf_key)
+            if workflow_type is None:
+                parser.error(f"Unknown workflow type: {args.workflow}. Choose from: {list(WORKFLOW_ALIASES.keys())}")
+
+        # Load custom workflow definition
+        if args.workflow_file:
+            if not args.workflow_file.exists():
+                parser.error(f"Workflow file not found: {args.workflow_file}")
+            custom_workflow = args.workflow_file.read_text()
+            workflow_type = WorkflowType.CUSTOM
 
     engine = OrchestratorEngine(config=config, dry_run=args.dry_run)
     state = asyncio.run(engine.run(

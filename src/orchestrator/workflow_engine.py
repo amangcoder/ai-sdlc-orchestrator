@@ -30,11 +30,18 @@ from orchestrator.validation import validate_artifact_file
 
 logger = logging.getLogger(__name__)
 
-# Roles that count as "implementation" roles for task loading
+# Roles that count as "implementation" roles for task loading.
+# Tasks with these assigned_role values are loaded from tasks.json
+# and dispatched to specialist agents during the Implementation step.
 _IMPLEMENTATION_ROLES = frozenset({
     "engineer", "frontend_engineer", "backend_engineer",
     "database_engineer", "caching_performance_engineer",
     "automation_engineer", "devops_engineer", "observability_engineer",
+    "documentation_engineer",
+    # New specialist implementation roles
+    "api_contract_designer", "migration_engineer", "ux_specifier",
+    "release_engineer", "integration_test_engineer",
+    "accessibility_auditor",
 })
 
 # Maps assigned_role strings from tasks.json to AgentRole enums
@@ -48,6 +55,20 @@ _ROLE_STRING_TO_ENUM: dict[str, AgentRole] = {
     "devops_engineer": AgentRole.DEVOPS_ENGINEER,
     "observability_engineer": AgentRole.OBSERVABILITY_ENGINEER,
     "documentation_engineer": AgentRole.DOCUMENTATION_ENGINEER,
+    # New specialist roles
+    "api_contract_designer": AgentRole.API_CONTRACT_DESIGNER,
+    "migration_engineer": AgentRole.MIGRATION_ENGINEER,
+    "ux_specifier": AgentRole.UX_SPECIFIER,
+    "tech_debt_assessor": AgentRole.TECH_DEBT_ASSESSOR,
+    "release_engineer": AgentRole.RELEASE_ENGINEER,
+    "incident_analyst": AgentRole.INCIDENT_ANALYST,
+    "load_test_engineer": AgentRole.LOAD_TEST_ENGINEER,
+    "compliance_auditor": AgentRole.COMPLIANCE_AUDITOR,
+    "dependency_auditor": AgentRole.DEPENDENCY_AUDITOR,
+    "accessibility_auditor": AgentRole.ACCESSIBILITY_AUDITOR,
+    "integration_test_engineer": AgentRole.INTEGRATION_TEST_ENGINEER,
+    "legal_advisor": AgentRole.LEGAL_ADVISOR,
+    "user_behavior_psychologist": AgentRole.USER_BEHAVIOR_PSYCHOLOGIST,
 }
 
 
@@ -241,13 +262,16 @@ class WorkflowEngine:
                             workspace_dir=str(workspace),
                             project_root=str(self.project_root),
                             isolation="worktree",
+                            enhanced_perception=self.config.enhanced_perception,
                         ))
 
                     logger.info(f"  Launching {len(invocations)} agents in parallel:")
                     for inv in invocations:
                         logger.info(f"    - {inv.agent_name} (model: {inv.model.value})")
 
-                    results = await invoke_agents_parallel(invocations)
+                    results = await invoke_agents_parallel(
+                        invocations, max_concurrent=self.config.max_concurrent_agents,
+                    )
                     for task, result in zip(no_conflict, results):
                         self._apply_result(task, result)
                         self.progress.on_task_complete()
@@ -343,6 +367,7 @@ class WorkflowEngine:
                 max_turns=max_turns,
                 workspace_dir=str(workspace),
                 project_root=str(self.project_root),
+                enhanced_perception=self.config.enhanced_perception,
             ))
 
             if self.run_logger:

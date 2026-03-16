@@ -3,6 +3,7 @@ max_review_cycles: 3
 max_budget_usd: 50.0
 default_workflow: feature_development
 enhanced_perception: false
+max_concurrent_agents: 10         # max parallel agents; set to 2-4 on low-resource machines
 
 phases:
   pm:
@@ -32,153 +33,306 @@ phases:
     timeout_minutes: 15
 
 agents:
-  # --- Core roles (legacy compat) ---
+  # --- Planning roles (structured reasoning → sonnet) ---
   pm:
     name: Product Manager
     model: sonnet
-    max_turns: 30
-    escalation_model: null
+    max_turns: 25
+    escalation_model: opus
     input_artifacts: []
     output_artifacts: [prd]
   architect:
     name: System Architect
     model: sonnet
-    max_turns: 40
-    escalation_model: null
+    max_turns: 30
+    escalation_model: opus
     input_artifacts: [prd]
     output_artifacts: [architecture, tasks]
+
+  # --- Deep reasoning roles (high-stakes decisions → opus) ---
+  principal_engineer:
+    name: Principal Engineer
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture]
+    output_artifacts: [engineering_plan, tasks]
+
+  # --- Task decomposition (structured output → sonnet) ---
+  tpm:
+    name: Technical Project Manager
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, architecture, engineering_plan]
+    output_artifacts: [tasks]
+
+  # --- Implementation roles (code writing → sonnet, escalate to opus) ---
   engineer:
     name: Engineer
     model: sonnet
     max_turns: 80
-    escalation_model: sonnet
+    escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
-  qa:
-    name: QA Engineer
-    model: sonnet
-    max_turns: 40
-    escalation_model: sonnet
-    input_artifacts: [prd, tasks]
-    output_artifacts: [qa_report]
-  reviewer:
-    name: Code Reviewer
-    model: sonnet
-    max_turns: 30
-    escalation_model: null
-    input_artifacts: [prd, architecture, tasks, qa_report]
-    output_artifacts: [review]
-
-  # --- Expanded roles ---
-  principal_engineer:
-    name: Principal Engineer
-    model: sonnet
-    max_turns: 40
-    escalation_model: null
-    input_artifacts: [prd, architecture]
-    output_artifacts: [engineering_plan, tasks]
-  tpm:
-    name: Technical Project Manager
-    model: sonnet
-    max_turns: 30
-    escalation_model: null
-    input_artifacts: [prd, architecture, engineering_plan]
-    output_artifacts: [tasks]
   frontend_engineer:
     name: Frontend Engineer
     model: sonnet
     max_turns: 80
-    escalation_model: sonnet
+    escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   backend_engineer:
     name: Backend Engineer
     model: sonnet
     max_turns: 80
-    escalation_model: sonnet
+    escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   database_engineer:
     name: Database Engineer
     model: sonnet
     max_turns: 60
-    escalation_model: sonnet
+    escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   caching_engineer:
     name: Caching & Performance Engineer
     model: sonnet
     max_turns: 60
-    escalation_model: sonnet
+    escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: [benchmark_report]
-  backend_reviewer:
-    name: Backend Code Reviewer
-    model: sonnet
-    max_turns: 30
-    escalation_model: null
-    input_artifacts: [prd, architecture, tasks, qa_report]
-    output_artifacts: [review]
-  frontend_reviewer:
-    name: Frontend Code Reviewer
-    model: sonnet
-    max_turns: 30
-    escalation_model: null
-    input_artifacts: [prd, architecture, tasks]
-    output_artifacts: [review]
-  qa_planner:
-    name: QA Planner
-    model: sonnet
-    max_turns: 30
-    escalation_model: null
-    input_artifacts: [prd, architecture, tasks]
-    output_artifacts: [prd]
-  qa_executor:
-    name: QA Executor
-    model: sonnet
-    max_turns: 40
-    escalation_model: sonnet
-    input_artifacts: [prd, tasks]
-    output_artifacts: [qa_report]
   automation_engineer:
     name: Automation Engineer
     model: sonnet
     max_turns: 60
-    escalation_model: sonnet
+    escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   devops_engineer:
     name: DevOps Engineer
     model: sonnet
     max_turns: 40
-    escalation_model: null
+    escalation_model: opus
     input_artifacts: [qa_report, review]
     output_artifacts: []
-  security_engineer:
-    name: Security Engineer
-    model: sonnet
-    max_turns: 40
-    escalation_model: null
-    input_artifacts: [prd, architecture]
-    output_artifacts: [threat_model, vulnerability_report]
   observability_engineer:
     name: Observability Engineer
     model: sonnet
     max_turns: 40
-    escalation_model: null
+    escalation_model: opus
     input_artifacts: [prd, architecture]
     output_artifacts: []
-  documentation_engineer:
-    name: Documentation Engineer
-    model: sonnet
+
+  # --- Quality gate roles (deep analysis → opus, no escalation needed) ---
+  backend_reviewer:
+    name: Backend Code Reviewer
+    model: opus
+    max_turns: 25
+    escalation_model: null
+    input_artifacts: [prd, architecture, tasks, qa_report]
+    output_artifacts: [review]
+  frontend_reviewer:
+    name: Frontend Code Reviewer
+    model: opus
+    max_turns: 25
+    escalation_model: null
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: [review]
+  security_engineer:
+    name: Security Engineer
+    model: opus
     max_turns: 30
     escalation_model: null
+    input_artifacts: [prd, architecture]
+    output_artifacts: [threat_model, vulnerability_report]
+
+  # --- QA roles (test execution → sonnet, escalate to opus) ---
+  qa_planner:
+    name: QA Planner
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: [prd]
+  qa_executor:
+    name: QA Executor
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: [prd, tasks]
+    output_artifacts: [qa_report]
+
+  # --- Lightweight roles (simple tasks → haiku, escalate to sonnet) ---
+  documentation_engineer:
+    name: Documentation Engineer
+    model: haiku
+    max_turns: 20
+    escalation_model: sonnet
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   git_manager:
     name: Git Manager
+    model: haiku
+    max_turns: 15
+    escalation_model: sonnet
+    input_artifacts: [prd, tasks]
+    output_artifacts: []
+
+  # --- New specialist roles (analysis → sonnet, escalate to opus) ---
+  api_contract_designer:
+    name: API Contract Designer
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, architecture]
+    output_artifacts: [api_contract]
+  migration_engineer:
+    name: Migration Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: [migration_plan]
+  ux_specifier:
+    name: UX Specifier
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd]
+    output_artifacts: [ux_spec]
+  tech_debt_assessor:
+    name: Tech Debt Assessor
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: []
+    output_artifacts: [tech_debt_inventory]
+  release_engineer:
+    name: Release Engineer
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, qa_report, review]
+    output_artifacts: [release_plan]
+  incident_analyst:
+    name: Incident Analyst
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: []
+    output_artifacts: [incident_report]
+  load_test_engineer:
+    name: Load Test Engineer
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, architecture]
+    output_artifacts: [load_test_report]
+
+  # --- Audit/compliance roles (deep analysis → opus) ---
+  compliance_auditor:
+    name: Compliance Auditor
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture]
+    output_artifacts: [compliance_report]
+  dependency_auditor:
+    name: Dependency Auditor
     model: sonnet
     max_turns: 20
+    escalation_model: opus
+    input_artifacts: []
+    output_artifacts: [dependency_audit]
+  accessibility_auditor:
+    name: Accessibility Auditor
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, ux_spec]
+    output_artifacts: [accessibility_audit]
+  integration_test_engineer:
+    name: Integration Test Engineer
+    model: sonnet
+    max_turns: 60
+    escalation_model: opus
+    input_artifacts: [prd, architecture, api_contract, tasks]
+    output_artifacts: [integration_test_plan]
+
+  # --- Advisory roles (deep reasoning → opus) ---
+  legal_advisor:
+    name: Legal Advisor
+    model: opus
+    max_turns: 25
     escalation_model: null
-    input_artifacts: [prd, tasks]
+    input_artifacts: [prd, architecture]
+    output_artifacts: [legal_review]
+  user_behavior_psychologist:
+    name: User Behavior Psychologist
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, ux_spec]
+    output_artifacts: [behavioral_review]
+
+  # --- Cloud & infrastructure specialists (implementation → sonnet) ---
+  cicd_specialist:
+    name: CI/CD Pipeline Specialist
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [architecture, tasks]
+    output_artifacts: []
+  aws_specialist:
+    name: AWS Specialist
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [architecture, tasks]
+    output_artifacts: []
+  azure_specialist:
+    name: Azure Specialist
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [architecture, tasks]
+    output_artifacts: []
+  gcp_specialist:
+    name: GCP Specialist
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [architecture, tasks]
+    output_artifacts: []
+  runpod_specialist:
+    name: RunPod Specialist
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [architecture, tasks]
+    output_artifacts: []
+
+  # --- AI/ML specialists (analysis → sonnet, escalate to opus) ---
+  llm_specialist:
+    name: LLM Specialist
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: [prd, architecture]
+    output_artifacts: []
+  agentic_ai_specialist:
+    name: Agentic AI Specialist
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: [prd, architecture]
+    output_artifacts: []
+  ml_specialist:
+    name: ML Algorithm Specialist
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: [prd, architecture]
     output_artifacts: []

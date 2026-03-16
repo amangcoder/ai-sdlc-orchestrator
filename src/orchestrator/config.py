@@ -52,6 +52,7 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
         max_budget_usd=raw.get("max_budget_usd", 50.0),
         default_workflow=default_workflow,
         enhanced_perception=raw.get("enhanced_perception", False),
+        max_concurrent_agents=raw.get("max_concurrent_agents", 0),
         phases=phases,
         agents=agents,
     )

@@ -19,7 +19,7 @@ AGENTS_DIR = Path(__file__).resolve().parents[2] / ".claude" / "agents"
 MODEL_MAP: dict[ModelTier, str] = {
     ModelTier.HAIKU: "haiku",
     ModelTier.SONNET: "sonnet",
-    ModelTier.sonnet: "sonnet",
+    ModelTier.OPUS: "opus",
 }
 
 
@@ -188,8 +188,24 @@ async def _invoke_via_cli(invocation: AgentInvocation) -> AgentResult:
 
 async def invoke_agents_parallel(
     invocations: list[AgentInvocation],
+    max_concurrent: int = 0,
 ) -> list[AgentResult]:
-    """Invoke multiple agents in parallel."""
-    return await asyncio.gather(
-        *(invoke_agent(inv) for inv in invocations)
-    )
+    """Invoke multiple agents in parallel.
+
+    Args:
+        max_concurrent: Maximum number of agents to run at the same time.
+            0 means unlimited (all agents launch concurrently).
+    """
+    if max_concurrent <= 0 or max_concurrent >= len(invocations):
+        return await asyncio.gather(
+            *(invoke_agent(inv) for inv in invocations)
+        )
+
+    semaphore = asyncio.Semaphore(max_concurrent)
+    logger.info(f"Throttling parallel agents to max {max_concurrent} concurrent")
+
+    async def _throttled(inv: AgentInvocation) -> AgentResult:
+        async with semaphore:
+            return await invoke_agent(inv)
+
+    return await asyncio.gather(*(_throttled(inv) for inv in invocations))

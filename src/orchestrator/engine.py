@@ -304,9 +304,12 @@ class OrchestratorEngine:
                 workspace_dir=str(workspace),
                 project_root=str(self.project_root),
                 isolation="worktree",
+                enhanced_perception=self.config.enhanced_perception,
             ))
 
-        results = await invoke_agents_parallel(invocations)
+        results = await invoke_agents_parallel(
+            invocations, max_concurrent=self.config.max_concurrent_agents,
+        )
 
         for task_state, result in zip(state.engineering_tasks, results):
             task_state.status = TaskStatus.COMPLETED if result.success else TaskStatus.FAILED
@@ -408,7 +411,7 @@ class OrchestratorEngine:
                 result = await self._invoke_with_retry(
                     agent_name="reviewer",
                     prompt=reviewer_prompt,
-                    model=agent_config.model if agent_config else ModelTier.sonnet,
+                    model=agent_config.model if agent_config else ModelTier.OPUS,
                     max_turns=agent_config.max_turns if agent_config else 30,
                     max_retries=1,
                     escalation_model=None,
@@ -457,6 +460,7 @@ class OrchestratorEngine:
                 max_turns=max_turns,
                 workspace_dir=str(workspace),
                 project_root=str(self.project_root),
+                enhanced_perception=self.config.enhanced_perception,
             ))
 
             if self.run_logger:
