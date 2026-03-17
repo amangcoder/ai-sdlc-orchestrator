@@ -5,10 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from orchestrator.agents import AGENTS_DIR
 from orchestrator.models import AgentRole, RoleAccess, WorkflowDefinition
-
-
-AGENTS_DIR = Path(__file__).resolve().parents[2] / ".claude" / "agents"
 
 
 @dataclass(frozen=True)
@@ -298,6 +296,59 @@ ROLE_REGISTRY: dict[AgentRole, RoleDefinition] = {
         access=RoleAccess.READ_ONLY,
         agent_file="ml_specialist.md",
     ),
+    # --- Research & strategy ---
+    AgentRole.MARKET_RESEARCHER: RoleDefinition(
+        role=AgentRole.MARKET_RESEARCHER,
+        title="Market Researcher",
+        responsibility="Market sizing (TAM/SAM/SOM), trend analysis, target segment validation, market-fit assessment",
+        access=RoleAccess.READ_ONLY,
+        agent_file="market_researcher.md",
+    ),
+    AgentRole.COMPETITOR_RESEARCHER: RoleDefinition(
+        role=AgentRole.COMPETITOR_RESEARCHER,
+        title="Competitor Researcher",
+        responsibility="Competitive landscape analysis, feature benchmarking, positioning, differentiation strategy",
+        access=RoleAccess.READ_ONLY,
+        agent_file="competitor_researcher.md",
+    ),
+    # --- Domain specialist ---
+    AgentRole.FIELD_SPECIALIST: RoleDefinition(
+        role=AgentRole.FIELD_SPECIALIST,
+        title="Field Specialist",
+        responsibility="Domain-specific expertise dynamically defined by the feature context (e.g., fintech, healthcare, e-commerce)",
+        access=RoleAccess.READ_ONLY,
+        agent_file="field_specialist.md",
+    ),
+    # --- User validation ---
+    AgentRole.END_USER_SIMULATOR: RoleDefinition(
+        role=AgentRole.END_USER_SIMULATOR,
+        title="End User Simulator",
+        responsibility="Adopts target user persona from PRD, walks through features as a real user, reports friction and confusion",
+        access=RoleAccess.READ_ONLY,
+        agent_file="end_user_simulator.md",
+    ),
+    # --- Debate roles ---
+    AgentRole.DEEP_RESEARCHER: RoleDefinition(
+        role=AgentRole.DEEP_RESEARCHER,
+        title="Deep Researcher",
+        responsibility="Evidence-driven analysis: feasibility, prior art, risks, hidden complexity in feature requests",
+        access=RoleAccess.READ_ONLY,
+        agent_file="deep_researcher.md",
+    ),
+    AgentRole.BRAINSTORMER: RoleDefinition(
+        role=AgentRole.BRAINSTORMER,
+        title="Brainstormer",
+        responsibility="Creative exploration: novel approaches, 10x opportunities, competitive differentiation, user delight",
+        access=RoleAccess.READ_ONLY,
+        agent_file="brainstormer.md",
+    ),
+    AgentRole.MEDIATOR: RoleDefinition(
+        role=AgentRole.MEDIATOR,
+        title="Mediator",
+        responsibility="Synthesizes adversarial debate into actionable requirements, resolved tensions, and prioritized scope",
+        access=RoleAccess.READ_ONLY,
+        agent_file="mediator.md",
+    ),
 }
 
 
@@ -379,5 +430,12 @@ def role_to_legacy_agent_name(role: AgentRole) -> str:
         AgentRole.LLM_SPECIALIST: "llm_specialist",
         AgentRole.AGENTIC_AI_SPECIALIST: "agentic_ai_specialist",
         AgentRole.ML_SPECIALIST: "ml_specialist",
+        AgentRole.MARKET_RESEARCHER: "market_researcher",
+        AgentRole.COMPETITOR_RESEARCHER: "competitor_researcher",
+        AgentRole.FIELD_SPECIALIST: "field_specialist",
+        AgentRole.END_USER_SIMULATOR: "end_user_simulator",
+        AgentRole.DEEP_RESEARCHER: "deep_researcher",
+        AgentRole.BRAINSTORMER: "brainstormer",
+        AgentRole.MEDIATOR: "mediator",
     }
     return mapping[role]

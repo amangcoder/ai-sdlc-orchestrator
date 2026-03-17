@@ -30,7 +30,7 @@ htmlcov/
 # Workspace runtime artifacts
 workspace/artifacts/
 workspace/logs/
-workspace/state.json
+workspace/*.json
 
 # Environment
 .env

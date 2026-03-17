@@ -1,0 +1,3 @@
+{
+  "feature_request": "Build a 2-player offline tic-tac-toe game in Python. Simple terminal UI, players alternate X and O, detect wins and draws. Single file, minimal design."
+}

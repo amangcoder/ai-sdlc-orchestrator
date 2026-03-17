@@ -267,6 +267,168 @@ If the user provides a custom workflow definition alongside the task, use it. Ot
 
 ---
 
+## COMMUNICATION LOG (feature flag: `comms_log.enabled`)
+
+When enabled, the orchestrator persists a structured conversation history for every run. This creates a searchable record of all messages exchanged between the orchestrator, teammates, and the human — across separate conversations.
+
+### What Gets Logged
+
+Every message in the system is captured with metadata:
+
+```jsonl
+{
+  "run_id": "run-a1b2c3",
+  "timestamp": "2026-03-16T14:32:01Z",
+  "from": "orchestrator",
+  "to": "backend_engineer",
+  "type": "task_assignment",
+  "phase": "implementation",
+  "task_id": "TASK-004",
+  "content": "Implement the auth middleware as specified in architecture doc section 3.2...",
+  "artifacts_referenced": ["architecture", "tasks"],
+  "token_count": 1240
+}
+```
+
+Message types:
+- `task_assignment` — Orchestrator assigns work to a teammate
+- `task_completion` — Teammate reports finished work
+- `tool_invocation` — Agent calls a tool during task execution (see Tool Call Logging below)
+- `blocker` — Teammate reports a blocking issue
+- `clarification_request` — Teammate asks for more detail
+- `clarification_response` — Orchestrator or specialist answers
+- `review_feedback` — Reviewer sends feedback to an engineer
+- `escalation` — Retry limit hit, escalating to human
+- `human_directive` — Human provides input or approval
+- `status_report` — Orchestrator reports progress to human
+
+### Tool Call Logging (requires `include_tool_calls: true`)
+
+When enabled, every tool invocation by every agent is recorded with structured metadata. This answers "which tools did what, where, and why?" across the entire run.
+
+#### Tool Call Entry Format
+
+```jsonl
+{
+  "run_id": "run-a1b2c3",
+  "timestamp": "2026-03-16T14:33:12Z",
+  "from": "backend_engineer",
+  "type": "tool_invocation",
+  "phase": "implementation",
+  "task_id": "TASK-004",
+  "tool": {
+    "name": "Edit",
+    "target": "src/auth/middleware.py",
+    "action_summary": "Added JWT validation to authenticate_request()",
+    "inputs_snapshot": {
+      "old_string": "def authenticate_request(req):\n    pass",
+      "new_string": "def authenticate_request(req):\n    token = req.headers.get('Authorization')..."
+    },
+    "result": "success",
+    "duration_ms": 320
+  },
+  "token_count": 0
+}
+```
+
+#### Tool Entry Fields
+
+| Field | Description |
+|---|---|
+| `tool.name` | Tool identifier — `Read`, `Edit`, `Write`, `Bash`, `Glob`, `Grep`, `Agent`, etc. |
+| `tool.target` | Primary file or resource acted upon (file path, glob pattern, command) |
+| `tool.action_summary` | One-line human-readable description of what the tool call did |
+| `tool.inputs_snapshot` | Key input parameters (truncated for large payloads; omitted if `include_tool_calls` is false) |
+| `tool.result` | `"success"`, `"error"`, or `"timeout"` |
+| `tool.duration_ms` | Wall-clock time of the tool execution |
+
+#### What Gets Captured
+
+- **File operations**: Read, Edit, Write — with file paths and a summary of changes
+- **Search operations**: Grep, Glob — with patterns and match counts
+- **Shell commands**: Bash — with the command string and exit code
+- **Agent spawns**: Agent — with the subagent type, description, and completion status
+- **Web operations**: WebSearch, WebFetch — with URLs/queries (no response bodies)
+
+### Storage Structure
+
+```
+workspace/comms/
+├── index.json                    # searchable index of all runs
+├── run-a1b2c3/
+│   ├── meta.json                 # run metadata (task, workflow, agents, timestamps)
+│   ├── messages.jsonl            # all messages in chronological order
+│   ├── tool_usage.json           # aggregated tool stats (calls by type, files touched, per-agent activity)
+│   ├── summary.md                # generated on completion (decisions, outcomes, tool usage summary)
+│   ├── by-agent/
+│   │   ├── backend_engineer.jsonl
+│   │   ├── architect.jsonl
+│   │   └── ...
+│   └── by-phase/
+│       ├── pm.jsonl
+│       ├── implementation.jsonl
+│       └── ...
+└── run-d4e5f6/
+    └── ...
+```
+
+### Recall: Querying Past Conversations
+
+When `comms_log.recall.enabled` is true, teammates and the orchestrator can query past run histories to inform current work. This is useful when:
+
+- A follow-up task references decisions made in a prior run
+- A teammate needs to understand why a previous approach was chosen
+- The human asks "what did we decide about X last time?"
+- Debugging a regression that may relate to a prior implementation
+
+#### Recall Query Format
+
+```
+RECALL:
+  query: "authentication middleware design decisions"
+  scope: "all"          # "all", "last_run", "run:<run_id>", "agent:<role>"
+  type: null            # filter by message type: "tool_invocation", "task_completion", etc. (null = all)
+  max_results: 5
+```
+
+Example — querying tool history:
+```
+RECALL:
+  query: "files edited for auth feature"
+  scope: "last_run"
+  type: "tool_invocation"
+  max_results: 10
+```
+
+#### Recall Rules
+
+1. Recall is **read-only** — past logs are never modified
+2. Recall results are injected as **context**, not as instructions — the current workflow takes precedence
+3. If recall returns conflicting information from different runs, flag the conflict to the orchestrator
+4. Recall queries count toward the agent's turn budget
+5. The orchestrator may proactively recall context when a task description references prior work
+
+### Orchestrator Responsibilities
+
+When comms_log is enabled:
+
+1. **Log every message** — no silent exchanges; every task assignment, completion, and handoff is recorded
+2. **Tag messages accurately** — correct `type`, `phase`, and `task_id` on every entry
+3. **Summarize on completion** — at the end of each run, write a `summary.md` in the run directory with key decisions, outcomes, and unresolved items. Include a **Tool Usage Summary** section listing per-agent tool call counts, files touched, and key actions taken
+4. **Generate tool index** — write `tool_usage.json` per run with aggregated stats: total tool calls by type, files modified (with which tools), agents ranked by tool activity
+5. **Prune on schedule** — respect `retention_days`; delete expired run directories on startup
+6. **Respect size limits** — if a run log approaches `max_log_size_mb`, switch to logging summaries instead of full messages
+
+### Privacy and Size Controls
+
+- `include_system_prompts: false` (default) — omits verbose system prompts from logs to save space
+- `include_artifacts: true` (default) — inlines artifact content so logs are self-contained
+- `include_tool_calls: true` (default) — logs every tool invocation with inputs/outputs; set to false to log only inter-agent messages
+- Logs are **local only** — never transmitted externally
+- The human can delete any run directory at any time; the index auto-repairs on next startup
+
+---
+
 ## FAILURE HANDLING
 
 | Situation | Action |

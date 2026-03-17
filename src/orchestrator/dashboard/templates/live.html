@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>
+  <span class="live-dot"></span>
+  Live: {{ run.run_id[:8] }}...
+</h1>
+<p style="color: var(--text-dim); margin-bottom: 20px;">{{ run.feature_request }}</p>
+
+<div class="stats">
+  <div class="stat">
+    <div class="stat-value" id="cost">${{ "%.4f"|format(run.total_cost_usd) }}</div>
+    <div class="stat-label">Cost</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" id="event-count">0</div>
+    <div class="stat-label">Events</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value badge badge-{{ run.status }}" id="status">{{ run.status }}</div>
+    <div class="stat-label">Status</div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Live Events</h2>
+  <div class="event-list" id="live-events">
+    <div class="event-item" style="color: var(--text-dim);">Waiting for events...</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  let eventCount = 0;
+  startSSE('{{ run.run_id }}', 'live-events');
+
+  // Override to also update counters
+  const origOnMessage = EventSource.prototype.onmessage;
+  const container = document.getElementById('live-events');
+  const countEl = document.getElementById('event-count');
+
+  // Clear placeholder
+  container.innerHTML = '';
+
+  const evtSource = new EventSource(`/api/runs/{{ run.run_id }}/stream`);
+  evtSource.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    if (data.event === 'stream_end') {
+      evtSource.close();
+      document.getElementById('status').textContent = 'completed';
+      document.querySelector('.live-dot').style.animation = 'none';
+      document.querySelector('.live-dot').style.background = '#6e7681';
+      return;
+    }
+
+    eventCount++;
+    countEl.textContent = eventCount;
+
+    if (data.cost_usd) {
+      // Update cost display
+    }
+
+    const item = document.createElement('div');
+    item.className = 'event-item';
+    const time = data.ts ? new Date(data.ts).toLocaleTimeString() : '';
+    const type = data.event || 'unknown';
+    const details = Object.entries(data)
+      .filter(([k]) => !['ts', 'run_id', 'event', 'config'].includes(k))
+      .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
+      .join(' ');
+    item.innerHTML = `<span class="event-time">${escapeHtml(time)}</span><span class="event-type">${escapeHtml(type)}</span>${escapeHtml(details)}`;
+    container.prepend(item);
+  };
+
+  evtSource.onerror = function() {
+    evtSource.close();
+    document.querySelector('.live-dot').style.background = '#da3633';
+    document.querySelector('.live-dot').style.animation = 'none';
+  };
+</script>
+{% endblock %}

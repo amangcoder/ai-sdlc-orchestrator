@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timezone
+from typing import Any
 
 from rich.console import Console
 from rich.panel import Panel
@@ -30,6 +31,11 @@ class ProgressTracker:
         self._start_time = time.time()
         self._task_completions: list[float] = []
         self._tasks_since_last_show = 0
+        self._budget_forecaster: Any = None
+
+    def set_budget_forecaster(self, forecaster: Any) -> None:
+        """Attach a BudgetForecaster for cost projection display."""
+        self._budget_forecaster = forecaster
 
     def show(self, event: str = "update") -> None:
         """Display the progress report if appropriate for the event type."""
@@ -137,11 +143,27 @@ class ProgressTracker:
                 lines.append(f"  This step: ~{self._format_duration(eta_step)}")
             lines.append(f"  Full workflow: ~{self._format_duration(eta_total)}")
 
-        # Budget
-        if self.state.total_cost_usd > 0:
+        # Budget & Tokens
+        if self.state.total_cost_usd > 0 or self.state.total_input_tokens > 0:
             lines.append("")
             lines.append(f"BUDGET")
             lines.append(f"  Spent: ${self.state.total_cost_usd:.2f}")
+            total_tokens = self.state.total_input_tokens + self.state.total_output_tokens
+            if total_tokens > 0:
+                lines.append(f"  Tokens: {total_tokens:,} ({self.state.total_input_tokens:,} in / {self.state.total_output_tokens:,} out)")
+
+            # Budget forecast (if monitoring stack is available)
+            if self._budget_forecaster:
+                try:
+                    forecast = self._budget_forecaster.forecast()
+                    lines.append(f"  Remaining: ${forecast.remaining_usd:.2f}")
+                    if forecast.burn_rate_usd_per_minute > 0:
+                        lines.append(f"  Burn rate: ${forecast.burn_rate_usd_per_minute:.4f}/min")
+                    lines.append(f"  Projected total: ${forecast.projected_total_usd:.2f} ({forecast.confidence} confidence)")
+                    if forecast.projected_exhaustion_step:
+                        lines.append(f"  [red]WARNING: Budget may exhaust at step {forecast.projected_exhaustion_step}[/red]")
+                except Exception:
+                    pass
 
         content = "\n".join(lines)
         return Panel(content, title="[bold]Orchestrator Progress[/bold]", border_style="blue")

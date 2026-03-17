@@ -441,7 +441,78 @@ STEP: <Step Name>
 ```
 
 Available artifact types: prd, architecture, engineering_plan, tasks, review, \
-qa_report, benchmark_report, threat_model, vulnerability_report
+qa_report, benchmark_report, threat_model, vulnerability_report, \
+market_research, competitor_research, field_specialist_review, behavioral_review, ux_spec
+
+**Important**: A step's `inputs` must only list artifacts produced by a **prior** step's \
+`outputs`. The first step typically has no inputs (or only references external files). \
+Do NOT list an artifact as both input and output of the same step — the engine will \
+block if an input artifact does not yet exist on disk.
+
+## Pre-PRD Research Steps
+
+When the user explicitly requests research (e.g., market analysis, competitor analysis, \
+domain expertise), you MUST place research steps **before** the PRD step in your custom \
+workflow. Research agents produce artifacts that the PM then uses to write a more informed PRD.
+
+**Research-capable agents** (use these ONLY when the user asks for research):
+- **Market Researcher** → outputs: `market_research`
+- **Competitor Researcher** → outputs: `competitor_research` (can take `market_research` as input)
+- **Field Specialist** → outputs: `field_specialist_review` (domain-specific expert analysis)
+- **User Behavior Psychologist** → outputs: `behavioral_review` (user psychology and behavior analysis)
+- **UX Specifier** → outputs: `ux_spec` (UX best practices and usability recommendations)
+- **Deep Researcher** → general-purpose research agent
+
+**Example: Custom workflow with research before PRD:**
+```
+STEP: Market Research
+  agent: Market Researcher
+  inputs:
+  outputs: market_research
+  next: Competitor Analysis
+  parallel: false
+
+STEP: Competitor Analysis
+  agent: Competitor Researcher
+  inputs: market_research
+  outputs: competitor_research
+  next: PRD
+  parallel: false
+
+STEP: PRD
+  agent: Product Manager
+  inputs: market_research, competitor_research
+  outputs: prd
+  next: Architecture
+  parallel: false
+```
+
+Research steps can also run **in parallel** if they don't depend on each other:
+```
+STEP: Market Research
+  agent: Market Researcher
+  inputs:
+  outputs: market_research
+  next: PRD
+  parallel: true
+
+STEP: Domain Analysis
+  agent: Field Specialist
+  inputs:
+  outputs: field_specialist_review
+  next: PRD
+  parallel: true
+
+STEP: PRD
+  agent: Product Manager
+  inputs: market_research, field_specialist_review
+  outputs: prd
+  next: Architecture
+  parallel: false
+```
+
+**Do NOT add research steps unless the user explicitly asks for research.** Built-in \
+workflows and standard custom workflows should start with PRD directly.
 
 ## Your task
 
@@ -457,6 +528,9 @@ consider DevOps; if it has migrations, consider Database Engineer
 - **Agent availability** → only use agents from the catalog above in custom workflows
 - **Task scope** → simple tasks get simple pipelines; complex multi-concern tasks \
 get richer custom workflows with the right specialists
+- **Research requests** → if the user explicitly asks for research, market analysis, \
+competitor analysis, or domain expertise, create a custom workflow with the appropriate \
+research steps BEFORE the PRD step
 
 ```json
 {{
@@ -536,7 +610,16 @@ STEP: <Step Name>
 ```
 
 Available artifact types: prd, architecture, engineering_plan, tasks, review, \
-qa_report, benchmark_report, threat_model, vulnerability_report.
+qa_report, benchmark_report, threat_model, vulnerability_report, \
+market_research, competitor_research, field_specialist_review, behavioral_review, ux_spec.
+
+**Important**: A step's `inputs` must only list artifacts produced by a **prior** step's \
+`outputs`. The first step typically has no inputs. Do NOT list an artifact as both input \
+and output of the same step.
+
+**Research steps**: If the user asks for research, place research agent steps (Market Researcher, \
+Competitor Researcher, Field Specialist, User Behavior Psychologist, UX Specifier, Deep Researcher) \
+BEFORE the PRD step. Their output artifacts become inputs to the PRD step.
 
 Respond with ONLY the JSON object. No markdown fences, no commentary."""
 

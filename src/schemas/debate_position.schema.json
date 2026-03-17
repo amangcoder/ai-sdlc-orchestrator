@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DebatePosition",
+  "description": "A single agent's position in one round of debate",
+  "type": "object",
+  "required": ["agent_id", "agent_role", "round_number", "thesis", "evidence", "recommendations", "confidence"],
+  "properties": {
+    "agent_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Unique agent identifier, e.g. researcher-1 or brainstormer-2"
+    },
+    "agent_role": {
+      "type": "string",
+      "enum": ["deep_researcher", "brainstormer"]
+    },
+    "round_number": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "thesis": {
+      "type": "string",
+      "minLength": 50,
+      "description": "Core argument (2-3 paragraphs)"
+    },
+    "evidence": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Supporting evidence and reasoning"
+    },
+    "risks_identified": {
+      "type": "array",
+      "items": { "type": "string" },
+      "default": [],
+      "description": "Risks and concerns identified"
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Concrete recommendations"
+    },
+    "critiques_of_others": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["target_agent_id", "critique", "severity"],
+        "properties": {
+          "target_agent_id": { "type": "string", "minLength": 1 },
+          "critique": { "type": "string", "minLength": 10 },
+          "severity": { "type": "string", "enum": ["fundamental", "significant", "minor"] }
+        }
+      },
+      "default": []
+    },
+    "agreements_with_others": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["target_agent_id", "point_of_agreement"],
+        "properties": {
+          "target_agent_id": { "type": "string", "minLength": 1 },
+          "point_of_agreement": { "type": "string", "minLength": 10 }
+        }
+      },
+      "default": []
+    },
+    "confidence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Confidence in own position (0-100)"
+    },
+    "evolved_from_previous": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether position changed from previous round"
+    },
+    "evolution_summary": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "What changed and why, if position evolved"
+    }
+  },
+  "additionalProperties": false
+}

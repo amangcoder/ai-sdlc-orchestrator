@@ -1,0 +1,110 @@
+{
+  "$defs": {
+    "MigrationPhase": {
+      "properties": {
+        "phase": {
+          "minimum": 1,
+          "title": "Phase",
+          "type": "integer"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "migration_file": {
+          "minLength": 1,
+          "title": "Migration File",
+          "type": "string"
+        },
+        "code_changes_required": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Code Changes Required",
+          "type": "array"
+        },
+        "rollback_steps": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Rollback Steps",
+          "type": "array"
+        },
+        "verification_queries": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Verification Queries",
+          "type": "array"
+        },
+        "estimated_duration": {
+          "minLength": 1,
+          "title": "Estimated Duration",
+          "type": "string"
+        },
+        "requires_downtime": {
+          "default": false,
+          "title": "Requires Downtime",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "phase",
+        "description",
+        "migration_file",
+        "rollback_steps",
+        "estimated_duration"
+      ],
+      "title": "MigrationPhase",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "risk_level": {
+      "pattern": "^(safe|moderate|dangerous)$",
+      "title": "Risk Level",
+      "type": "string"
+    },
+    "strategy": {
+      "pattern": "^(single_step|multi_step|expand_contract)$",
+      "title": "Strategy",
+      "type": "string"
+    },
+    "phases": {
+      "items": {
+        "$ref": "#/$defs/MigrationPhase"
+      },
+      "minItems": 1,
+      "title": "Phases",
+      "type": "array"
+    },
+    "pre_migration_checks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Pre Migration Checks",
+      "type": "array"
+    },
+    "rollback_plan": {
+      "minLength": 20,
+      "title": "Rollback Plan",
+      "type": "string"
+    },
+    "data_backup": {
+      "minLength": 1,
+      "title": "Data Backup",
+      "type": "string"
+    }
+  },
+  "required": [
+    "risk_level",
+    "strategy",
+    "phases",
+    "rollback_plan",
+    "data_backup"
+  ],
+  "title": "MigrationPlan",
+  "type": "object"
+}

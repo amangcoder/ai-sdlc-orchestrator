@@ -3,7 +3,78 @@ max_review_cycles: 3
 max_budget_usd: 50.0
 default_workflow: feature_development
 enhanced_perception: false
-max_concurrent_agents: 10         # max parallel agents; set to 2-4 on low-resource machines
+confirm: false                     # review and approve each agent prompt before execution (--confirm)
+checklist_verify: false            # use --no-checklist-verify to skip post-write quality checklist loops in planning agents
+tech_stack_confirmation: true      # pause after Architecture to review proposed tech stack before implementation
+max_concurrent_agents: 100         # max parallel agents; set to 2-4 on low-resource machines
+
+# --- Dynamic agent spawning (agents can request sub-agents mid-execution) ---
+spawn:
+  enabled: true                    # allow agents to spawn sub-agents dynamically
+  max_spawn_rounds: 2              # max spawn-continue iterations per task
+  max_spawns_per_round: 5          # max sub-agents per round
+  spawned_agent_max_turns: 25      # turn limit for spawned sub-agents
+  extra_permissions: {}            # additional parent_role -> [target_roles] overrides
+
+# --- Debate phase (pre-pipeline adversarial research + brainstorming) ---
+debate:
+  enabled: false                   # enable with --debate CLI flag
+  researcher_count: 2              # number of Deep Researcher agents
+  brainstormer_count: 2            # number of Brainstormer agents
+  max_rounds: 3                    # max debate rounds before mediation
+  convergence_threshold: 0.8       # skip remaining rounds if convergence >= this
+  researcher_model: sonnet
+  brainstormer_model: sonnet
+  mediator_model: opus
+  researcher_max_turns: 30
+  brainstormer_max_turns: 30
+  mediator_max_turns: 40
+
+# --- AICoder knowledge integration (codebase indexing for faster agent exploration) ---
+knowledge:
+  enabled: true                      # set to false to disable knowledge integration
+  aicoder_path: ""                   # absolute path to AICoder installation; empty = auto-detect
+  build_timeout_seconds: 60          # max time for knowledge build
+  skip_if_fresh_minutes: 5           # skip rebuild if .knowledge/ was built within this many minutes
+  inject_brief: true                 # inject codebase brief into agent prompts
+  inject_artifact_digests: true      # inject condensed artifact digests into downstream prompts
+  cumulative_context: true           # maintain context.md with decisions from each phase
+  mcp_tools: true                    # configure MCP server for target project
+  brief_max_files: 30                # max files to include in brief summaries
+  brief_max_symbols: 15              # max top symbols to include
+  cleanup_mcp_config: true           # remove MCP config from target project after pipeline completes
+  watcher_enabled: true              # watch for file changes during implementation and rebuild .knowledge
+  watcher_debounce_seconds: 5.0      # debounce delay before triggering rebuild after file changes
+
+# --- Communication logs (conversation history persistence across runs) ---
+comms_log:
+  enabled: false                   # enable with --comms-log CLI flag
+  storage_dir: "workspace/comms"   # directory for conversation log files
+  log_format: "jsonl"              # "jsonl" (machine-readable) or "markdown" (human-readable)
+  include_system_prompts: false    # include full system prompts in logs (verbose)
+  include_artifacts: true          # inline artifact content in messages
+  include_tool_calls: true         # log tool invocations (name, target, result, duration)
+  retention_days: 30               # auto-prune logs older than this (0 = keep forever)
+  max_log_size_mb: 50              # per-run log size cap; rotate if exceeded
+  index_file: "workspace/comms/index.json"  # searchable index of all logged runs
+  recall:
+    enabled: true                  # allow agents to query past conversation history
+    max_recall_results: 10         # max past messages returned per recall query
+    similarity_threshold: 0.7      # minimum relevance score for recall results
+
+# --- Monitoring (all opt-in — orchestrator works without monitoring deps) ---
+monitoring:
+  metrics_enabled: false           # expose Prometheus metrics on metrics_port
+  metrics_port: 9090
+  tracing_enabled: false           # OpenTelemetry distributed tracing
+  tracing_endpoint: "http://localhost:4317"
+  tracing_console: false           # also log spans to console
+  dashboard_port: 8080             # port for orchestrate-dashboard
+  webhooks: []                     # list of {url: "...", events: [...]}
+  alerts:
+    on_failure: true               # alert when a phase/step fails
+    on_budget_warning: true        # alert at 80% budget utilization
+    on_completion: true            # alert when run completes
 
 phases:
   pm:
@@ -47,7 +118,7 @@ agents:
     max_turns: 30
     escalation_model: opus
     input_artifacts: [prd]
-    output_artifacts: [architecture, tasks]
+    output_artifacts: [architecture]
 
   # --- Deep reasoning roles (high-stakes decisions → opus) ---
   principal_engineer:
@@ -71,28 +142,28 @@ agents:
   engineer:
     name: Engineer
     model: sonnet
-    max_turns: 80
+    max_turns: 40
     escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   frontend_engineer:
     name: Frontend Engineer
     model: sonnet
-    max_turns: 80
+    max_turns: 30
     escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   backend_engineer:
     name: Backend Engineer
     model: sonnet
-    max_turns: 80
+    max_turns: 40
     escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
   database_engineer:
     name: Database Engineer
     model: sonnet
-    max_turns: 60
+    max_turns: 40
     escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
     output_artifacts: []
@@ -336,3 +407,60 @@ agents:
     escalation_model: opus
     input_artifacts: [prd, architecture]
     output_artifacts: []
+
+  # --- Research & strategy (strategic reasoning → opus) ---
+  market_researcher:
+    name: Market Researcher
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd]
+    output_artifacts: [market_research]
+  competitor_researcher:
+    name: Competitor Researcher
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, market_research]
+    output_artifacts: [competitor_research]
+
+  # --- Domain specialist (adaptive reasoning → opus) ---
+  field_specialist:
+    name: Field Specialist
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture]
+    output_artifacts: [field_specialist_review]
+
+  # --- User validation ---
+  end_user_simulator:
+    name: End User Simulator
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, ux_spec]
+    output_artifacts: []
+
+  # --- Debate roles (pre-pipeline adversarial debate) ---
+  deep_researcher:
+    name: Deep Researcher
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: []
+    output_artifacts: [debate_position]
+  brainstormer:
+    name: Brainstormer
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: []
+    output_artifacts: [debate_position]
+  mediator:
+    name: Mediator
+    model: opus
+    max_turns: 40
+    escalation_model: null
+    input_artifacts: [debate_position]
+    output_artifacts: [debate_conclusion]

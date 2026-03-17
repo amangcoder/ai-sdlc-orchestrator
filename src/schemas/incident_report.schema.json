@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "AffectedCode": {
+      "properties": {
+        "file": {
+          "minLength": 1,
+          "title": "File",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file",
+        "description"
+      ],
+      "title": "AffectedCode",
+      "type": "object"
+    },
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "title": {
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "#/$defs/IssueSeverity"
+    },
+    "symptom": {
+      "minLength": 10,
+      "title": "Symptom",
+      "type": "string"
+    },
+    "expected_behavior": {
+      "minLength": 10,
+      "title": "Expected Behavior",
+      "type": "string"
+    },
+    "root_cause": {
+      "minLength": 20,
+      "title": "Root Cause",
+      "type": "string"
+    },
+    "five_whys": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Five Whys",
+      "type": "array"
+    },
+    "reproduction": {
+      "additionalProperties": true,
+      "title": "Reproduction",
+      "type": "object"
+    },
+    "affected_code": {
+      "items": {
+        "$ref": "#/$defs/AffectedCode"
+      },
+      "minItems": 1,
+      "title": "Affected Code",
+      "type": "array"
+    },
+    "blast_radius": {
+      "additionalProperties": true,
+      "title": "Blast Radius",
+      "type": "object"
+    },
+    "recommended_fix": {
+      "additionalProperties": true,
+      "title": "Recommended Fix",
+      "type": "object"
+    }
+  },
+  "required": [
+    "title",
+    "severity",
+    "symptom",
+    "expected_behavior",
+    "root_cause",
+    "five_whys",
+    "affected_code"
+  ],
+  "title": "IncidentReport",
+  "type": "object"
+}

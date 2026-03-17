@@ -26,7 +26,7 @@
           },
           "assigned_role": {
             "type": "string",
-            "enum": ["engineer", "qa"]
+            "minLength": 1
           },
           "dependencies": {
             "type": "array",

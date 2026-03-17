@@ -1,0 +1,101 @@
+{
+  "$defs": {
+    "AccessibilityFinding": {
+      "properties": {
+        "id": {
+          "pattern": "^A11Y-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "wcag_criterion": {
+          "minLength": 1,
+          "title": "Wcag Criterion",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/IssueSeverity"
+        },
+        "element": {
+          "minLength": 1,
+          "title": "Element",
+          "type": "string"
+        },
+        "issue": {
+          "minLength": 10,
+          "title": "Issue",
+          "type": "string"
+        },
+        "impact": {
+          "minLength": 10,
+          "title": "Impact",
+          "type": "string"
+        },
+        "remediation": {
+          "minLength": 10,
+          "title": "Remediation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "wcag_criterion",
+        "severity",
+        "element",
+        "issue",
+        "impact",
+        "remediation"
+      ],
+      "title": "AccessibilityFinding",
+      "type": "object"
+    },
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "wcag_level_tested": {
+      "pattern": "^(A|AA|AAA)$",
+      "title": "Wcag Level Tested",
+      "type": "string"
+    },
+    "overall_compliance": {
+      "pattern": "^(pass|partial|fail)$",
+      "title": "Overall Compliance",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/AccessibilityFinding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "screen_reader_issues": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Screen Reader Issues",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "wcag_level_tested",
+    "overall_compliance",
+    "summary"
+  ],
+  "title": "AccessibilityAudit",
+  "type": "object"
+}

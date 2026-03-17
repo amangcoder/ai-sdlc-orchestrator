@@ -1,0 +1,48 @@
+{
+  "run_id": "7567dabc1971",
+  "feature_request": "Build a 2-player offline tic-tac-toe game in Python. Simple terminal UI, players alternate X and O, detect wins and draws. Single file, minimal design.",
+  "workspace_dir": "/Users/amangupta/Projects/Orchestrator/test/workspace",
+  "workflow_type": "feature_development",
+  "current_step": null,
+  "completed_steps": [],
+  "phases": {
+    "prd": {
+      "status": "failed",
+      "retry_count": 0,
+      "model_tier": "sonnet",
+      "cost_usd": 0.0,
+      "error": "Artifact validation: ['Artifact file not found: /Users/amangupta/Projects/Orchestrator/test/workspace/artifacts/prd.json']",
+      "error_code": null
+    }
+  },
+  "engineering_tasks": [],
+  "workflow_tasks": [
+    {
+      "task_id": "STEP-001",
+      "workflow_step": "PRD",
+      "assigned_role": "product_manager",
+      "description": "Execute step: PRD",
+      "required_inputs": [],
+      "expected_outputs": [
+        "prd"
+      ],
+      "acceptance_criteria": [],
+      "dependencies": [],
+      "status": "completed",
+      "retry_count": 0,
+      "started_at": "2026-03-16 14:58:24.149960+00:00",
+      "completed_at": "2026-03-16 15:01:27.917315+00:00",
+      "error": null,
+      "error_code": null
+    }
+  ],
+  "total_cost_usd": 0.6994925000000001,
+  "total_input_tokens": 0,
+  "total_output_tokens": 0,
+  "review_cycles": 0,
+  "max_review_cycles": 3,
+  "interrupted": false,
+  "interrupt_history": [],
+  "config_hash": "16a25e4820af2c16bf877e398487f5e4",
+  "spawn_history": []
+}

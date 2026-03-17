@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import jsonschema
 from pydantic import ValidationError
 
 from orchestrator.models import ARTIFACT_MODELS
+
+logger = logging.getLogger(__name__)
 
 SCHEMAS_DIR = Path(__file__).resolve().parents[1] / "schemas"
 
@@ -20,7 +23,8 @@ class ValidationResult:
 
     valid: bool
     errors: list[str]
-    artifact_name: str
+    warnings: list[str] = field(default_factory=list)
+    artifact_name: str = ""
 
 
 def validate_artifact_file(artifact_path: Path, artifact_name: str) -> ValidationResult:
@@ -50,7 +54,7 @@ def validate_artifact_file(artifact_path: Path, artifact_name: str) -> Validatio
         )
 
     # Layer 1: JSON Schema validation
-    schema_errors = _validate_json_schema(data, artifact_name)
+    schema_errors, schema_warnings = _validate_json_schema(data, artifact_name)
     errors.extend(schema_errors)
 
     # Layer 2: Pydantic model validation
@@ -60,26 +64,35 @@ def validate_artifact_file(artifact_path: Path, artifact_name: str) -> Validatio
     return ValidationResult(
         valid=len(errors) == 0,
         errors=errors,
+        warnings=schema_warnings,
         artifact_name=artifact_name,
     )
 
 
-def _validate_json_schema(data: dict, artifact_name: str) -> list[str]:
-    """Validate data against the JSON schema file."""
+def _validate_json_schema(data: dict, artifact_name: str) -> tuple[list[str], list[str]]:
+    """Validate data against the JSON schema file.
+
+    Returns a tuple of (errors, warnings).  When no schema file exists the
+    missing-schema message is returned as a *warning* instead of an error so
+    that Pydantic validation can still gate the artifact.
+    """
     schema_path = SCHEMAS_DIR / f"{artifact_name}.schema.json"
     if not schema_path.exists():
-        return [f"No JSON schema found for artifact: {artifact_name}"]
+        msg = f"No JSON schema found for artifact: {artifact_name} — falling back to Pydantic validation only"
+        logger.warning(msg)
+        return [], [msg]
 
     with open(schema_path) as f:
         schema = json.load(f)
 
     validator = jsonschema.Draft202012Validator(schema)
-    return [
+    errors = [
         f"Schema: {err.message} (at {'.'.join(str(p) for p in err.absolute_path)})"
         if err.absolute_path
         else f"Schema: {err.message}"
         for err in validator.iter_errors(data)
     ]
+    return errors, []
 
 
 def _validate_pydantic(data: dict, artifact_name: str) -> list[str]:

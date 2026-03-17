@@ -5,6 +5,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import subprocess
+import sys
+import tempfile
+import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -12,6 +17,9 @@ from typing import Any
 from orchestrator.models import ModelTier
 
 logger = logging.getLogger(__name__)
+
+# Spinner frames for activity indicator
+_SPINNER = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
 
 # Agent definition directory
 AGENTS_DIR = Path(__file__).resolve().parents[2] / ".claude" / "agents"
@@ -31,7 +39,10 @@ class AgentResult:
     output: str = ""
     cost_usd: float = 0.0
     turns_used: int = 0
+    input_tokens: int = 0
+    output_tokens: int = 0
     error: str | None = None
+    error_code: str | None = None
 
 
 @dataclass
@@ -46,6 +57,40 @@ class AgentInvocation:
     project_root: str | None = None  # cwd for agent — project root so it can explore the codebase
     isolation: str | None = None  # "worktree" for parallel engineers
     enhanced_perception: bool = False
+    display_name: str | None = None  # codename for parallel agents
+    mcp_servers: dict[str, Any] | None = None  # MCP server config for direct SDK injection
+
+
+def _create_worktree(project_root: Path, branch_suffix: str) -> tuple[Path, str]:
+    """Create a git worktree for isolated parallel execution."""
+    worktree_dir = Path(tempfile.mkdtemp(prefix=f"orch-wt-{branch_suffix}-"))
+    branch_name = f"worktree/{branch_suffix}"
+    subprocess.run(
+        ["git", "worktree", "add", "-b", branch_name, str(worktree_dir), "HEAD"],
+        cwd=project_root, check=True, capture_output=True,
+    )
+    return worktree_dir, branch_name
+
+
+def _merge_worktree(project_root: Path, branch_name: str) -> None:
+    """Merge a worktree branch back into the current branch."""
+    subprocess.run(
+        ["git", "merge", "--no-edit", branch_name],
+        cwd=project_root, check=True, capture_output=True,
+    )
+
+
+def _cleanup_worktree(project_root: Path, worktree_dir: Path, branch_name: str) -> None:
+    """Remove a worktree and its branch."""
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", str(worktree_dir)],
+        cwd=project_root, capture_output=True,
+    )
+    subprocess.run(["git", "worktree", "prune"], cwd=project_root, capture_output=True)
+    subprocess.run(
+        ["git", "branch", "-D", branch_name],
+        cwd=project_root, capture_output=True,
+    )
 
 
 async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
@@ -60,27 +105,201 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
         from orchestrator.perception import enhance_prompt
         invocation, perception_cost = await enhance_prompt(invocation)
 
+    # Worktree isolation: run in a separate git worktree if requested
+    worktree_dir = None
+    branch_name = None
+    project_root = Path(invocation.project_root) if invocation.project_root else None
+
+    if invocation.isolation == "worktree" and project_root:
+        import uuid as _uuid
+        suffix = _uuid.uuid4().hex[:8]
+        try:
+            worktree_dir, branch_name = _create_worktree(project_root, suffix)
+            invocation.project_root = str(worktree_dir)
+            logger.info(f"Created worktree for {invocation.agent_name}: {worktree_dir}")
+        except subprocess.CalledProcessError as e:
+            logger.warning(f"Failed to create worktree: {e}. Running without isolation.")
+            worktree_dir = None
+
     try:
-        result = await _invoke_via_sdk(invocation)
-    except ImportError:
-        logger.info("claude_agent_sdk not available, falling back to CLI")
-        result = await _invoke_via_cli(invocation)
+        try:
+            result = await _invoke_via_sdk(invocation)
+        except ImportError:
+            logger.info("claude_agent_sdk not available, falling back to CLI")
+            result = await _invoke_via_cli(invocation)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            logger.info("Agent invocation interrupted by user")
+            result = AgentResult(success=False, error="Agent interrupted by user (SIGINT)")
+        except Exception as e:
+            logger.error("Unexpected error invoking agent %s: %s", invocation.agent_name, e)
+            result = AgentResult(success=False, error=str(e))
+    finally:
+        # Merge and cleanup worktree
+        if worktree_dir and project_root and branch_name:
+            try:
+                if result.success:
+                    _merge_worktree(project_root, branch_name)
+                    logger.info(f"Merged worktree branch {branch_name}")
+            except subprocess.CalledProcessError as e:
+                logger.error(f"Failed to merge worktree {branch_name}: {e}")
+                if result.success:
+                    result = AgentResult(
+                        success=False,
+                        error=f"Worktree merge failed: {e}",
+                        cost_usd=result.cost_usd,
+                        turns_used=result.turns_used,
+                        input_tokens=result.input_tokens,
+                        output_tokens=result.output_tokens,
+                    )
+            finally:
+                _cleanup_worktree(project_root, worktree_dir, branch_name)
 
     result.cost_usd += perception_cost
     return result
 
 
-def _log_sdk_message(agent_name: str, message: Any) -> None:
-    """Print live progress from the SDK stream."""
-    from claude_agent_sdk.types import AssistantMessage, TextBlock, ToolUseBlock
+class AgentActivityTracker:
+    """Tracks and displays live activity for a running agent.
 
-    if isinstance(message, AssistantMessage):
+    Runs a background thread that continuously rotates a spinner on the
+    current line so the user always sees movement. When a real SDK message
+    arrives, the spinner line is replaced with the message content.
+    """
+
+    def __init__(self, agent_name: str, model: str, max_turns: int) -> None:
+        self.agent_name = agent_name
+        self.model = model
+        self.max_turns = max_turns
+        self.turn_count = 0
+        self.tool_calls = 0
+        self.start_time = time.time()
+        self._spinner_idx = 0
+        self._last_activity: str = "starting..."
+        # Threading for continuous spinner
+        self._lock = threading.Lock()
+        self._spinning = False
+        self._spinner_thread: threading.Thread | None = None
+        self._has_spinner_line = False  # True when spinner occupies the current line
+
+    def _elapsed(self) -> str:
+        secs = int(time.time() - self.start_time)
+        if secs < 60:
+            return f"{secs}s"
+        mins, secs = divmod(secs, 60)
+        return f"{mins}m{secs:02d}s"
+
+    def _next_spinner(self) -> str:
+        frame = _SPINNER[self._spinner_idx % len(_SPINNER)]
+        self._spinner_idx += 1
+        return frame
+
+    def _spinner_line(self) -> str:
+        """Build the spinner status line (no newline)."""
+        elapsed = self._elapsed()
+        return (
+            f"  {self._next_spinner()} \033[2m[{elapsed}]"
+            f" turn {self.turn_count}/{self.max_turns}\033[0m"
+            f"  \033[1m{self.agent_name}\033[0m"
+            f"  \033[2m{self._last_activity}\033[0m"
+        )
+
+    def _clear_spinner(self) -> None:
+        """Overwrite the spinner line with blanks."""
+        if self._has_spinner_line:
+            sys.stdout.write(f"\r\033[K")
+            sys.stdout.flush()
+            self._has_spinner_line = False
+
+    def _write_spinner(self) -> None:
+        """Write/update the spinner on the current line (no newline)."""
+        line = self._spinner_line()
+        sys.stdout.write(f"\r\033[K{line}")
+        sys.stdout.flush()
+        self._has_spinner_line = True
+
+    def _spin_loop(self) -> None:
+        """Background thread: rotate spinner every 100ms."""
+        while self._spinning:
+            with self._lock:
+                if self._spinning:
+                    self._write_spinner()
+            time.sleep(0.1)
+
+    def start_spinner(self) -> None:
+        """Start the background spinner thread."""
+        self._spinning = True
+        self._spinner_thread = threading.Thread(target=self._spin_loop, daemon=True)
+        self._spinner_thread.start()
+
+    def stop_spinner(self) -> None:
+        """Stop the background spinner and clear its line."""
+        self._spinning = False
+        if self._spinner_thread:
+            self._spinner_thread.join(timeout=1)
+            self._spinner_thread = None
+        with self._lock:
+            self._clear_spinner()
+
+    def print_start(self) -> None:
+        print(
+            f"\n  \033[36m{'─'*50}\033[0m\n"
+            f"  \033[1;36m▶ {self.agent_name}\033[0m  "
+            f"\033[2m(model: {self.model}, max_turns: {self.max_turns})\033[0m\n"
+            f"  \033[36m{'─'*50}\033[0m",
+            flush=True,
+        )
+
+    def print_done(self, success: bool, cost: float) -> None:
+        self.stop_spinner()
+        elapsed = self._elapsed()
+        status = "\033[32m✔ done\033[0m" if success else "\033[31m✘ failed\033[0m"
+        print(
+            f"  \033[36m{'─'*50}\033[0m\n"
+            f"  {status}  \033[2m{self.agent_name} │ "
+            f"{self.turn_count} turns │ {self.tool_calls} tool calls │ "
+            f"{elapsed} │ ${cost:.4f}\033[0m\n",
+            flush=True,
+        )
+
+    def log_message(self, message: Any) -> None:
+        """Print live progress from the SDK stream with activity context."""
+        from claude_agent_sdk.types import AssistantMessage, TextBlock, ToolUseBlock
+
+        if not isinstance(message, AssistantMessage):
+            return
+
+        is_new_turn = False
         for block in message.content:
             if isinstance(block, TextBlock) and block.text.strip():
-                print(f"  [{agent_name}] {block.text.strip()[:200]}", flush=True)
-            elif isinstance(block, ToolUseBlock):
-                input_summary = str(block.input)[:80]
-                print(f"  [{agent_name}] tool={block.name} {input_summary}", flush=True)
+                is_new_turn = True
+
+        if is_new_turn:
+            self.turn_count += 1
+
+        with self._lock:
+            self._clear_spinner()
+
+            elapsed = self._elapsed()
+            prefix = (
+                f"  {self._next_spinner()} \033[2m[{elapsed}]"
+                f" turn {self.turn_count}/{self.max_turns}\033[0m"
+                f"  \033[1m{self.agent_name}\033[0m"
+            )
+
+            for block in message.content:
+                if isinstance(block, TextBlock) and block.text.strip():
+                    text = block.text.strip()[:200]
+                    self._last_activity = text[:50]
+                    print(f"{prefix} {text}", flush=True)
+                elif isinstance(block, ToolUseBlock):
+                    self.tool_calls += 1
+                    self._last_activity = f"→ {block.name}"
+                    input_summary = str(block.input)[:80]
+                    tool_display = f"\033[33m{block.name}\033[0m"
+                    print(
+                        f"{prefix} \033[2m→\033[0m {tool_display} {input_summary}",
+                        flush=True,
+                    )
 
 
 async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
@@ -106,6 +325,12 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
         "You are operating autonomously in a pipeline. "
         "Never ask the user for clarification or confirmation — make reasonable assumptions "
         "and proceed. If something is ambiguous, choose the most sensible default and continue.\n\n"
+        "CRITICAL: When instructed to write output to a file path, you MUST use the Write tool "
+        "to physically create the file on disk. Do NOT just output the content in your response text — "
+        "downstream phases depend on the file existing at the specified path. After writing, verify "
+        "the file exists using the Read tool.\n\n"
+        "NEVER use EnterPlanMode or ExitPlanMode tools. You are not in plan mode — you are executing. "
+        "Do NOT write your output to a plan file. Write it to the exact artifact path specified in the instructions.\n\n"
     )
     full_system_prompt = (autonomous_prefix + system_prompt) if system_prompt else autonomous_prefix
 
@@ -113,29 +338,92 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
     # Artifact paths in the prompt are absolute, so cwd only affects exploration.
     cwd = invocation.project_root or invocation.workspace_dir
 
+    # All pipeline agents need acceptEdits to write artifacts to workspace/artifacts/.
+    # READ_ONLY access is enforced at the prompt level (agents are told not to modify code).
+    # Using "plan" mode blocks the Write tool entirely, which prevents artifact creation.
+    permission_mode = "acceptEdits"
+
+    # Auto-approve MCP tools so agents don't block on permission prompts.
+    # Without this, MCP tool calls require interactive approval which breaks
+    # automated pipeline execution.
+    allowed_tools: list[str] = []
+    if invocation.mcp_servers:
+        for server_name in invocation.mcp_servers:
+            allowed_tools.append(f"mcp__{server_name}__*")
+
     options = ClaudeAgentOptions(
         model=model,
         max_turns=invocation.max_turns,
         cwd=cwd,
         system_prompt=full_system_prompt,
-        permission_mode="acceptEdits",  # auto-approve file edits, no permission prompts
+        permission_mode=permission_mode,
+        **({"mcp_servers": invocation.mcp_servers} if invocation.mcp_servers else {}),
+        **({"allowed_tools": allowed_tools} if allowed_tools else {}),
     )
 
+    tracker_name = invocation.display_name or invocation.agent_name
+    tracker = AgentActivityTracker(tracker_name, model, invocation.max_turns)
+    tracker.print_start()
+    tracker.start_spinner()
+
     result_msg: ResultMessage | None = None
-    async for message in query(prompt=invocation.prompt, options=options):
-        if isinstance(message, ResultMessage):
-            result_msg = message
-        else:
-            _log_sdk_message(invocation.agent_name, message)
+    try:
+        async for message in query(prompt=invocation.prompt, options=options):
+            if isinstance(message, ResultMessage):
+                result_msg = message
+            else:
+                tracker.log_message(message)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        tracker.stop_spinner()
+        tracker.print_done(success=False, cost=0.0)
+        return AgentResult(
+            success=False,
+            error="Agent interrupted by user (SIGINT)",
+            cost_usd=0.0,
+        )
+    except Exception as e:
+        error_msg = str(e)
+        # SDK subprocess killed by SIGINT returns exit code -2
+        if "exit code -2" in error_msg or "exit code: -2" in error_msg:
+            tracker.stop_spinner()
+            tracker.print_done(success=False, cost=0.0)
+            return AgentResult(
+                success=False,
+                error="Agent interrupted by user (SIGINT)",
+                cost_usd=0.0,
+            )
+        # Any other SDK/subprocess error — return a failed result instead of
+        # crashing the entire pipeline (e.g. output token limit exceeded).
+        logger.error("Agent %s failed: %s", invocation.agent_name, error_msg)
+        tracker.stop_spinner()
+        tracker.print_done(success=False, cost=0.0)
+        return AgentResult(
+            success=False,
+            error=error_msg,
+            cost_usd=0.0,
+        )
+    finally:
+        tracker.stop_spinner()
 
     if result_msg is None:
+        tracker.print_done(success=False, cost=0.0)
         return AgentResult(success=False, error="No result message received from SDK")
 
+    cost = result_msg.total_cost_usd or 0.0
+    success = not result_msg.is_error
+    tracker.print_done(success=success, cost=cost)
+
+    # Extract token counts from SDK result if available
+    input_tokens = getattr(result_msg, "input_tokens", 0) or 0
+    output_tokens = getattr(result_msg, "output_tokens", 0) or 0
+
     return AgentResult(
-        success=not result_msg.is_error,
+        success=success,
         output=result_msg.result or "",
-        cost_usd=result_msg.total_cost_usd or 0.0,
+        cost_usd=cost,
         turns_used=result_msg.num_turns,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
         error=result_msg.result if result_msg.is_error else None,
     )
 

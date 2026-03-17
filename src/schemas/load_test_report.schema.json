@@ -1,0 +1,81 @@
+{
+  "$defs": {
+    "LoadTestProfile": {
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "concurrent_users": {
+          "minimum": 1,
+          "title": "Concurrent Users",
+          "type": "integer"
+        },
+        "requests_per_second": {
+          "minimum": 1,
+          "title": "Requests Per Second",
+          "type": "integer"
+        },
+        "duration": {
+          "minLength": 1,
+          "title": "Duration",
+          "type": "string"
+        },
+        "result": {
+          "pattern": "^(pass|degraded|fail)$",
+          "title": "Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "concurrent_users",
+        "requests_per_second",
+        "duration",
+        "result"
+      ],
+      "title": "LoadTestProfile",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "test_profiles": {
+      "items": {
+        "$ref": "#/$defs/LoadTestProfile"
+      },
+      "minItems": 1,
+      "title": "Test Profiles",
+      "type": "array"
+    },
+    "performance_metrics": {
+      "additionalProperties": true,
+      "title": "Performance Metrics",
+      "type": "object"
+    },
+    "saturation_point": {
+      "additionalProperties": true,
+      "title": "Saturation Point",
+      "type": "object"
+    },
+    "findings": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "capacity_recommendation": {
+      "minLength": 20,
+      "title": "Capacity Recommendation",
+      "type": "string"
+    }
+  },
+  "required": [
+    "test_profiles",
+    "capacity_recommendation"
+  ],
+  "title": "LoadTestReport",
+  "type": "object"
+}

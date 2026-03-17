@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>All Runs</h1>
+
+{% if runs %}
+<table>
+  <thead>
+    <tr>
+      <th>Run ID</th>
+      <th>Feature Request</th>
+      <th>Workflow</th>
+      <th>Status</th>
+      <th>Cost (USD)</th>
+      <th>Steps</th>
+      <th>Started</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for run in runs %}
+    <tr>
+      <td><a href="/runs/{{ run.run_id }}">{{ run.run_id[:8] }}...</a></td>
+      <td>{{ run.feature_request[:80] }}</td>
+      <td>{{ run.workflow_type }}</td>
+      <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
+      <td>${{ "%.4f"|format(run.total_cost_usd) }}</td>
+      <td>{{ run.steps_completed }}/{{ run.steps_total }}</td>
+      <td>{{ run.start_time[:19] if run.start_time else '-' }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<div class="empty">
+  <h2>No runs yet</h2>
+  <p>Run <code>orchestrate "your feature request"</code> to get started.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // Auto-refresh every 5s if any run is still active
+  autoRefresh(5000);
+</script>
+{% endblock %}

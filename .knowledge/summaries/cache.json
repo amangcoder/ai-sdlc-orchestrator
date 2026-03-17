@@ -1,0 +1,1329 @@
+{
+  "src/orchestrator/__init__.py": {
+    "file": "src/orchestrator/__init__.py",
+    "purpose": "__init__ module",
+    "exports": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.140Z",
+    "contentHash": "42825be48aff518a31422e81d2cc7823bf7c49ba16fadbe950d084cfaa54c70b"
+  },
+  "src/orchestrator/agents.py": {
+    "file": "src/orchestrator/agents.py",
+    "purpose": "agents module",
+    "exports": [
+      "AgentResult",
+      "AgentInvocation",
+      "invoke_agent",
+      "AgentActivityTracker",
+      "__init__",
+      "start_spinner",
+      "stop_spinner",
+      "print_start",
+      "print_done",
+      "log_message",
+      "invoke_agents_parallel"
+    ],
+    "dependencies": [
+      "__future__",
+      "asyncio",
+      "json",
+      "logging",
+      "subprocess",
+      "sys",
+      "tempfile",
+      "threading",
+      "time",
+      "dataclasses",
+      "pathlib",
+      "typing",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.462Z",
+    "contentHash": "cd6aabfaf386ec4f68273fcfdf53e4cdbd0d95a7fc0818ed78aa851c3cf52761"
+  },
+  "src/orchestrator/codenames.py": {
+    "file": "src/orchestrator/codenames.py",
+    "purpose": "codenames module",
+    "exports": [
+      "generate_codename"
+    ],
+    "dependencies": [
+      "__future__",
+      "random"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.141Z",
+    "contentHash": "b2527490337accc8ad14de04cdd245d6263c76534ed4c294afe346ef64e62fd0"
+  },
+  "src/orchestrator/config.py": {
+    "file": "src/orchestrator/config.py",
+    "purpose": "config module",
+    "exports": [
+      "load_config"
+    ],
+    "dependencies": [
+      "__future__",
+      "pathlib",
+      "yaml",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.463Z",
+    "contentHash": "2898425d6fe6b5adde10fab8e6a0ad06bfeb0f46fa81802589a8ad94861d93f0"
+  },
+  "src/orchestrator/dashboard/__init__.py": {
+    "file": "src/orchestrator/dashboard/__init__.py",
+    "purpose": "__init__ module",
+    "exports": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.141Z",
+    "contentHash": "d3c03c6eb1d033063f9e44bc0c8382a2187de78637fe3ad70e9cdfa7cc1fd7ae"
+  },
+  "src/orchestrator/dashboard/app.py": {
+    "file": "src/orchestrator/dashboard/app.py",
+    "purpose": "app module",
+    "exports": [
+      "create_app",
+      "auth_middleware",
+      "index",
+      "runs_page",
+      "run_detail_page",
+      "run_live_page",
+      "metrics_page",
+      "alerts_page",
+      "api_runs",
+      "api_run_detail",
+      "api_run_events",
+      "api_run_timeline",
+      "api_metrics",
+      "api_alerts",
+      "sse_stream",
+      "event_generator",
+      "healthz"
+    ],
+    "dependencies": [
+      "__future__",
+      "asyncio",
+      "json",
+      "os",
+      "time",
+      "pathlib",
+      "typing",
+      "fastapi",
+      "fastapi.responses",
+      "fastapi.staticfiles",
+      "fastapi.templating",
+      "orchestrator.dashboard.data"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.463Z",
+    "contentHash": "1a6e8a3342aa89f87cd0bbea1511275ca799ab8c5092ffe04b7f427e6551590b"
+  },
+  "src/orchestrator/dashboard/cli.py": {
+    "file": "src/orchestrator/dashboard/cli.py",
+    "purpose": "cli module",
+    "exports": [
+      "main"
+    ],
+    "dependencies": [
+      "__future__",
+      "argparse",
+      "pathlib"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.141Z",
+    "contentHash": "a2e9c0f70ab1baa006894e5be47b0513cc090d5ec51acccbfa61239066d6ec1d"
+  },
+  "src/orchestrator/dashboard/data.py": {
+    "file": "src/orchestrator/dashboard/data.py",
+    "purpose": "data module",
+    "exports": [
+      "RunSummary",
+      "RunDetail",
+      "RunDataReader",
+      "__init__",
+      "list_runs",
+      "get_run",
+      "get_events",
+      "tail_events",
+      "get_alert_history",
+      "get_metrics_summary"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "dataclasses",
+      "datetime",
+      "pathlib",
+      "typing"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.141Z",
+    "contentHash": "cee7da674e40ff4acd4dcf2386f55c8e04a0ea2bb19f8e4b0ba2547e78404d48"
+  },
+  "src/orchestrator/debate.py": {
+    "file": "src/orchestrator/debate.py",
+    "purpose": "debate module",
+    "exports": [
+      "DebateEngine",
+      "__init__",
+      "run_debate",
+      "enrich_feature_request"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "logging",
+      "uuid",
+      "pathlib",
+      "typing",
+      "orchestrator.agents",
+      "orchestrator.models",
+      "orchestrator.observability",
+      "orchestrator.phases"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.463Z",
+    "contentHash": "c512c25b97fe4741cda40e08f78e642d0495670a6a40d19faace30254b1f4325"
+  },
+  "src/orchestrator/engine.py": {
+    "file": "src/orchestrator/engine.py",
+    "purpose": "engine module",
+    "exports": [
+      "OrchestratorEngine",
+      "__init__",
+      "run"
+    ],
+    "dependencies": [
+      "__future__",
+      "hashlib",
+      "json",
+      "logging",
+      "uuid",
+      "pathlib",
+      "typing",
+      "orchestrator.agents",
+      "orchestrator.knowledge",
+      "orchestrator.models",
+      "orchestrator.observability",
+      "orchestrator.phases",
+      "orchestrator.validation",
+      "orchestrator.workflows",
+      "orchestrator.workflow_engine"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.463Z",
+    "contentHash": "6d1a5e846cbc3d2671340c87213a1c8d144336b3b5f3358003f6adf338000da2"
+  },
+  "src/orchestrator/interruption.py": {
+    "file": "src/orchestrator/interruption.py",
+    "purpose": "interruption module",
+    "exports": [
+      "InterruptManager",
+      "__init__",
+      "request_interrupt",
+      "should_interrupt",
+      "clear",
+      "setup_signal_handler",
+      "restore_signal_handler",
+      "setup_sentinel",
+      "handle_interruption",
+      "run_injected_task"
+    ],
+    "dependencies": [
+      "__future__",
+      "asyncio",
+      "logging",
+      "signal",
+      "threading",
+      "time",
+      "datetime",
+      "pathlib",
+      "typing",
+      "rich.console",
+      "rich.panel",
+      "orchestrator.agents",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "51e616895b3613a3c0bc1cfadbeb54860b993506af26f0ec0fa7636e1f8c1750"
+  },
+  "src/orchestrator/knowledge.py": {
+    "file": "src/orchestrator/knowledge.py",
+    "purpose": "knowledge module",
+    "exports": [
+      "KnowledgeResult",
+      "build_knowledge",
+      "synthesize_brief",
+      "ensure_mcp_config",
+      "get_mcp_server_config",
+      "cleanup_mcp_config",
+      "generate_artifact_digest",
+      "update_cumulative_context"
+    ],
+    "dependencies": [
+      "__future__",
+      "asyncio",
+      "json",
+      "logging",
+      "shutil",
+      "time",
+      "dataclasses",
+      "datetime",
+      "pathlib",
+      "typing"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "3ccce2cfd77c9708d0775236ee57eb1671ad0561e0758d9b948a29b6be1f8032"
+  },
+  "src/orchestrator/main.py": {
+    "file": "src/orchestrator/main.py",
+    "purpose": "main module",
+    "exports": [
+      "sanitize_feature_request",
+      "main"
+    ],
+    "dependencies": [
+      "__future__",
+      "argparse",
+      "asyncio",
+      "json",
+      "re",
+      "subprocess",
+      "sys",
+      "pathlib",
+      "structlog",
+      "rich.console",
+      "rich.table",
+      "orchestrator.config",
+      "orchestrator.engine",
+      "orchestrator.agents",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "8a029014860f189b21bac95274693815bf99c1239998e235283338567d9bb839"
+  },
+  "src/orchestrator/models.py": {
+    "file": "src/orchestrator/models.py",
+    "purpose": "models module",
+    "exports": [
+      "Priority",
+      "Complexity",
+      "IssueSeverity",
+      "QAVerdict",
+      "ReviewVerdict",
+      "PhaseStatus",
+      "TaskStatus",
+      "ModelTier",
+      "WorkflowType",
+      "AgentRole",
+      "RoleAccess",
+      "Requirement",
+      "PRD",
+      "Component",
+      "TechDecision",
+      "Architecture",
+      "Task",
+      "validate_assigned_role",
+      "TaskList",
+      "EngineeringPlan",
+      "Threat",
+      "ThreatModel",
+      "BenchmarkResult",
+      "BenchmarkReport",
+      "TestResults",
+      "QAIssue",
+      "QAReport",
+      "ReviewIssue",
+      "Review",
+      "Vulnerability",
+      "VulnerabilityReport",
+      "APIEndpointParam",
+      "APIEndpointResponse",
+      "APIEndpoint",
+      "APIContract",
+      "MigrationPhase",
+      "MigrationPlan",
+      "UXFlowStep",
+      "UXAlternateFlow",
+      "UXFlow",
+      "UXComponent",
+      "UXSpec",
+      "DebtItem",
+      "TechDebtInventory",
+      "RolloutStage",
+      "ReleasePlan",
+      "AffectedCode",
+      "IncidentReport",
+      "LoadTestProfile",
+      "LoadTestReport",
+      "ComplianceGap",
+      "ComplianceReport",
+      "DependencyVulnerability",
+      "DependencyAudit",
+      "AccessibilityFinding",
+      "AccessibilityAudit",
+      "LegalFinding",
+      "LegalReview",
+      "BehavioralFinding",
+      "BehavioralReview",
+      "IntegrationTestPlan",
+      "FrictionPoint",
+      "JourneyStep",
+      "EndUserEvaluation",
+      "DebatePositionCritique",
+      "DebatePositionAgreement",
+      "DebatePosition",
+      "DebateRound",
+      "DebateConclusionRequirement",
+      "DebateConclusionTension",
+      "DebateConclusionRisk",
+      "DebateConclusionDissent",
+      "DebateConclusion",
+      "DebateState",
+      "WorkflowStepDefinition",
+      "WorkflowDefinition",
+      "WorkflowTaskState",
+      "PhaseState",
+      "EngTaskState",
+      "InterruptEvent",
+      "RunState",
+      "AgentConfig",
+      "PhaseConfig",
+      "KnowledgeConfig",
+      "KnowledgeContext",
+      "SpawnConfig",
+      "SpawnRecord",
+      "DebateConfig",
+      "OrchestratorConfig"
+    ],
+    "dependencies": [
+      "__future__",
+      "datetime",
+      "enum",
+      "typing",
+      "pydantic"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "79b23a079ea2c6e97a06bcd4369950b59906134288e8ffadd5d7be73e1385d3c"
+  },
+  "src/orchestrator/monitoring/__init__.py": {
+    "file": "src/orchestrator/monitoring/__init__.py",
+    "purpose": "__init__ module",
+    "exports": [
+      "MonitoringStack",
+      "__init__",
+      "budget_forecaster",
+      "timeline",
+      "on_run_start",
+      "on_run_complete",
+      "on_step_start",
+      "on_step_end",
+      "on_agent_invoke",
+      "on_agent_result",
+      "on_task_invoke",
+      "on_task_result",
+      "on_budget_warning",
+      "on_model_escalation",
+      "on_retry",
+      "on_error",
+      "shutdown"
+    ],
+    "dependencies": [
+      "__future__",
+      "logging",
+      "pathlib",
+      "typing",
+      "orchestrator.monitoring.config",
+      "orchestrator.monitoring.errors",
+      "orchestrator.monitoring.health"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "de0c595b1c085dbf1e7b52652c19102e9e181df2675beed381e0266adb8e84df"
+  },
+  "src/orchestrator/monitoring/alerting.py": {
+    "file": "src/orchestrator/monitoring/alerting.py",
+    "purpose": "alerting module",
+    "exports": [
+      "AlertManager",
+      "__init__",
+      "shutdown",
+      "send_alert"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "logging",
+      "concurrent.futures",
+      "datetime",
+      "pathlib",
+      "typing",
+      "urllib.request",
+      "urllib.error",
+      "orchestrator.monitoring.config"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "5d1099c13a8cd5ee5d5d42d72124771e89631a2fe292e87b86d0a0cfb5b3701b"
+  },
+  "src/orchestrator/monitoring/budget.py": {
+    "file": "src/orchestrator/monitoring/budget.py",
+    "purpose": "budget module",
+    "exports": [
+      "BudgetForecast",
+      "CostDataPoint",
+      "BudgetForecaster",
+      "__init__",
+      "record_cost",
+      "spent_usd",
+      "forecast",
+      "should_warn"
+    ],
+    "dependencies": [
+      "__future__",
+      "threading",
+      "time",
+      "dataclasses"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "1e45f26ea151a5833a908aa2b0cb17d0744634a1c4c222da78e403f180cfa470"
+  },
+  "src/orchestrator/monitoring/config.py": {
+    "file": "src/orchestrator/monitoring/config.py",
+    "purpose": "config module",
+    "exports": [
+      "WebhookConfig",
+      "AlertConfig",
+      "MonitoringConfig"
+    ],
+    "dependencies": [
+      "__future__",
+      "pydantic"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "1fa67e47d90381cd179d19a1c03908bbaaf7d3c56f2a08ac667cdfb8e2e59adf"
+  },
+  "src/orchestrator/monitoring/errors.py": {
+    "file": "src/orchestrator/monitoring/errors.py",
+    "purpose": "errors module",
+    "exports": [
+      "ErrorCode",
+      "OrchestratorError",
+      "__init__",
+      "BudgetExceededError",
+      "__init__",
+      "ArtifactValidationError",
+      "__init__",
+      "AgentTimeoutError",
+      "__init__",
+      "AgentCrashedError",
+      "__init__",
+      "MaxRetriesExhaustedError",
+      "__init__",
+      "MissingInputArtifactError",
+      "__init__",
+      "WorkflowStepFailedError",
+      "__init__"
+    ],
+    "dependencies": [
+      "__future__",
+      "enum"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "44537832b755c605b4e0b67f21de3d9ee45bd5fe369dbeb654b0354e4c9fee99"
+  },
+  "src/orchestrator/monitoring/health.py": {
+    "file": "src/orchestrator/monitoring/health.py",
+    "purpose": "health module",
+    "exports": [
+      "HealthState",
+      "__init__",
+      "update",
+      "to_dict",
+      "get_health_state"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "threading",
+      "time",
+      "http.server",
+      "typing"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "5d26ee97d597913326af39737599777745a12921f16de0d361dfc1d91217d7ad"
+  },
+  "src/orchestrator/monitoring/metrics.py": {
+    "file": "src/orchestrator/monitoring/metrics.py",
+    "purpose": "metrics module",
+    "exports": [
+      "MetricsManager",
+      "__init__",
+      "enabled",
+      "record_run_complete",
+      "record_agent_invocation",
+      "record_agent_cost",
+      "record_agent_tokens",
+      "record_phase_duration",
+      "record_task_duration",
+      "record_model_escalation",
+      "record_retry",
+      "record_error",
+      "update_budget_utilization",
+      "inc_active_agents",
+      "dec_active_agents"
+    ],
+    "dependencies": [
+      "__future__",
+      "logging",
+      "threading",
+      "typing"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "1160ac20e507c3cd4cbf0d2d8fa318ad99e6707e3db7e6cd25ecf327db74c01e"
+  },
+  "src/orchestrator/monitoring/timeline.py": {
+    "file": "src/orchestrator/monitoring/timeline.py",
+    "purpose": "timeline module",
+    "exports": [
+      "TimelineEntry",
+      "TimelineRecorder",
+      "__init__",
+      "set_run_start",
+      "set_run_end",
+      "record_start",
+      "record_end",
+      "get_entries",
+      "export_json",
+      "export_html"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "html",
+      "dataclasses",
+      "datetime",
+      "pathlib"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "3bc5b0c73bde261a57b9bdc485b87c15d21bdb04af57614faa626530a694ac48"
+  },
+  "src/orchestrator/monitoring/tracing.py": {
+    "file": "src/orchestrator/monitoring/tracing.py",
+    "purpose": "tracing module",
+    "exports": [
+      "TracingManager",
+      "__init__",
+      "enabled",
+      "start_run_span",
+      "end_run_span",
+      "start_step_span",
+      "end_step_span",
+      "start_agent_span",
+      "end_agent_span",
+      "record_escalation",
+      "shutdown"
+    ],
+    "dependencies": [
+      "__future__",
+      "logging",
+      "contextlib",
+      "typing"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "89de70d0864f5daff6f1d05386230b4ca13629bb9b7fe5e9de0ed048e8ce95dd"
+  },
+  "src/orchestrator/observability.py": {
+    "file": "src/orchestrator/observability.py",
+    "purpose": "observability module",
+    "exports": [
+      "RunLogger",
+      "__init__",
+      "set_monitoring_stack",
+      "cumulative_input_tokens",
+      "cumulative_output_tokens",
+      "cumulative_total_tokens",
+      "log_event",
+      "check_budget",
+      "cumulative_cost_usd"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "threading",
+      "datetime",
+      "pathlib",
+      "typing",
+      "structlog"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "8b78dd8bc4e2ea88658359f0859ac0286380f70dcd4fa0dc2087483db3ef5ef5"
+  },
+  "src/orchestrator/perception.py": {
+    "file": "src/orchestrator/perception.py",
+    "purpose": "perception module",
+    "exports": [
+      "enhance_prompt"
+    ],
+    "dependencies": [
+      "__future__",
+      "logging",
+      "time",
+      "dataclasses",
+      "typing",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "ef697aac48f2ec692bdddf1171a188ac1582d8cdfb3e5be644c0774c0260ec84"
+  },
+  "src/orchestrator/phases.py": {
+    "file": "src/orchestrator/phases.py",
+    "purpose": "phases module",
+    "exports": [
+      "PhaseDefinition",
+      "build_pm_prompt",
+      "build_architect_prompt",
+      "build_principal_engineer_prompt",
+      "build_tpm_prompt",
+      "build_frontend_engineer_prompt",
+      "build_backend_engineer_prompt",
+      "build_engineer_prompt",
+      "build_database_engineer_prompt",
+      "build_caching_engineer_prompt",
+      "build_backend_reviewer_prompt",
+      "build_frontend_reviewer_prompt",
+      "build_qa_planner_prompt",
+      "build_qa_executor_prompt",
+      "build_qa_prompt",
+      "build_reviewer_prompt",
+      "build_automation_engineer_prompt",
+      "build_devops_prompt",
+      "build_security_engineer_prompt",
+      "build_observability_prompt",
+      "build_documentation_prompt",
+      "build_git_manager_prompt",
+      "build_api_contract_designer_prompt",
+      "build_migration_engineer_prompt",
+      "build_ux_specifier_prompt",
+      "build_tech_debt_assessor_prompt",
+      "build_release_engineer_prompt",
+      "build_incident_analyst_prompt",
+      "build_load_test_engineer_prompt",
+      "build_compliance_auditor_prompt",
+      "build_dependency_auditor_prompt",
+      "build_accessibility_auditor_prompt",
+      "build_integration_test_engineer_prompt",
+      "build_legal_advisor_prompt",
+      "build_user_behavior_psychologist_prompt",
+      "build_cicd_specialist_prompt",
+      "build_aws_specialist_prompt",
+      "build_azure_specialist_prompt",
+      "build_gcp_specialist_prompt",
+      "build_runpod_specialist_prompt",
+      "build_llm_specialist_prompt",
+      "build_agentic_ai_specialist_prompt",
+      "build_ml_specialist_prompt",
+      "build_market_researcher_prompt",
+      "build_competitor_researcher_prompt",
+      "build_field_specialist_prompt",
+      "build_end_user_simulator_prompt",
+      "get_engineer_tasks",
+      "build_debate_opening_prompt",
+      "build_debate_critique_prompt",
+      "build_debate_mediation_prompt"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "dataclasses",
+      "pathlib",
+      "typing",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "bd3760d23b90383d52893bb110a9a07a9a3eff12b9357fdf88d6059025866787"
+  },
+  "src/orchestrator/progress.py": {
+    "file": "src/orchestrator/progress.py",
+    "purpose": "progress module",
+    "exports": [
+      "ProgressTracker",
+      "__init__",
+      "set_budget_forecaster",
+      "show",
+      "on_task_complete",
+      "render",
+      "calculate_eta"
+    ],
+    "dependencies": [
+      "__future__",
+      "logging",
+      "time",
+      "datetime",
+      "typing",
+      "rich.console",
+      "rich.panel",
+      "rich.text",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "cbdc4cf6ad3794e25766ecad1028cca0a2a7fbc82b73099c84992d875ee55ab7"
+  },
+  "src/orchestrator/roles.py": {
+    "file": "src/orchestrator/roles.py",
+    "purpose": "roles module",
+    "exports": [
+      "RoleDefinition",
+      "get_role",
+      "get_role_agent_file",
+      "validate_role_access",
+      "get_roles_for_workflow",
+      "role_to_legacy_agent_name"
+    ],
+    "dependencies": [
+      "__future__",
+      "dataclasses",
+      "pathlib",
+      "orchestrator.agents",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "802d2f645e57cba2242619426afb0c4616bfd628d8722ac11e8042e6f8ff299a"
+  },
+  "src/orchestrator/self_orchestrate.py": {
+    "file": "src/orchestrator/self_orchestrate.py",
+    "purpose": "self_orchestrate module",
+    "exports": [
+      "ClarificationResult",
+      "OrchestrationPlan",
+      "clarify",
+      "revise_plan",
+      "self_orchestrate"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "logging",
+      "os",
+      "re",
+      "time",
+      "dataclasses",
+      "pathlib",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "f69d19a65886fee9eaeaef0000560804d751f4fdf1db99cc2ba15bcbbd3efbcb"
+  },
+  "src/orchestrator/spawning.py": {
+    "file": "src/orchestrator/spawning.py",
+    "purpose": "spawning module",
+    "exports": [
+      "SpawnRequest",
+      "SpawnResult",
+      "SpawnRoundSummary",
+      "validate_spawn_request",
+      "extract_spawn_requests",
+      "strip_spawn_block",
+      "execute_spawn_requests",
+      "build_continuation_prompt",
+      "run_spawn_loop"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "logging",
+      "re",
+      "dataclasses",
+      "typing",
+      "orchestrator.agents",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "4c1f5a91450f689938c3b5a3e49126998415db368b1b8e3c9bf089ab92180369"
+  },
+  "src/orchestrator/validation.py": {
+    "file": "src/orchestrator/validation.py",
+    "purpose": "validation module",
+    "exports": [
+      "ValidationResult",
+      "validate_artifact_file",
+      "validate_all_artifacts"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "logging",
+      "dataclasses",
+      "pathlib",
+      "jsonschema",
+      "pydantic",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "b02ae825273847fbe7dbbc70bc2e967029261c36fee614b141d2ae4afa96bbbf"
+  },
+  "src/orchestrator/watchdog.py": {
+    "file": "src/orchestrator/watchdog.py",
+    "purpose": "watchdog module",
+    "exports": [
+      "run_with_watchdog",
+      "main"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "os",
+      "subprocess",
+      "sys",
+      "time",
+      "logging"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "380e9209d67672e4e4f4ec16a7e01d53a1477d49fb8077a92ea1190fe1a85523"
+  },
+  "src/orchestrator/workflow_engine.py": {
+    "file": "src/orchestrator/workflow_engine.py",
+    "purpose": "workflow_engine module",
+    "exports": [
+      "WorkflowEngine",
+      "__init__",
+      "execute"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "logging",
+      "time",
+      "collections",
+      "datetime",
+      "pathlib",
+      "typing",
+      "orchestrator.agents",
+      "orchestrator.knowledge",
+      "orchestrator.knowledge_watcher",
+      "orchestrator.models",
+      "orchestrator.observability",
+      "orchestrator.progress",
+      "orchestrator.roles",
+      "orchestrator.validation"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.465Z",
+    "contentHash": "03e8a2192c7baf6edad32f559feac6c3f4316eb742a111f6365aba76df30fef0"
+  },
+  "src/orchestrator/workflows.py": {
+    "file": "src/orchestrator/workflows.py",
+    "purpose": "workflows module",
+    "exports": [
+      "select_workflow",
+      "parse_custom_workflow"
+    ],
+    "dependencies": [
+      "__future__",
+      "re",
+      "typing",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "df06d78a932a62b0450ab03d443102ebf47f17a7b07a193902d27dd9b117b637"
+  },
+  "tests/conftest.py": {
+    "file": "tests/conftest.py",
+    "purpose": "conftest module",
+    "exports": [
+      "tmp_workspace",
+      "valid_prd_data",
+      "valid_tasks_data"
+    ],
+    "dependencies": [
+      "__future__",
+      "pathlib",
+      "pytest"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "72bfc7ed208c3f945c96fa899fa55f8217c16bcaf0ab302729e1e90ccf6faece"
+  },
+  "tests/test_engine.py": {
+    "file": "tests/test_engine.py",
+    "purpose": "test_engine module",
+    "exports": [
+      "config",
+      "engine",
+      "dry_engine",
+      "TestPhaseOrder",
+      "test_phase_order",
+      "TestTasksHaveFileConflicts",
+      "test_no_conflict",
+      "test_with_conflict",
+      "test_empty_files",
+      "test_empty_list",
+      "TestLegacyDryRun",
+      "test_single_phase_dry_run",
+      "test_full_legacy_dry_run_all_phases",
+      "test_legacy_state_json_written",
+      "TestWorkflowDryRun",
+      "test_workflow_dry_run_completes",
+      "test_workflow_dry_run_bugfix",
+      "test_workflow_dry_run_state_persisted",
+      "TestMockedAgentInvocation",
+      "test_failing_agent_stops_legacy_pipeline",
+      "test_approve_review_ends_legacy_cycle",
+      "TestComputeDependencyWaves",
+      "test_empty_tasks",
+      "test_no_dependencies_single_wave",
+      "test_linear_chain",
+      "test_diamond_dependency",
+      "test_external_dependencies_ignored",
+      "test_circular_dependency_falls_back",
+      "test_mixed_deps_and_independent",
+      "test_wide_fan_out",
+      "TestMockedWorkflowInvocation",
+      "test_failing_agent_stops_workflow"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "pathlib",
+      "unittest.mock",
+      "pytest",
+      "orchestrator.agents",
+      "orchestrator.engine",
+      "orchestrator.models",
+      "orchestrator.workflow_engine"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "cfb379d42490129b46b2a061aa60a880de1d2b4e7aa91c05650257f5bc5afd4b"
+  },
+  "tests/test_models.py": {
+    "file": "tests/test_models.py",
+    "purpose": "test_models module",
+    "exports": [
+      "TestRequirement",
+      "test_valid",
+      "test_invalid_id_pattern",
+      "test_invalid_priority",
+      "TestPRD",
+      "test_valid",
+      "test_short_overview_fails",
+      "test_empty_goals_fails",
+      "test_model_dump_round_trip",
+      "TestTask",
+      "test_valid",
+      "test_invalid_assigned_role",
+      "test_backend_engineer_role_accepted",
+      "test_frontend_engineer_role_accepted",
+      "TestRunState",
+      "test_zero_cost_defaults",
+      "test_model_dump_shape",
+      "test_default_workflow_type",
+      "test_completed_steps_tracking",
+      "TestEnums",
+      "test_phase_status_failed_value",
+      "test_phase_status_completed_value",
+      "test_task_status_new_states",
+      "test_workflow_types",
+      "test_agent_roles",
+      "TestWorkflowModels",
+      "test_workflow_step_definition",
+      "test_workflow_definition",
+      "test_workflow_definition_requires_steps",
+      "TestWorkflowTaskState",
+      "test_defaults",
+      "TestNewArtifactModels",
+      "test_engineering_plan",
+      "test_threat_model",
+      "test_benchmark_report"
+    ],
+    "dependencies": [
+      "__future__",
+      "pytest",
+      "pydantic",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.142Z",
+    "contentHash": "c1448930ee6550ec853ca830ab7774038830014f04027e5e784263c99d9c6c6b"
+  },
+  "tests/test_phases.py": {
+    "file": "tests/test_phases.py",
+    "purpose": "test_phases module",
+    "exports": [
+      "config",
+      "TestBuildPmPrompt",
+      "test_includes_feature_request",
+      "test_references_prd_json",
+      "TestBuildEngineerPrompt",
+      "test_with_task_data_embeds_task_id",
+      "test_without_task_data_references_tasks_json",
+      "TestBuildReviewerPrompt",
+      "test_cycle1_no_previous_review",
+      "test_cycle2_with_prior_review_includes_it",
+      "TestNewPromptBuilders",
+      "test_principal_engineer_prompt",
+      "test_frontend_engineer_prompt",
+      "test_backend_engineer_prompt",
+      "test_security_engineer_prompt",
+      "TestPromptBuilderRegistry",
+      "test_all_18_roles_have_builders",
+      "test_builders_are_callable",
+      "TestGetEngineerTasks",
+      "test_empty_without_tasks_json",
+      "test_filters_to_engineer_role",
+      "test_includes_expanded_roles",
+      "TestPhaseDefinitions",
+      "test_all_five_phases_present",
+      "test_all_phases_have_nonempty_agent_name"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "pathlib",
+      "pytest",
+      "orchestrator.models",
+      "orchestrator.phases"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.143Z",
+    "contentHash": "7522f37c446af2c7844a2b00b71fbdfaee5ce81c6ebb7bdd52658850c550d660"
+  },
+  "tests/test_roles.py": {
+    "file": "tests/test_roles.py",
+    "purpose": "test_roles module",
+    "exports": [
+      "TestRoleRegistry",
+      "test_all_roles_registered",
+      "test_all_agent_roles_have_entry",
+      "test_pm_is_read_only",
+      "test_backend_engineer_is_read_write",
+      "test_security_engineer_is_read_only",
+      "TestValidateRoleAccess",
+      "test_read_only_blocks_write",
+      "test_read_only_allows_read",
+      "test_read_write_allows_both",
+      "TestRoleToLegacyAgentName",
+      "test_pm_mapping",
+      "test_architect_mapping",
+      "test_frontend_engineer_mapping",
+      "TestGetRolesForWorkflow",
+      "test_feature_development_roles"
+    ],
+    "dependencies": [
+      "__future__",
+      "orchestrator.models",
+      "orchestrator.roles",
+      "orchestrator.workflows"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.143Z",
+    "contentHash": "4d079d5a75e4fe21c4d542e3bc3f1b2e550352876c2b54df4a06f9778a18968e"
+  },
+  "tests/test_validation.py": {
+    "file": "tests/test_validation.py",
+    "purpose": "test_validation module",
+    "exports": [
+      "TestValidateArtifactFile",
+      "test_missing_file",
+      "test_invalid_json",
+      "test_valid_prd",
+      "test_missing_required_field",
+      "test_short_overview_pydantic_fails",
+      "test_unknown_artifact_name",
+      "TestValidateAllArtifacts",
+      "test_partial_artifacts"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "pathlib",
+      "pytest",
+      "orchestrator.validation"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.143Z",
+    "contentHash": "7521bcdd0e5358c83cd160de62850b44f16ff134b2f9defacd8defdb58198d9d"
+  },
+  "tests/test_workflows.py": {
+    "file": "tests/test_workflows.py",
+    "purpose": "test_workflows module",
+    "exports": [
+      "TestBuiltinWorkflows",
+      "test_all_five_workflows_registered",
+      "test_feature_development_has_8_steps",
+      "test_feature_development_starts_with_prd",
+      "test_feature_development_implementation_is_parallel",
+      "test_feature_development_release_has_approval_gate",
+      "test_bugfix_workflow_steps",
+      "test_security_audit_uses_security_engineer",
+      "test_all_workflows_have_valid_step_names",
+      "TestSelectWorkflow",
+      "test_select_feature_development",
+      "test_select_bugfix",
+      "test_custom_raises_error",
+      "TestParseCustomWorkflow",
+      "test_parse_simple_workflow",
+      "test_parse_with_gate",
+      "test_parse_with_on_fail",
+      "test_empty_definition_raises",
+      "test_unknown_role_raises"
+    ],
+    "dependencies": [
+      "__future__",
+      "pytest",
+      "orchestrator.models",
+      "orchestrator.workflows"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T12:47:17.143Z",
+    "contentHash": "606f78645bc70a934d113e9a9a44aa4c14775f9183b0c85b139a6267395d2b83"
+  },
+  "src/orchestrator/generate_schemas.py": {
+    "file": "src/orchestrator/generate_schemas.py",
+    "purpose": "generate_schemas module",
+    "exports": [
+      "generate_missing_schemas"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "pathlib",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.463Z",
+    "contentHash": "2128abf4f55462139202161ccfa9bf2439d8971b8b4ef6f2a07e0d11babae0ba"
+  },
+  "src/orchestrator/knowledge_watcher.py": {
+    "file": "src/orchestrator/knowledge_watcher.py",
+    "purpose": "knowledge_watcher module",
+    "exports": [
+      "KnowledgeWatcher",
+      "__init__",
+      "rebuild_count",
+      "start",
+      "stop"
+    ],
+    "dependencies": [
+      "__future__",
+      "asyncio",
+      "logging",
+      "time",
+      "pathlib",
+      "typing",
+      "orchestrator.knowledge"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "82e32a4f48ce64a3fdc6a25dcbdae4f2639661d0e089de225d0b238da94c7bf6"
+  },
+  "src/orchestrator/persistence.py": {
+    "file": "src/orchestrator/persistence.py",
+    "purpose": "persistence module",
+    "exports": [
+      "atomic_write",
+      "save_run_state"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "os",
+      "tempfile",
+      "threading",
+      "pathlib",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "d37fd26f4ed46d590d45e68da743ba996a289682558d113877dee8ae2d37e124"
+  },
+  "src/orchestrator/tech_stack.py": {
+    "file": "src/orchestrator/tech_stack.py",
+    "purpose": "tech_stack module",
+    "exports": [
+      "confirm_tech_stack"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "logging",
+      "pathlib",
+      "rich.console",
+      "rich.panel",
+      "rich.table"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-16T14:29:52.464Z",
+    "contentHash": "0cf1b93a9287a02a98e0a4859b12207f35cfd4609cae2033980c757c0b6f830e"
+  }
+}

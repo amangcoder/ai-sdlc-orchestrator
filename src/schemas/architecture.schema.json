@@ -51,6 +51,21 @@
     "constraints": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "directory_structure": {
+      "$ref": "#/$defs/dir_node"
+    }
+  },
+  "$defs": {
+    "dir_node": {
+      "type": "object",
+      "description": "Directory tree — values are either a purpose string or a nested directory object",
+      "additionalProperties": {
+        "oneOf": [
+          { "type": "string" },
+          { "$ref": "#/$defs/dir_node" }
+        ]
+      }
     }
   },
   "additionalProperties": false

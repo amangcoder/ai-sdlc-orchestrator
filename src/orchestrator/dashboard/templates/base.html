@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ page_title }} — Orchestrator</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <nav class="nav">
+    <span class="nav-brand">Orchestrator</span>
+    <a href="/runs" {% if page_title == "All Runs" %}class="active"{% endif %}>Runs</a>
+    <a href="/metrics" {% if page_title == "Metrics" %}class="active"{% endif %}>Metrics</a>
+    <a href="/alerts" {% if page_title == "Alerts" %}class="active"{% endif %}>Alerts</a>
+  </nav>
+  <div class="container">
+    {% block content %}{% endblock %}
+  </div>
+  <script src="/static/app.js"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -48,8 +48,9 @@ class TestValidateArtifactFile:
         path = tmp_workspace / "artifacts" / "unknown.json"
         path.write_text("{}")
         result = validate_artifact_file(path, "unknown")
-        assert not result.valid
-        assert any("No JSON schema" in e for e in result.errors)
+        # Unknown artifacts now produce a warning (not error) and fall back to Pydantic
+        assert result.valid
+        assert any("No JSON schema" in w for w in result.warnings)
 
 
 class TestValidateAllArtifacts:

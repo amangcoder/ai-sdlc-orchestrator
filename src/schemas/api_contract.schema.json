@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "APIEndpoint": {
+      "properties": {
+        "method": {
+          "pattern": "^(GET|POST|PUT|PATCH|DELETE)$",
+          "title": "Method",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "request": {
+          "additionalProperties": true,
+          "title": "Request",
+          "type": "object"
+        },
+        "responses": {
+          "additionalProperties": {
+            "$ref": "#/$defs/APIEndpointResponse"
+          },
+          "minProperties": 1,
+          "title": "Responses",
+          "type": "object"
+        }
+      },
+      "required": [
+        "method",
+        "path",
+        "summary",
+        "responses"
+      ],
+      "title": "APIEndpoint",
+      "type": "object"
+    },
+    "APIEndpointResponse": {
+      "properties": {
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "body": {
+          "additionalProperties": true,
+          "title": "Body",
+          "type": "object"
+        }
+      },
+      "required": [
+        "description"
+      ],
+      "title": "APIEndpointResponse",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "base_url": {
+      "minLength": 1,
+      "title": "Base Url",
+      "type": "string"
+    },
+    "auth": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Auth",
+      "type": "object"
+    },
+    "endpoints": {
+      "items": {
+        "$ref": "#/$defs/APIEndpoint"
+      },
+      "minItems": 1,
+      "title": "Endpoints",
+      "type": "array"
+    },
+    "schemas": {
+      "additionalProperties": true,
+      "title": "Schemas",
+      "type": "object"
+    }
+  },
+  "required": [
+    "base_url",
+    "endpoints"
+  ],
+  "title": "APIContract",
+  "type": "object"
+}

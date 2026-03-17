@@ -1,0 +1,39 @@
+{
+  "properties": {
+    "boundaries_tested": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "minItems": 1,
+      "title": "Boundaries Tested",
+      "type": "array"
+    },
+    "scenarios_covered": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Scenarios Covered",
+      "type": "array"
+    },
+    "gaps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Gaps",
+      "type": "array"
+    },
+    "total_tests": {
+      "minimum": 0,
+      "title": "Total Tests",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "boundaries_tested",
+    "total_tests"
+  ],
+  "title": "IntegrationTestPlan",
+  "type": "object"
+}

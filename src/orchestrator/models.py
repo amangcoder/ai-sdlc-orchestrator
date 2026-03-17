@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Enums ---
@@ -117,6 +117,17 @@ class AgentRole(str, Enum):
     LLM_SPECIALIST = "llm_specialist"
     AGENTIC_AI_SPECIALIST = "agentic_ai_specialist"
     ML_SPECIALIST = "ml_specialist"
+    # --- Research & strategy ---
+    MARKET_RESEARCHER = "market_researcher"
+    COMPETITOR_RESEARCHER = "competitor_researcher"
+    # --- Domain specialist ---
+    FIELD_SPECIALIST = "field_specialist"
+    # --- User validation ---
+    END_USER_SIMULATOR = "end_user_simulator"
+    # --- Debate roles ---
+    DEEP_RESEARCHER = "deep_researcher"
+    BRAINSTORMER = "brainstormer"
+    MEDIATOR = "mediator"
 
 
 class RoleAccess(str, Enum):
@@ -169,7 +180,18 @@ class Task(BaseModel):
     task_id: str = Field(pattern=r"^TASK-\d+$")
     title: str = Field(min_length=1)
     description: str = Field(min_length=10)
-    assigned_role: str = Field(pattern=r"^(engineer|qa|frontend_engineer|backend_engineer|database_engineer|caching_performance_engineer|automation_engineer|devops_engineer|observability_engineer|documentation_engineer|api_contract_designer|migration_engineer|ux_specifier|tech_debt_assessor|release_engineer|incident_analyst|load_test_engineer|compliance_auditor|dependency_auditor|accessibility_auditor|integration_test_engineer|legal_advisor|user_behavior_psychologist|cicd_specialist|aws_specialist|azure_specialist|gcp_specialist|runpod_specialist|llm_specialist|agentic_ai_specialist|ml_specialist)$")
+    assigned_role: str = Field(min_length=1)
+
+    @field_validator("assigned_role")
+    @classmethod
+    def validate_assigned_role(cls, v: str) -> str:
+        valid_roles = {role.value for role in AgentRole}
+        # Also accept legacy "engineer" and "qa" aliases
+        valid_roles.update({"engineer", "qa"})
+        if v not in valid_roles:
+            raise ValueError(f"Invalid role '{v}'. Valid roles: {sorted(valid_roles)}")
+        return v
+
     dependencies: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(min_length=1)
     files_to_modify: list[str] = Field(default_factory=list)
@@ -567,6 +589,131 @@ class IntegrationTestPlan(BaseModel):
     total_tests: int = Field(ge=0)
 
 
+# --- End User Evaluation Artifact ---
+
+class FrictionPoint(BaseModel):
+    id: str = Field(pattern=r"^UE-\d+$")
+    severity: str = Field(pattern=r"^(blocker|major|minor)$")
+    location: str = Field(min_length=1)
+    description: str = Field(min_length=10)
+    user_quote: str = Field(min_length=1)
+    suggestion: str = Field(min_length=1)
+
+
+class JourneyStep(BaseModel):
+    step: int = Field(ge=1)
+    action: str = Field(min_length=1)
+    expectation: str = Field(min_length=1)
+    actual: str = Field(min_length=1)
+    reaction: str = Field(pattern=r"^(confused|frustrated|neutral|satisfied|delighted)$")
+    notes: str = Field(default="")
+
+
+class EndUserEvaluation(BaseModel):
+    personas_evaluated: list[dict[str, Any]] = Field(min_length=1)
+    discovery: dict[str, Any] = Field(default_factory=dict)
+    journey_walkthrough: list[JourneyStep] = Field(min_length=1)
+    friction_points: list[FrictionPoint] = Field(default_factory=list)
+    confusion_points: list[dict[str, Any]] = Field(default_factory=list)
+    delight_moments: list[str] = Field(default_factory=list)
+    unmet_expectations: list[str] = Field(default_factory=list)
+    task_completion: dict[str, Any] = Field(default_factory=dict)
+    verdict: str = Field(pattern=r"^(ready|needs_work|not_usable)$")
+    summary: str = Field(min_length=30)
+
+
+# --- Debate Models ---
+
+class DebatePositionCritique(BaseModel):
+    target_agent_id: str = Field(min_length=1)
+    critique: str = Field(min_length=10)
+    severity: str = Field(pattern=r"^(fundamental|significant|minor)$")
+
+
+class DebatePositionAgreement(BaseModel):
+    target_agent_id: str = Field(min_length=1)
+    point_of_agreement: str = Field(min_length=10)
+
+
+class DebatePosition(BaseModel):
+    """A single agent's position in one round of debate."""
+    agent_id: str = Field(min_length=1)
+    agent_role: str = Field(pattern=r"^(deep_researcher|brainstormer)$")
+    round_number: int = Field(ge=1)
+    thesis: str = Field(min_length=50)
+    evidence: list[str] = Field(min_length=1)
+    risks_identified: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(min_length=1)
+    critiques_of_others: list[DebatePositionCritique] = Field(default_factory=list)
+    agreements_with_others: list[DebatePositionAgreement] = Field(default_factory=list)
+    confidence: int = Field(ge=0, le=100)
+    evolved_from_previous: bool = False
+    evolution_summary: str | None = None
+
+
+class DebateRound(BaseModel):
+    """All positions from a single round."""
+    round_number: int = Field(ge=1)
+    positions: list[DebatePosition] = Field(min_length=1)
+    convergence_score: float = Field(ge=0.0, le=1.0, default=0.0)
+
+
+class DebateConclusionRequirement(BaseModel):
+    requirement: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    source_agents: list[str] = Field(default_factory=list)
+    confidence: int = Field(ge=0, le=100)
+
+
+class DebateConclusionTension(BaseModel):
+    tension: str = Field(min_length=1)
+    side_a: str = Field(min_length=1)
+    side_b: str = Field(min_length=1)
+    mediator_recommendation: str = Field(min_length=1)
+
+
+class DebateConclusionRisk(BaseModel):
+    risk: str = Field(min_length=1)
+    severity: str = Field(pattern=r"^(critical|high|medium|low)$")
+    mitigation: str = Field(min_length=1)
+    raised_by: list[str] = Field(default_factory=list)
+
+
+class DebateConclusionDissent(BaseModel):
+    agent_id: str = Field(min_length=1)
+    dissent: str = Field(min_length=1)
+    mediator_note: str = Field(min_length=1)
+
+
+class DebateConclusion(BaseModel):
+    """Mediator's final synthesis of the debate."""
+    resolved_requirements: list[DebateConclusionRequirement] = Field(min_length=1)
+    unresolved_tensions: list[DebateConclusionTension] = Field(default_factory=list)
+    risk_assessment: list[DebateConclusionRisk] = Field(default_factory=list)
+    recommended_scope: str = Field(min_length=20)
+    recommended_priorities: list[str] = Field(min_length=1)
+    dissenting_opinions: list[DebateConclusionDissent] = Field(default_factory=list)
+    overall_confidence: int = Field(ge=0, le=100)
+    rounds_conducted: int = Field(ge=1)
+    total_positions_evaluated: int = Field(ge=1)
+
+
+class DebateState(BaseModel):
+    """Tracks the full debate lifecycle."""
+    debate_id: str
+    feature_request: str
+    researcher_count: int = Field(ge=1, default=2)
+    brainstormer_count: int = Field(ge=1, default=2)
+    max_rounds: int = Field(ge=1, default=3)
+    rounds: list[DebateRound] = Field(default_factory=list)
+    conclusion: DebateConclusion | None = None
+    status: str = Field(
+        pattern=r"^(pending|in_progress|converged|max_rounds_reached|completed|interrupted)$",
+        default="pending",
+    )
+    total_cost_usd: float = 0.0
+
+
 # --- Workflow Definition Models ---
 
 class WorkflowStepDefinition(BaseModel):
@@ -579,7 +726,7 @@ class WorkflowStepDefinition(BaseModel):
     parallel: bool = False
     on_fail: str = "escalate"
     gate: str | None = None
-    max_retries: int = 3
+    max_retries: int = 1
 
 
 class WorkflowDefinition(BaseModel):
@@ -606,6 +753,7 @@ class WorkflowTaskState(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None
+    error_code: str | None = None
 
 
 # --- Orchestrator State ---
@@ -616,6 +764,7 @@ class PhaseState(BaseModel):
     model_tier: ModelTier = ModelTier.SONNET
     cost_usd: float = 0.0
     error: str | None = None
+    error_code: str | None = None
 
 
 class EngTaskState(BaseModel):
@@ -624,6 +773,16 @@ class EngTaskState(BaseModel):
     status: TaskStatus = TaskStatus.PENDING
     worktree_path: str | None = None
     retry_count: int = 0
+
+
+class InterruptEvent(BaseModel):
+    """Records a pipeline interruption and optional ad-hoc task injection."""
+    timestamp: datetime
+    step_paused_at: str
+    reason: str = "user_request"
+    injected_prompt: str | None = None
+    injection_cost_usd: float = 0.0
+    resumed: bool = False
 
 
 class RunState(BaseModel):
@@ -637,8 +796,15 @@ class RunState(BaseModel):
     engineering_tasks: list[EngTaskState] = Field(default_factory=list)
     workflow_tasks: list[WorkflowTaskState] = Field(default_factory=list)
     total_cost_usd: float = 0.0
+    total_input_tokens: int = 0
+    total_output_tokens: int = 0
     review_cycles: int = 0
     max_review_cycles: int = 3
+    interrupted: bool = False
+    interrupt_history: list[InterruptEvent] = Field(default_factory=list)
+    config_hash: str = ""
+    spawn_history: list[SpawnRecord] = Field(default_factory=list)
+    custom_workflow_definition: str | None = None
 
 
 # --- Agent Configuration ---
@@ -663,15 +829,84 @@ class PhaseConfig(BaseModel):
     timeout_minutes: int = 30
 
 
+class KnowledgeConfig(BaseModel):
+    """Configuration for AICoder knowledge integration."""
+    enabled: bool = True
+    aicoder_path: str = ""           # empty = auto-detect ../AICoder relative to project root
+    build_timeout_seconds: int = 60
+    skip_if_fresh_minutes: int = 5
+    inject_brief: bool = True
+    inject_artifact_digests: bool = True
+    cumulative_context: bool = True
+    mcp_tools: bool = True
+    brief_max_files: int = 30
+    brief_max_symbols: int = 15
+    cleanup_mcp_config: bool = True
+    watcher_enabled: bool = True
+    watcher_debounce_seconds: float = 5.0
+
+
+class KnowledgeContext(BaseModel):
+    """Runtime knowledge context populated after knowledge build."""
+    brief: str = ""
+    knowledge_root: str = ""
+    mcp_configured: bool = False
+    mcp_server_config: dict[str, Any] | None = None  # MCP server dict for direct SDK injection
+    build_time_ms: float = 0.0
+    file_count: int = 0
+
+
+class SpawnConfig(BaseModel):
+    """Configuration for dynamic agent spawning."""
+    enabled: bool = False
+    max_spawn_rounds: int = Field(ge=1, le=5, default=2)
+    max_spawns_per_round: int = Field(ge=1, le=10, default=5)
+    spawned_agent_max_turns: int = Field(ge=5, le=60, default=25)
+    extra_permissions: dict[str, list[str]] = Field(default_factory=dict)
+
+
+class SpawnRecord(BaseModel):
+    """Records a single spawn event in the run state."""
+    parent_step: str
+    parent_role: str
+    round_number: int
+    spawned_role: str
+    reason: str = ""
+    success: bool = False
+    cost_usd: float = 0.0
+
+
+class DebateConfig(BaseModel):
+    enabled: bool = False
+    researcher_count: int = Field(ge=1, default=2)
+    brainstormer_count: int = Field(ge=1, default=2)
+    max_rounds: int = Field(ge=1, default=3)
+    convergence_threshold: float = Field(ge=0.0, le=1.0, default=0.8)
+    researcher_model: ModelTier = ModelTier.SONNET
+    brainstormer_model: ModelTier = ModelTier.SONNET
+    mediator_model: ModelTier = ModelTier.OPUS
+    researcher_max_turns: int = 30
+    brainstormer_max_turns: int = 30
+    mediator_max_turns: int = 40
+
+
 class OrchestratorConfig(BaseModel):
     workspace_dir: str = "workspace"
     max_review_cycles: int = 3
     max_budget_usd: float = 50.0
     default_workflow: WorkflowType = WorkflowType.FEATURE_DEVELOPMENT
     enhanced_perception: bool = False
+    confirm: bool = False
+    checklist_verify: bool = True
+    tech_stack_confirmation: bool = True
     max_concurrent_agents: int = 10
     phases: dict[str, PhaseConfig] = Field(default_factory=dict)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
+    spawn: SpawnConfig = Field(default_factory=SpawnConfig)
+    debate: DebateConfig = Field(default_factory=DebateConfig)
+    knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
+    knowledge_context: KnowledgeContext | None = None
+    monitoring: dict[str, Any] = Field(default_factory=dict)
 
 
 # Maps artifact names to their Pydantic models for validation
@@ -699,4 +934,8 @@ ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "legal_review": LegalReview,
     "behavioral_review": BehavioralReview,
     "integration_test_plan": IntegrationTestPlan,
+    "end_user_evaluation": EndUserEvaluation,
+    # Debate artifacts
+    "debate_position": DebatePosition,
+    "debate_conclusion": DebateConclusion,
 }

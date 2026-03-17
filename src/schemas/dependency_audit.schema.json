@@ -1,0 +1,121 @@
+{
+  "$defs": {
+    "DependencyVulnerability": {
+      "properties": {
+        "package": {
+          "minLength": 1,
+          "title": "Package",
+          "type": "string"
+        },
+        "current_version": {
+          "minLength": 1,
+          "title": "Current Version",
+          "type": "string"
+        },
+        "cve": {
+          "minLength": 1,
+          "title": "Cve",
+          "type": "string"
+        },
+        "severity": {
+          "pattern": "^(critical|high|medium|low)$",
+          "title": "Severity",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "fixed_in": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fixed In"
+        },
+        "upgrade_breaking": {
+          "default": false,
+          "title": "Upgrade Breaking",
+          "type": "boolean"
+        },
+        "recommendation": {
+          "minLength": 1,
+          "title": "Recommendation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "package",
+        "current_version",
+        "cve",
+        "severity",
+        "description",
+        "recommendation"
+      ],
+      "title": "DependencyVulnerability",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "scan_date": {
+      "minLength": 1,
+      "title": "Scan Date",
+      "type": "string"
+    },
+    "total_dependencies": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Total Dependencies",
+      "type": "object"
+    },
+    "vulnerabilities": {
+      "items": {
+        "$ref": "#/$defs/DependencyVulnerability"
+      },
+      "title": "Vulnerabilities",
+      "type": "array"
+    },
+    "license_issues": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "License Issues",
+      "type": "array"
+    },
+    "maintenance_risks": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Maintenance Risks",
+      "type": "array"
+    },
+    "recommended_upgrades": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Recommended Upgrades",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "scan_date",
+    "summary"
+  ],
+  "title": "DependencyAudit",
+  "type": "object"
+}

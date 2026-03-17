@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import uuid
@@ -9,14 +10,24 @@ from pathlib import Path
 from typing import Any
 
 from orchestrator.agents import AgentInvocation, AgentResult, invoke_agent, invoke_agents_parallel
+from orchestrator.knowledge import (
+    build_knowledge,
+    cleanup_mcp_config,
+    ensure_mcp_config,
+    get_mcp_server_config,
+    synthesize_brief,
+    update_cumulative_context,
+)
 from orchestrator.models import (
     EngTaskState,
+    KnowledgeContext,
     ModelTier,
     OrchestratorConfig,
     PhaseState,
     PhaseStatus,
     ReviewVerdict,
     RunState,
+    SpawnRecord,
     TaskStatus,
     WorkflowType,
 )
@@ -34,6 +45,23 @@ from orchestrator.workflow_engine import WorkflowEngine
 logger = logging.getLogger(__name__)
 
 PHASE_ORDER = ["pm", "architect", "engineer", "qa", "reviewer"]
+
+# Keys whose values should be redacted before logging config data
+_SENSITIVE_KEYS = {"api_key", "api_token", "secret", "password", "webhook", "url", "token"}
+
+
+def _redact_sensitive(obj: Any, *, _parent_key: str = "") -> None:
+    """Recursively redact sensitive values in a dict/list in place."""
+    if isinstance(obj, dict):
+        for key, value in obj.items():
+            lower_key = key.lower()
+            if any(s in lower_key for s in _SENSITIVE_KEYS) and isinstance(value, str) and value:
+                obj[key] = value[:8] + "..." if len(value) > 8 else "***"
+            else:
+                _redact_sensitive(value, _parent_key=key)
+    elif isinstance(obj, list):
+        for item in obj:
+            _redact_sensitive(item, _parent_key=_parent_key)
 
 # Maps legacy phase names to workflow step names for backward compat
 _PHASE_TO_STEP: dict[str, str] = {
@@ -56,10 +84,24 @@ class OrchestratorEngine:
     with old phase names.
     """
 
-    def __init__(self, config: OrchestratorConfig, dry_run: bool = False) -> None:
+    def __init__(
+        self,
+        config: OrchestratorConfig,
+        dry_run: bool = False,
+        interrupt_manager: Any | None = None,
+        confirm_callback: Any | None = None,
+    ) -> None:
         self.config = config
         self.dry_run = dry_run
+        self.interrupt_manager = interrupt_manager
+        self.confirm_callback = confirm_callback
         self.run_logger: RunLogger | None = None
+
+    @property
+    def _mcp_servers(self) -> dict[str, Any] | None:
+        """Return MCP server config for agent invocations, if available."""
+        kc = self.config.knowledge_context
+        return kc.mcp_server_config if kc else None
 
     async def run(
         self,
@@ -67,6 +109,7 @@ class OrchestratorEngine:
         single_phase: str | None = None,
         from_phase: str | None = None,
         resume: bool = False,
+        resume_run_id: str | None = None,
         workflow_type: WorkflowType | None = None,
         custom_workflow: str | None = None,
     ) -> RunState:
@@ -77,7 +120,15 @@ class OrchestratorEngine:
         (workspace / "artifacts").mkdir(exist_ok=True)
 
         # Resume from saved state, or start fresh
-        state = self._load_state(workspace) if resume else None
+        if resume or resume_run_id:
+            state = self._load_state(workspace, run_id=resume_run_id)
+            if resume_run_id and state is None:
+                raise ValueError(
+                    f"No saved state found for run '{resume_run_id}'. "
+                    f"Check workspace: {workspace}"
+                )
+        else:
+            state = None
         if state:
             logger.info(f"Resuming run {state.run_id} — skipping completed phases: "
                         f"{[p for p, s in state.phases.items() if s.status == PhaseStatus.COMPLETED]}")
@@ -92,13 +143,122 @@ class OrchestratorEngine:
                 workflow_type=wf_type,
             )
 
+        # Detect config changes between runs
+        current_hash = hashlib.md5(
+            json.dumps(self.config.model_dump(), sort_keys=True, default=str).encode()
+        ).hexdigest()
+        if state.config_hash and state.config_hash != current_hash:
+            logger.warning("Config has changed since original run — some settings may behave differently")
+        state.config_hash = current_hash
+
         self.run_logger = RunLogger(workspace / "logs", state.run_id)
+
+        # Bootstrap AICoder knowledge (if enabled)
+        if self.config.knowledge.enabled:
+            knowledge_result = await build_knowledge(
+                project_root=self.project_root,
+                aicoder_path=self.config.knowledge.aicoder_path,
+                timeout_seconds=self.config.knowledge.build_timeout_seconds,
+                skip_if_fresh_minutes=self.config.knowledge.skip_if_fresh_minutes,
+            )
+            if knowledge_result.success:
+                brief = ""
+                if self.config.knowledge.inject_brief:
+                    brief = synthesize_brief(
+                        knowledge_result.knowledge_root,
+                        max_files=self.config.knowledge.brief_max_files,
+                        max_symbols=self.config.knowledge.brief_max_symbols,
+                    )
+
+                mcp_configured = False
+                mcp_server_config = None
+                if self.config.knowledge.mcp_tools:
+                    mcp_configured = ensure_mcp_config(
+                        aicoder_path=self.config.knowledge.aicoder_path,
+                        target_project=self.project_root,
+                        project_root=self.project_root,
+                    )
+                    if mcp_configured:
+                        mcp_server_config = get_mcp_server_config(
+                            aicoder_path=self.config.knowledge.aicoder_path,
+                            project_root=self.project_root,
+                        )
+
+                self.config.knowledge_context = KnowledgeContext(
+                    brief=brief,
+                    knowledge_root=str(knowledge_result.knowledge_root),
+                    mcp_configured=mcp_configured,
+                    mcp_server_config=mcp_server_config,
+                    build_time_ms=knowledge_result.build_time_ms,
+                    file_count=knowledge_result.file_count,
+                )
+                logger.info(
+                    f"Knowledge ready: {knowledge_result.file_count} files indexed, "
+                    f"brief={len(brief)} chars, MCP={'yes' if mcp_configured else 'no'}"
+                )
+            else:
+                logger.warning(
+                    f"Knowledge build failed: {knowledge_result.error}. "
+                    "Agents will explore codebase manually."
+                )
+
+        # Initialize monitoring stack (opt-in)
+        self._monitoring = None
+        monitoring_raw = self.config.monitoring
+        if monitoring_raw and any(monitoring_raw.get(k) for k in ("metrics_enabled", "tracing_enabled", "webhooks")):
+            try:
+                from orchestrator.monitoring import MonitoringStack
+                from orchestrator.monitoring.config import MonitoringConfig
+                mon_config = MonitoringConfig(**monitoring_raw)
+                self._monitoring = MonitoringStack(
+                    config=mon_config,
+                    run_id=state.run_id,
+                    workspace=workspace,
+                    max_budget_usd=self.config.max_budget_usd,
+                )
+                self.run_logger.set_monitoring_stack(self._monitoring)
+            except Exception as e:
+                logger.warning(f"Monitoring stack initialization failed: {e}")
+
+        # Redact sensitive fields from config before logging
+        config_data = self.config.model_dump()
+        _redact_sensitive(config_data)
+
         self.run_logger.log_event("run_start", {
             "feature_request": feature_request,
-            "config": self.config.model_dump(),
+            "config": config_data,
             "resume": resume,
             "workflow_type": state.workflow_type.value,
         })
+
+        # Optional debate phase — runs before the main pipeline
+        if self.config.debate.enabled:
+            debate_completed = (
+                resume
+                and state.phases.get("debate")
+                and state.phases["debate"].status == PhaseStatus.COMPLETED
+            )
+            if debate_completed:
+                # Load enriched feature request from debate conclusion
+                conclusion_path = workspace / "artifacts" / "debate_conclusion.json"
+                if conclusion_path.exists():
+                    from orchestrator.debate import DebateEngine
+                    from orchestrator.models import DebateConclusion
+                    with open(conclusion_path) as f:
+                        conclusion = DebateConclusion.model_validate(json.load(f))
+                    de = DebateEngine(self.config, workspace, self.project_root)
+                    feature_request = de.enrich_feature_request(feature_request, conclusion)
+                    logger.info("Loaded debate conclusions from previous run")
+            else:
+                feature_request = await self._run_debate_phase(
+                    state, workspace, feature_request,
+                )
+
+        # Persist custom workflow definition in state for resume
+        if custom_workflow:
+            state.custom_workflow_definition = custom_workflow
+        elif state.workflow_type == WorkflowType.CUSTOM and state.custom_workflow_definition:
+            custom_workflow = state.custom_workflow_definition
 
         # Decide execution mode
         use_legacy = single_phase in PHASE_ORDER or from_phase in PHASE_ORDER
@@ -110,8 +270,21 @@ class OrchestratorEngine:
 
         self.run_logger.log_event("run_complete", {
             "total_cost_usd": state.total_cost_usd,
+            "workflow_type": state.workflow_type.value,
             "phases": {k: v.model_dump() for k, v in state.phases.items()},
         })
+
+        if self._monitoring:
+            self._monitoring.shutdown()
+
+        # Clean up MCP config if we added it
+        if (
+            self.config.knowledge.enabled
+            and self.config.knowledge.cleanup_mcp_config
+            and self.config.knowledge_context
+            and self.config.knowledge_context.mcp_configured
+        ):
+            cleanup_mcp_config(self.project_root)
 
         self._save_state(state, workspace)
         return state
@@ -136,9 +309,59 @@ class OrchestratorEngine:
             run_logger=self.run_logger,
             project_root=self.project_root,
             dry_run=self.dry_run,
+            interrupt_manager=self.interrupt_manager,
+            confirm_callback=self.confirm_callback,
         )
 
         await engine.execute()
+
+    async def _run_debate_phase(
+        self,
+        state: RunState,
+        workspace: Path,
+        feature_request: str,
+    ) -> str:
+        """Run the optional debate phase and return enriched feature request."""
+        from orchestrator.debate import DebateEngine
+
+        logger.info("=== Debate Phase: Starting adversarial debate ===")
+        state.phases["debate"] = PhaseState(status=PhaseStatus.RUNNING)
+
+        debate_engine = DebateEngine(
+            config=self.config,
+            workspace_dir=workspace,
+            project_root=self.project_root,
+            run_logger=self.run_logger,
+            dry_run=self.dry_run,
+        )
+
+        try:
+            conclusion = await debate_engine.run_debate(
+                feature_request=feature_request,
+            )
+            enriched = debate_engine.enrich_feature_request(feature_request, conclusion)
+            state.phases["debate"].status = PhaseStatus.COMPLETED
+
+            # Load the debate state cost into the phase
+            debate_state_path = workspace / "debate_state.json"
+            if debate_state_path.exists():
+                import json as _json
+                ds = _json.loads(debate_state_path.read_text())
+                debate_cost = ds.get("total_cost_usd", 0.0)
+                state.phases["debate"].cost_usd = debate_cost
+                state.total_cost_usd += debate_cost
+
+            self._save_state(state, workspace)
+            logger.info(f"Debate concluded with confidence {conclusion.overall_confidence}%")
+            return enriched
+
+        except Exception as e:
+            logger.error(f"Debate phase failed: {e}")
+            state.phases["debate"].status = PhaseStatus.FAILED
+            state.phases["debate"].error = str(e)
+            self._save_state(state, workspace)
+            # Fall through with original feature request if debate fails
+            return feature_request
 
     async def _run_legacy(
         self,
@@ -168,8 +391,50 @@ class OrchestratorEngine:
                 logger.info(f"Skipping {phase_name} (already completed)")
                 continue
 
+            # Interrupt checkpoint: between legacy phases
+            if self.interrupt_manager and self.interrupt_manager.should_interrupt():
+                from orchestrator.interruption import handle_interruption
+                state.current_step = phase_name
+                result = await handle_interruption(
+                    state=state,
+                    config=self.config,
+                    interrupt_manager=self.interrupt_manager,
+                    run_logger=self.run_logger,
+                    project_root=self.project_root,
+                    context="between_phases",
+                )
+                if result == "abort":
+                    break
+
             state.phases[phase_name] = PhaseState()
             await self._run_phase(phase_name, state, workspace, feature_request)
+
+            # Tech stack confirmation: pause after architect phase so the
+            # user can review proposed tech decisions before implementation.
+            if (
+                phase_name == "architect"
+                and state.phases[phase_name].status == PhaseStatus.COMPLETED
+                and self.config.tech_stack_confirmation
+            ):
+                try:
+                    from orchestrator.tech_stack import confirm_tech_stack
+                    confirm_tech_stack(workspace, dry_run=self.dry_run)
+                except KeyboardInterrupt:
+                    logger.info("User aborted at tech stack confirmation")
+                    self._save_state(state, workspace)
+                    break
+
+            # Update cumulative context after successful phase
+            if (
+                state.phases[phase_name].status == PhaseStatus.COMPLETED
+                and self.config.knowledge.enabled
+                and self.config.knowledge.cumulative_context
+            ):
+                update_cumulative_context(workspace, phase_name)
+
+            # Re-index knowledge after code-modifying phases
+            if state.phases[phase_name].status == PhaseStatus.COMPLETED:
+                await self._refresh_knowledge(phase_name)
 
             self._save_state(state, workspace)
 
@@ -221,26 +486,80 @@ class OrchestratorEngine:
             workspace=workspace,
         )
 
+        # Run dynamic spawn loop for eligible phases
+        if result.success and self.config.spawn.enabled:
+            result = await self._run_spawn_loop_for_phase(
+                phase_name, state, result,
+                agent_name=phase_def.agent_name,
+                model=phase_state.model_tier,
+                max_turns=agent_config.max_turns if agent_config else 40,
+                workspace=workspace,
+            )
+
         phase_state.cost_usd = result.cost_usd
         state.total_cost_usd += result.cost_usd
+        state.total_input_tokens += result.input_tokens
+        state.total_output_tokens += result.output_tokens
 
         if not result.success:
             phase_state.status = PhaseStatus.FAILED
             phase_state.error = result.error
             return
 
+        # Validate artifacts, retry once if missing (agent may have forgotten to use Write tool)
+        artifact_errors = self._validate_phase_artifacts(phase_def, workspace)
+        if artifact_errors and phase_state.retry_count == 0:
+            phase_state.retry_count += 1
+            missing_files = ", ".join(artifact_errors)
+            logger.warning(
+                f"Artifact(s) not found after {phase_name} — retrying with explicit reminder: {missing_files}"
+            )
+            retry_prompt = (
+                f"{prompt}\n\n"
+                f"RETRY — PREVIOUS ATTEMPT FAILED: The following artifact files were NOT created on disk: {missing_files}. "
+                f"You MUST use the Write tool to create each file. Do NOT just output JSON in your response text."
+            )
+            retry_result = await self._invoke_with_retry(
+                agent_name=phase_def.agent_name,
+                prompt=retry_prompt,
+                model=phase_state.model_tier,
+                max_turns=agent_config.max_turns if agent_config else 40,
+                max_retries=0,  # single retry attempt
+                escalation_model=agent_config.escalation_model if agent_config else None,
+                workspace=workspace,
+            )
+            phase_state.cost_usd += retry_result.cost_usd
+            state.total_cost_usd += retry_result.cost_usd
+            state.total_input_tokens += retry_result.input_tokens
+            state.total_output_tokens += retry_result.output_tokens
+            # Re-validate after retry
+            artifact_errors = self._validate_phase_artifacts(phase_def, workspace)
+
+        if artifact_errors:
+            for artifact_name in artifact_errors:
+                artifact_path = workspace / "artifacts" / f"{artifact_name}.json"
+                invalid_path = artifact_path.with_suffix(".invalid.json")
+                if artifact_path.exists():
+                    artifact_path.rename(invalid_path)
+                    logger.warning(f"Invalid artifact moved to {invalid_path}")
+            phase_state.status = PhaseStatus.FAILED
+            phase_state.error = f"Artifact validation: {list(artifact_errors.values())}"
+            return
+
+        phase_state.status = PhaseStatus.COMPLETED
+
+    def _validate_phase_artifacts(
+        self, phase_def, workspace: Path,
+    ) -> dict[str, list[str]]:
+        """Validate all output artifacts for a phase. Returns {name: errors} for failures."""
+        errors: dict[str, list[str]] = {}
         for artifact_name in phase_def.output_artifacts:
             artifact_path = workspace / "artifacts" / f"{artifact_name}.json"
             validation = validate_artifact_file(artifact_path, artifact_name)
             if not validation.valid:
-                logger.warning(
-                    f"Artifact {artifact_name} validation failed: {validation.errors}"
-                )
-                phase_state.status = PhaseStatus.FAILED
-                phase_state.error = f"Artifact validation failed: {validation.errors}"
-                return
-
-        phase_state.status = PhaseStatus.COMPLETED
+                logger.warning(f"Artifact {artifact_name} validation failed: {validation.errors}")
+                errors[artifact_name] = validation.errors
+        return errors
 
     async def _run_engineer_phase(
         self,
@@ -258,9 +577,18 @@ class OrchestratorEngine:
             phase_state.status = PhaseStatus.COMPLETED
             return
 
-        state.engineering_tasks = [
-            EngTaskState(task_id=t["task_id"]) for t in tasks
-        ]
+        # Recover existing task states on resume instead of creating fresh ones.
+        # This preserves COMPLETED status so already-done tasks are skipped.
+        existing_by_id = {t.task_id: t for t in state.engineering_tasks}
+        new_tasks: list[EngTaskState] = []
+        for t in tasks:
+            tid = t["task_id"]
+            if tid in existing_by_id and existing_by_id[tid].status == TaskStatus.COMPLETED:
+                new_tasks.append(existing_by_id[tid])
+                logger.info(f"Skipping task {tid} (already completed in prior run)")
+            else:
+                new_tasks.append(EngTaskState(task_id=tid))
+        state.engineering_tasks = new_tasks
 
         if self.dry_run:
             for task in tasks:
@@ -292,8 +620,21 @@ class OrchestratorEngine:
         tasks: list[dict[str, Any]],
     ) -> None:
         """Run engineer tasks in parallel with isolated worktrees."""
+        # Filter out already-completed tasks (resume support)
+        pending_indices: list[int] = []
+        pending_tasks: list[dict[str, Any]] = []
+        for i, task in enumerate(tasks):
+            if state.engineering_tasks[i].status == TaskStatus.COMPLETED:
+                logger.info(f"Skipping task {task['task_id']} in parallel batch (already completed)")
+                continue
+            pending_indices.append(i)
+            pending_tasks.append(task)
+
+        if not pending_tasks:
+            return
+
         invocations = []
-        for task in tasks:
+        for task in pending_tasks:
             prompt = build_engineer_prompt(feature_request, workspace, self.config, task)
             agent_config = self.config.agents.get("engineer")
             invocations.append(AgentInvocation(
@@ -305,15 +646,54 @@ class OrchestratorEngine:
                 project_root=str(self.project_root),
                 isolation="worktree",
                 enhanced_perception=self.config.enhanced_perception,
+                mcp_servers=self._mcp_servers,
             ))
+
+        if self.confirm_callback:
+            confirmed_invocations = []
+            for inv in invocations:
+                confirmed = self.confirm_callback(inv)
+                if confirmed is None:
+                    raise KeyboardInterrupt("User aborted at confirmation")
+                confirmed_invocations.append(confirmed)
+            invocations = confirmed_invocations
 
         results = await invoke_agents_parallel(
             invocations, max_concurrent=self.config.max_concurrent_agents,
         )
 
-        for task_state, result in zip(state.engineering_tasks, results):
+        failed_tasks: list[tuple[int, dict[str, Any]]] = []
+        for orig_idx, task, result in zip(pending_indices, pending_tasks, results):
+            task_state = state.engineering_tasks[orig_idx]
             task_state.status = TaskStatus.COMPLETED if result.success else TaskStatus.FAILED
             state.total_cost_usd += result.cost_usd
+            state.total_input_tokens += result.input_tokens
+            state.total_output_tokens += result.output_tokens
+            if not result.success:
+                failed_tasks.append((orig_idx, task))
+
+        # Retry failed tasks once sequentially
+        if failed_tasks:
+            agent_config = self.config.agents.get("engineer")
+            max_retries = self.config.phases.get("engineer", None).max_retries if self.config.phases.get("engineer") else 1
+            if max_retries > 0:
+                logger.info(f"Retrying {len(failed_tasks)} failed task(s) from parallel batch")
+                for idx, task in failed_tasks:
+                    task_state = state.engineering_tasks[idx]
+                    prompt = build_engineer_prompt(feature_request, workspace, self.config, task)
+                    result = await self._invoke_with_retry(
+                        agent_name="engineer",
+                        prompt=prompt,
+                        model=agent_config.model if agent_config else ModelTier.SONNET,
+                        max_turns=agent_config.max_turns if agent_config else 80,
+                        max_retries=1,
+                        escalation_model=agent_config.escalation_model if agent_config else None,
+                        workspace=workspace,
+                    )
+                    task_state.status = TaskStatus.COMPLETED if result.success else TaskStatus.FAILED
+                    state.total_cost_usd += result.cost_usd
+                    state.total_input_tokens += result.input_tokens
+                    state.total_output_tokens += result.output_tokens
 
     async def _run_engineers_sequential(
         self,
@@ -326,6 +706,8 @@ class OrchestratorEngine:
         agent_config = self.config.agents.get("engineer")
         for i, task in enumerate(tasks):
             task_state = state.engineering_tasks[i]
+            if task_state.status == TaskStatus.COMPLETED:
+                continue
             task_state.status = TaskStatus.IN_PROGRESS
 
             prompt = build_engineer_prompt(feature_request, workspace, self.config, task)
@@ -341,6 +723,8 @@ class OrchestratorEngine:
 
             task_state.status = TaskStatus.COMPLETED if result.success else TaskStatus.FAILED
             state.total_cost_usd += result.cost_usd
+            state.total_input_tokens += result.input_tokens
+            state.total_output_tokens += result.output_tokens
 
             if not result.success:
                 logger.error(f"Task {task['task_id']} failed: {result.error}")
@@ -390,6 +774,8 @@ class OrchestratorEngine:
                     workspace=workspace,
                 )
                 state.total_cost_usd += result.cost_usd
+                state.total_input_tokens += result.input_tokens
+                state.total_output_tokens += result.output_tokens
                 if not result.success:
                     state.phases["engineer"].status = PhaseStatus.FAILED
                     break
@@ -418,6 +804,61 @@ class OrchestratorEngine:
                     workspace=workspace,
                 )
                 state.total_cost_usd += result.cost_usd
+                state.total_input_tokens += result.input_tokens
+                state.total_output_tokens += result.output_tokens
+
+    async def _run_spawn_loop_for_phase(
+        self,
+        phase_name: str,
+        state: RunState,
+        result: AgentResult,
+        agent_name: str,
+        model: ModelTier,
+        max_turns: int,
+        workspace: Path,
+    ) -> AgentResult:
+        """Run the dynamic spawn loop for a legacy phase."""
+        from orchestrator.spawning import run_spawn_loop
+
+        # Map legacy phase/agent names to role strings used in spawn permissions
+        _LEGACY_TO_ROLE = {
+            "pm": "product_manager",
+            "architect": "software_architect",
+            "principal_engineer": "principal_engineer",
+            "tpm": "technical_project_manager",
+            "qa_planner": "qa_planner",
+        }
+        parent_role = _LEGACY_TO_ROLE.get(agent_name, phase_name)
+
+        final_result, rounds = await run_spawn_loop(
+            initial_result=result,
+            agent_name=agent_name,
+            parent_role=parent_role,
+            original_prompt="",
+            config=self.config.spawn,
+            model=model,
+            max_turns=max_turns,
+            workspace_dir=str(workspace),
+            project_root=str(self.project_root),
+            max_concurrent=self.config.max_concurrent_agents,
+            agents_config=self.config.agents,
+            run_logger=self.run_logger,
+        )
+
+        # Record spawn history in run state
+        for round_summary in rounds:
+            for req, sr in zip(round_summary.requests, round_summary.results):
+                state.spawn_history.append(SpawnRecord(
+                    parent_step=phase_name,
+                    parent_role=parent_role,
+                    round_number=round_summary.round_number,
+                    spawned_role=sr.role,
+                    reason=sr.reason,
+                    success=sr.success,
+                    cost_usd=sr.cost_usd,
+                ))
+
+        return final_result
 
     async def _invoke_with_retry(
         self,
@@ -453,7 +894,7 @@ class OrchestratorEngine:
                         "max_budget_usd": self.config.max_budget_usd,
                     })
 
-            result = await invoke_agent(AgentInvocation(
+            invocation = AgentInvocation(
                 agent_name=agent_name,
                 prompt=prompt,
                 model=current_model,
@@ -461,14 +902,26 @@ class OrchestratorEngine:
                 workspace_dir=str(workspace),
                 project_root=str(self.project_root),
                 enhanced_perception=self.config.enhanced_perception,
-            ))
+                mcp_servers=self._mcp_servers,
+            )
+
+            if self.confirm_callback:
+                confirmed = self.confirm_callback(invocation)
+                if confirmed is None:
+                    raise KeyboardInterrupt("User aborted at confirmation")
+                invocation = confirmed
+
+            result = await invoke_agent(invocation)
 
             if self.run_logger:
                 self.run_logger.log_event("agent_result", {
                     "agent": agent_name,
                     "success": result.success,
                     "cost_usd": result.cost_usd,
+                    "input_tokens": result.input_tokens,
+                    "output_tokens": result.output_tokens,
                     "attempt": attempt + 1,
+                    "error_code": "MAX_RETRIES_EXHAUSTED" if not result.success and attempt == max_retries else None,
                 })
 
             if result.success:
@@ -476,23 +929,102 @@ class OrchestratorEngine:
 
             logger.warning(f"Agent {agent_name} failed (attempt {attempt + 1}): {result.error}")
 
+            # Check if the error is non-retriable before spending another attempt
+            NON_RETRIABLE_PATTERNS = [
+                "Budget exceeded",
+                "Artifact validation failed",
+                "Missing input artifact",
+            ]
+            if result.error and any(
+                p.lower() in result.error.lower() for p in NON_RETRIABLE_PATTERNS
+            ):
+                logger.error(f"Non-retriable error for {agent_name}: {result.error}")
+                return result
+
+            if self.run_logger:
+                self.run_logger.log_event("agent_retry", {"agent": agent_name, "attempt": attempt + 1})
+
             if escalation_model and current_model != escalation_model:
                 logger.info(f"Escalating {agent_name} from {current_model.value} to {escalation_model.value}")
+                if self.run_logger:
+                    self.run_logger.log_event("model_escalation", {
+                        "agent": agent_name,
+                        "from_model": current_model.value,
+                        "to_model": escalation_model.value,
+                    })
                 current_model = escalation_model
 
         return result
 
-    def _save_state(self, state: RunState, workspace: Path) -> None:
-        """Save the run state to disk."""
-        state_path = workspace / "state.json"
-        with open(state_path, "w") as f:
-            json.dump(state.model_dump(), f, indent=2, default=str)
+    async def _refresh_knowledge(self, phase_name: str) -> None:
+        """Re-index knowledge base between phases so later agents see fresh data.
 
-    def _load_state(self, workspace: Path) -> RunState | None:
-        """Load a prior run state from disk, if it exists."""
-        state_path = workspace / "state.json"
-        if not state_path.exists():
-            return None
+        Triggered after phases that modify code (engineer) or produce artifacts
+        that change the codebase understanding. Skips if knowledge is disabled
+        or the rebuild would be redundant (< skip_if_fresh_minutes).
+        """
+        if not self.config.knowledge.enabled:
+            return
+
+        # Phases after which re-indexing is valuable
+        _REINDEX_AFTER = {"engineer", "implementation"}
+        if phase_name.lower() not in _REINDEX_AFTER:
+            return
+
+        logger.info(f"Re-indexing knowledge base after {phase_name} phase...")
+        result = await build_knowledge(
+            project_root=self.project_root,
+            aicoder_path=self.config.knowledge.aicoder_path,
+            timeout_seconds=self.config.knowledge.build_timeout_seconds,
+            skip_if_fresh_minutes=0,  # Force rebuild after code changes
+        )
+        if result.success:
+            # Update the knowledge context with fresh data
+            if self.config.knowledge.inject_brief:
+                brief = synthesize_brief(
+                    result.knowledge_root,
+                    max_files=self.config.knowledge.brief_max_files,
+                    max_symbols=self.config.knowledge.brief_max_symbols,
+                )
+                if self.config.knowledge_context:
+                    self.config.knowledge_context.brief = brief
+                    self.config.knowledge_context.file_count = result.file_count
+            logger.info(
+                f"Knowledge re-indexed: {result.file_count} files in {result.build_time_ms:.0f}ms"
+            )
+        else:
+            logger.warning(f"Knowledge re-index failed: {result.error}")
+
+    def _save_state(self, state: RunState, workspace: Path) -> None:
+        """Save the run state to disk.
+
+        Writes both ``state.json`` (latest run, backward compat) and
+        ``state-<run_id>.json`` (durable per-run copy for resume-by-id).
+        """
+        from orchestrator.persistence import save_run_state
+        save_run_state(state, workspace)
+
+    def _load_state(self, workspace: Path, run_id: str | None = None) -> RunState | None:
+        """Load a prior run state from disk.
+
+        If *run_id* is given, loads ``state-<run_id>.json``.
+        Otherwise falls back to the latest ``state.json``.
+        """
+        if run_id:
+            state_path = workspace / f"state-{run_id}.json"
+            if not state_path.exists():
+                # Fall back to state.json if it matches the requested run ID
+                fallback = workspace / "state.json"
+                if fallback.exists():
+                    with open(fallback) as f:
+                        data = json.load(f)
+                    if data.get("run_id") == run_id:
+                        return RunState.model_validate(data)
+                return None
+        else:
+            state_path = workspace / "state.json"
+            if not state_path.exists():
+                return None
         with open(state_path) as f:
             data = json.load(f)
         return RunState.model_validate(data)

@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Metrics</h1>
+
+<div class="stats">
+  <div class="stat">
+    <div class="stat-value">{{ summary.total_runs }}</div>
+    <div class="stat-label">Total Runs</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" style="color: var(--green);">{{ summary.completed }}</div>
+    <div class="stat-label">Completed</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" style="color: var(--red);">{{ summary.failed }}</div>
+    <div class="stat-label">Failed</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" style="color: var(--yellow);">{{ summary.running }}</div>
+    <div class="stat-label">Running</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">${{ "%.4f"|format(summary.total_cost_usd) }}</div>
+    <div class="stat-label">Total Cost</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" style="color: var(--red);">{{ summary.error_count }}</div>
+    <div class="stat-label">Errors</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <h2>Cost per Run</h2>
+    <div class="chart-container">
+      <canvas id="costChart"></canvas>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Model Usage</h2>
+    <div class="chart-container">
+      <canvas id="modelChart"></canvas>
+    </div>
+  </div>
+</div>
+
+{% if not summary.total_runs %}
+<div class="empty">
+  <h2>No data yet</h2>
+  <p>Complete some runs to see metrics here.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const summary = {{ summary_json|safe }};
+  renderCostChart('costChart', summary.cost_series);
+  renderModelChart('modelChart', summary.model_usage);
+</script>
+{% endblock %}

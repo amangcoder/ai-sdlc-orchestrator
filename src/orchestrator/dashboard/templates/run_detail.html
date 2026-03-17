@@ -1,0 +1,118 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>
+  Run {{ run.run_id[:8] }}...
+  <span class="badge badge-{{ run.status }}">{{ run.status }}</span>
+  {% if run.status == "running" %}
+  <a href="/runs/{{ run.run_id }}/live" style="font-size: 14px; margin-left: 12px;">
+    <span class="live-dot"></span>Live View
+  </a>
+  {% endif %}
+</h1>
+<p style="color: var(--text-dim); margin-bottom: 20px;">{{ run.feature_request }}</p>
+
+<div class="stats">
+  <div class="stat">
+    <div class="stat-value">${{ "%.4f"|format(run.total_cost_usd) }}</div>
+    <div class="stat-label">Total Cost</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ run.phases|length }}</div>
+    <div class="stat-label">Steps</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ run.workflow_type }}</div>
+    <div class="stat-label">Workflow</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ run.interrupt_history|length }}</div>
+    <div class="stat-label">Interrupts</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <!-- Phase breakdown -->
+  <div class="card">
+    <h2>Phase Breakdown</h2>
+    <table>
+      <thead>
+        <tr><th>Phase</th><th>Status</th><th>Cost</th><th>Model</th><th>Error</th></tr>
+      </thead>
+      <tbody>
+        {% for name, phase in run.phases.items() %}
+        <tr>
+          <td>{{ name }}</td>
+          <td><span class="badge badge-{{ phase.status if phase.status is string else phase.get('status', 'pending') }}">{{ phase.status if phase.status is string else phase.get('status', 'pending') }}</span></td>
+          <td>${{ "%.4f"|format(phase.cost_usd if phase.cost_usd is defined else phase.get('cost_usd', 0)) }}</td>
+          <td>{{ phase.model_tier if phase.model_tier is defined else phase.get('model_tier', '-') }}</td>
+          <td style="color: var(--red); font-size: 12px;">{{ (phase.error if phase.error is defined else phase.get('error', ''))[:60] if (phase.error if phase.error is defined else phase.get('error', '')) else '-' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Cost chart -->
+  <div class="card">
+    <h2>Cost by Phase</h2>
+    <div class="chart-container">
+      <canvas id="phaseChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- Event log -->
+<div class="card">
+  <h2>Event Log ({{ run.events|length }} events)</h2>
+  <div class="event-list">
+    {% for event in run.events %}
+    <div class="event-item">
+      <span class="event-time">{{ event.ts[:19] if event.ts else '' }}</span>
+      <span class="event-type">{{ event.event }}</span>
+      {% for key, val in event.items() %}
+        {% if key not in ['ts', 'run_id', 'event', 'config'] %}
+          {{ key }}={{ val }}
+        {% endif %}
+      {% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+{% if run.timeline %}
+<div class="card">
+  <h2>Execution Timeline</h2>
+  <p style="margin-bottom: 12px;">
+    <a href="/api/runs/{{ run.run_id }}/timeline" target="_blank">View timeline JSON</a>
+  </p>
+  {% if run.timeline.entries %}
+  <table>
+    <thead>
+      <tr><th>Task</th><th>Agent</th><th>Step</th><th>Duration</th><th>Status</th><th>Cost</th></tr>
+    </thead>
+    <tbody>
+      {% for entry in run.timeline.entries %}
+      <tr>
+        <td>{{ entry.task_id }}</td>
+        <td>{{ entry.agent }}</td>
+        <td>{{ entry.step }}</td>
+        <td>{{ entry.duration_seconds }}s</td>
+        <td><span class="badge badge-{{ entry.status }}">{{ entry.status }}</span></td>
+        <td>${{ "%.4f"|format(entry.cost_usd) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% endif %}
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  const phases = {{ phases_json|safe }};
+  renderPhaseChart('phaseChart', phases);
+  // Auto-refresh while run is active
+  autoRefresh(5000);
+</script>
+{% endblock %}

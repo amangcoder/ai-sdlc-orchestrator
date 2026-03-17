@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "BehavioralFinding": {
+      "properties": {
+        "id": {
+          "pattern": "^UBP-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "category": {
+          "pattern": "^(cognitive_load|dark_pattern|friction|motivation|inclusivity)$",
+          "title": "Category",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/IssueSeverity"
+        },
+        "location": {
+          "minLength": 1,
+          "title": "Location",
+          "type": "string"
+        },
+        "issue": {
+          "minLength": 10,
+          "title": "Issue",
+          "type": "string"
+        },
+        "psychological_principle": {
+          "minLength": 1,
+          "title": "Psychological Principle",
+          "type": "string"
+        },
+        "user_impact": {
+          "minLength": 10,
+          "title": "User Impact",
+          "type": "string"
+        },
+        "recommendation": {
+          "minLength": 10,
+          "title": "Recommendation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "location",
+        "issue",
+        "psychological_principle",
+        "user_impact",
+        "recommendation"
+      ],
+      "title": "BehavioralFinding",
+      "type": "object"
+    },
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "overall_assessment": {
+      "pattern": "^(user_friendly|needs_improvement|has_dark_patterns|hostile)$",
+      "title": "Overall Assessment",
+      "type": "string"
+    },
+    "cognitive_load_score": {
+      "additionalProperties": true,
+      "title": "Cognitive Load Score",
+      "type": "object"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/BehavioralFinding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "dark_patterns_detected": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Dark Patterns Detected",
+      "type": "array"
+    },
+    "positive_patterns": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Positive Patterns",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "overall_assessment",
+    "summary"
+  ],
+  "title": "BehavioralReview",
+  "type": "object"
+}

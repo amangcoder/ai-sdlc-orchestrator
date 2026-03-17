@@ -1,0 +1,111 @@
+{
+  "$defs": {
+    "LegalFinding": {
+      "properties": {
+        "id": {
+          "pattern": "^LEGAL-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "category": {
+          "pattern": "^(data_privacy|intellectual_property|terms_of_service|liability|jurisdiction|accessibility|licensing)$",
+          "title": "Category",
+          "type": "string"
+        },
+        "risk_level": {
+          "pattern": "^(critical|high|medium|low)$",
+          "title": "Risk Level",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "affected_requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Affected Requirements",
+          "type": "array"
+        },
+        "recommendation": {
+          "minLength": 10,
+          "title": "Recommendation",
+          "type": "string"
+        },
+        "requires_legal_counsel": {
+          "default": false,
+          "title": "Requires Legal Counsel",
+          "type": "boolean"
+        },
+        "blocking": {
+          "default": false,
+          "title": "Blocking",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "risk_level",
+        "title",
+        "description",
+        "recommendation"
+      ],
+      "title": "LegalFinding",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "review_scope": {
+      "minLength": 1,
+      "title": "Review Scope",
+      "type": "string"
+    },
+    "risk_assessment": {
+      "pattern": "^(low|medium|high|critical)$",
+      "title": "Risk Assessment",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/LegalFinding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "third_party_risks": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Third Party Risks",
+      "type": "array"
+    },
+    "required_user_facing_changes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Required User Facing Changes",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "review_scope",
+    "risk_assessment",
+    "summary"
+  ],
+  "title": "LegalReview",
+  "type": "object"
+}

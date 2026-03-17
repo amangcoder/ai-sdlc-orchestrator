@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 from orchestrator.models import (
     AgentRole,
@@ -402,6 +405,12 @@ def _resolve_role(agent_str: str, step_name: str) -> AgentRole:
     if role is not None:
         return role
 
+    # Try underscore form (e.g. "competitor researcher" -> "competitor_researcher")
+    underscore_form = normalized.replace(" ", "_")
+    role = _ROLE_MAP.get(underscore_form)
+    if role is not None:
+        return role
+
     # Substring match: find the longest key that's contained in agent_str (or vice versa)
     candidates: list[tuple[str, AgentRole]] = []
     for key, r in _ROLE_MAP.items():
@@ -483,6 +492,22 @@ def parse_custom_workflow(definition: str, name: str = "Custom Workflow") -> Wor
 
     if not steps:
         raise ValueError("No workflow steps found in definition")
+
+    # Validate artifact chain: strip inputs that no prior step produces.
+    # This prevents the common architect mistake of listing an artifact as
+    # both input and output of the first step (e.g. PM step with inputs: prd).
+    produced_so_far: set[str] = set()
+    for step in steps:
+        valid_inputs = [inp for inp in step.inputs if inp in produced_so_far]
+        if len(valid_inputs) != len(step.inputs):
+            stripped = set(step.inputs) - produced_so_far
+            logger.warning(
+                "Step '%s': stripped unavailable inputs %s (no prior step produces them)",
+                step.name,
+                sorted(stripped),
+            )
+            step.inputs = valid_inputs
+        produced_so_far.update(step.outputs)
 
     return WorkflowDefinition(
         name=name,

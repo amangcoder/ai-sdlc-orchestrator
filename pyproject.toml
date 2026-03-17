@@ -14,16 +14,34 @@ dependencies = [
     "jsonschema>=4.0",
     "rich>=13.0",
     "structlog>=24.0",
+    "watchfiles>=1.0",
 ]
 
 [project.optional-dependencies]
+monitoring = [
+    "opentelemetry-api>=1.20",
+    "opentelemetry-sdk>=1.20",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20",
+    "prometheus-client>=0.20",
+]
+dashboard = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "jinja2>=3.1",
+]
+all = [
+    "ai-sdlc-orchestrator[monitoring,dashboard]",
+]
 dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.23",
+    "httpx>=0.27",
 ]
 
 [project.scripts]
 orchestrate = "orchestrator.main:main"
+orchestrate-watchdog = "orchestrator.watchdog:main"
+orchestrate-dashboard = "orchestrator.dashboard.cli:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orchestrator"]

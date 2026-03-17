@@ -1,0 +1,92 @@
+{
+  "$defs": {
+    "ComplianceGap": {
+      "properties": {
+        "id": {
+          "pattern": "^GAP-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "regulation": {
+          "minLength": 1,
+          "title": "Regulation",
+          "type": "string"
+        },
+        "requirement": {
+          "minLength": 10,
+          "title": "Requirement",
+          "type": "string"
+        },
+        "current_state": {
+          "minLength": 10,
+          "title": "Current State",
+          "type": "string"
+        },
+        "risk_level": {
+          "pattern": "^(high|medium|low)$",
+          "title": "Risk Level",
+          "type": "string"
+        },
+        "remediation": {
+          "minLength": 10,
+          "title": "Remediation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "regulation",
+        "requirement",
+        "current_state",
+        "risk_level",
+        "remediation"
+      ],
+      "title": "ComplianceGap",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "applicable_regulations": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Applicable Regulations",
+      "type": "array"
+    },
+    "data_inventory": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Data Inventory",
+      "type": "array"
+    },
+    "compliance_gaps": {
+      "items": {
+        "$ref": "#/$defs/ComplianceGap"
+      },
+      "title": "Compliance Gaps",
+      "type": "array"
+    },
+    "controls_verified": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Controls Verified",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "applicable_regulations",
+    "summary"
+  ],
+  "title": "ComplianceReport",
+  "type": "object"
+}

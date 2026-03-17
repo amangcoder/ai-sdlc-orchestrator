@@ -1,0 +1,134 @@
+{
+  "$defs": {
+    "DebtItem": {
+      "properties": {
+        "id": {
+          "pattern": "^DEBT-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "category": {
+          "pattern": "^(complexity|coupling|test_gap|dependency|dead_code|inconsistency|security|performance)$",
+          "title": "Category",
+          "type": "string"
+        },
+        "quadrant": {
+          "pattern": "^(reckless_deliberate|reckless_inadvertent|prudent_deliberate|prudent_inadvertent)$",
+          "title": "Quadrant",
+          "type": "string"
+        },
+        "location": {
+          "minLength": 1,
+          "title": "Location",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "impact": {
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Impact",
+          "type": "integer"
+        },
+        "effort": {
+          "maximum": 5,
+          "minimum": 1,
+          "title": "Effort",
+          "type": "integer"
+        },
+        "priority": {
+          "minimum": 0,
+          "title": "Priority",
+          "type": "number"
+        },
+        "blast_radius": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Blast Radius",
+          "type": "array"
+        },
+        "test_coverage": {
+          "pattern": "^(low|medium|high)$",
+          "title": "Test Coverage",
+          "type": "string"
+        },
+        "recommendation": {
+          "minLength": 1,
+          "title": "Recommendation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "category",
+        "quadrant",
+        "location",
+        "description",
+        "impact",
+        "effort",
+        "priority",
+        "test_coverage",
+        "recommendation"
+      ],
+      "title": "DebtItem",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "summary": {
+      "minLength": 50,
+      "title": "Summary",
+      "type": "string"
+    },
+    "health_score": {
+      "maximum": 10,
+      "minimum": 1,
+      "title": "Health Score",
+      "type": "integer"
+    },
+    "debt_items": {
+      "items": {
+        "$ref": "#/$defs/DebtItem"
+      },
+      "title": "Debt Items",
+      "type": "array"
+    },
+    "recommended_order": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Recommended Order",
+      "type": "array"
+    },
+    "quick_wins": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Quick Wins",
+      "type": "array"
+    },
+    "do_not_touch": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Do Not Touch",
+      "type": "array"
+    }
+  },
+  "required": [
+    "summary",
+    "health_score"
+  ],
+  "title": "TechDebtInventory",
+  "type": "object"
+}

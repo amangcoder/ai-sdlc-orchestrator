@@ -84,8 +84,15 @@ class TestNewPromptBuilders:
 
 
 class TestPromptBuilderRegistry:
-    def test_all_18_roles_have_builders(self):
+    # Debate roles (deep_researcher, brainstormer, mediator) are invoked via
+    # the debate engine with dynamically constructed prompts, not via the
+    # standard PROMPT_BUILDERS registry.
+    _DEBATE_ROLES = {AgentRole.DEEP_RESEARCHER, AgentRole.BRAINSTORMER, AgentRole.MEDIATOR}
+
+    def test_all_non_debate_roles_have_builders(self):
         for role in AgentRole:
+            if role in self._DEBATE_ROLES:
+                continue
             assert role in PROMPT_BUILDERS, f"Missing prompt builder for {role}"
 
     def test_builders_are_callable(self):

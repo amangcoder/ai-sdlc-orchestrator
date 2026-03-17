@@ -1,0 +1,168 @@
+{
+  "$defs": {
+    "UXAlternateFlow": {
+      "properties": {
+        "trigger": {
+          "minLength": 1,
+          "title": "Trigger",
+          "type": "string"
+        },
+        "response": {
+          "minLength": 1,
+          "title": "Response",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trigger",
+        "response"
+      ],
+      "title": "UXAlternateFlow",
+      "type": "object"
+    },
+    "UXComponent": {
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "pattern": "^(container|presentational|shared)$",
+          "title": "Type",
+          "type": "string"
+        },
+        "responsibility": {
+          "minLength": 1,
+          "title": "Responsibility",
+          "type": "string"
+        },
+        "states": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "States",
+          "type": "object"
+        },
+        "children": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Children",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "responsibility"
+      ],
+      "title": "UXComponent",
+      "type": "object"
+    },
+    "UXFlow": {
+      "properties": {
+        "id": {
+          "pattern": "^FLOW-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "entry_point": {
+          "minLength": 1,
+          "title": "Entry Point",
+          "type": "string"
+        },
+        "requirements": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Requirements",
+          "type": "array"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/UXFlowStep"
+          },
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        },
+        "alternate_flows": {
+          "items": {
+            "$ref": "#/$defs/UXAlternateFlow"
+          },
+          "title": "Alternate Flows",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "entry_point",
+        "steps"
+      ],
+      "title": "UXFlow",
+      "type": "object"
+    },
+    "UXFlowStep": {
+      "properties": {
+        "step": {
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "action": {
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "ui_response": {
+          "minLength": 1,
+          "title": "Ui Response",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "action",
+        "ui_response"
+      ],
+      "title": "UXFlowStep",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "flows": {
+      "items": {
+        "$ref": "#/$defs/UXFlow"
+      },
+      "minItems": 1,
+      "title": "Flows",
+      "type": "array"
+    },
+    "components": {
+      "items": {
+        "$ref": "#/$defs/UXComponent"
+      },
+      "title": "Components",
+      "type": "array"
+    },
+    "responsive_behavior": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Responsive Behavior",
+      "type": "object"
+    }
+  },
+  "required": [
+    "flows"
+  ],
+  "title": "UXSpec",
+  "type": "object"
+}

@@ -1,0 +1,66 @@
+{
+  "properties": {
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    },
+    "version_bump": {
+      "pattern": "^(major|minor|patch)$",
+      "title": "Version Bump",
+      "type": "string"
+    },
+    "release_readiness": {
+      "additionalProperties": true,
+      "title": "Release Readiness",
+      "type": "object"
+    },
+    "changelog": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Changelog",
+      "type": "object"
+    },
+    "release_notes": {
+      "minLength": 20,
+      "title": "Release Notes",
+      "type": "string"
+    },
+    "migration_guide": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Migration Guide"
+    },
+    "rollout_plan": {
+      "additionalProperties": true,
+      "title": "Rollout Plan",
+      "type": "object"
+    },
+    "feature_flags": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Feature Flags",
+      "type": "array"
+    }
+  },
+  "required": [
+    "version",
+    "version_bump",
+    "release_notes"
+  ],
+  "title": "ReleasePlan",
+  "type": "object"
+}

@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DebateConclusion",
+  "description": "Mediator's final synthesis of a multi-agent debate",
+  "type": "object",
+  "required": ["resolved_requirements", "recommended_scope", "recommended_priorities", "overall_confidence", "rounds_conducted", "total_positions_evaluated"],
+  "properties": {
+    "resolved_requirements": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["requirement", "rationale", "confidence"],
+        "properties": {
+          "requirement": { "type": "string", "minLength": 1 },
+          "rationale": { "type": "string", "minLength": 1 },
+          "source_agents": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          },
+          "confidence": { "type": "integer", "minimum": 0, "maximum": 100 }
+        }
+      }
+    },
+    "unresolved_tensions": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["tension", "side_a", "side_b", "mediator_recommendation"],
+        "properties": {
+          "tension": { "type": "string", "minLength": 1 },
+          "side_a": { "type": "string", "minLength": 1 },
+          "side_b": { "type": "string", "minLength": 1 },
+          "mediator_recommendation": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "risk_assessment": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["risk", "severity", "mitigation"],
+        "properties": {
+          "risk": { "type": "string", "minLength": 1 },
+          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+          "mitigation": { "type": "string", "minLength": 1 },
+          "raised_by": {
+            "type": "array",
+            "items": { "type": "string" },
+            "default": []
+          }
+        }
+      }
+    },
+    "recommended_scope": {
+      "type": "string",
+      "minLength": 20,
+      "description": "What should be built (scoped and actionable)"
+    },
+    "recommended_priorities": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Ordered priority list"
+    },
+    "dissenting_opinions": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "object",
+        "required": ["agent_id", "dissent", "mediator_note"],
+        "properties": {
+          "agent_id": { "type": "string", "minLength": 1 },
+          "dissent": { "type": "string", "minLength": 1 },
+          "mediator_note": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "overall_confidence": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "rounds_conducted": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "total_positions_evaluated": {
+      "type": "integer",
+      "minimum": 1
+    }
+  },
+  "additionalProperties": false
+}

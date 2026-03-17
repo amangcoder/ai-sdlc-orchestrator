@@ -1,0 +1,167 @@
+{
+  "$defs": {
+    "FrictionPoint": {
+      "properties": {
+        "id": {
+          "pattern": "^UE-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "severity": {
+          "pattern": "^(blocker|major|minor)$",
+          "title": "Severity",
+          "type": "string"
+        },
+        "location": {
+          "minLength": 1,
+          "title": "Location",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "user_quote": {
+          "minLength": 1,
+          "title": "User Quote",
+          "type": "string"
+        },
+        "suggestion": {
+          "minLength": 1,
+          "title": "Suggestion",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "severity",
+        "location",
+        "description",
+        "user_quote",
+        "suggestion"
+      ],
+      "title": "FrictionPoint",
+      "type": "object"
+    },
+    "JourneyStep": {
+      "properties": {
+        "step": {
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "action": {
+          "minLength": 1,
+          "title": "Action",
+          "type": "string"
+        },
+        "expectation": {
+          "minLength": 1,
+          "title": "Expectation",
+          "type": "string"
+        },
+        "actual": {
+          "minLength": 1,
+          "title": "Actual",
+          "type": "string"
+        },
+        "reaction": {
+          "pattern": "^(confused|frustrated|neutral|satisfied|delighted)$",
+          "title": "Reaction",
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "action",
+        "expectation",
+        "actual",
+        "reaction"
+      ],
+      "title": "JourneyStep",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "personas_evaluated": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "minItems": 1,
+      "title": "Personas Evaluated",
+      "type": "array"
+    },
+    "discovery": {
+      "additionalProperties": true,
+      "title": "Discovery",
+      "type": "object"
+    },
+    "journey_walkthrough": {
+      "items": {
+        "$ref": "#/$defs/JourneyStep"
+      },
+      "minItems": 1,
+      "title": "Journey Walkthrough",
+      "type": "array"
+    },
+    "friction_points": {
+      "items": {
+        "$ref": "#/$defs/FrictionPoint"
+      },
+      "title": "Friction Points",
+      "type": "array"
+    },
+    "confusion_points": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Confusion Points",
+      "type": "array"
+    },
+    "delight_moments": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Delight Moments",
+      "type": "array"
+    },
+    "unmet_expectations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Unmet Expectations",
+      "type": "array"
+    },
+    "task_completion": {
+      "additionalProperties": true,
+      "title": "Task Completion",
+      "type": "object"
+    },
+    "verdict": {
+      "pattern": "^(ready|needs_work|not_usable)$",
+      "title": "Verdict",
+      "type": "string"
+    },
+    "summary": {
+      "minLength": 30,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "personas_evaluated",
+    "journey_walkthrough",
+    "verdict",
+    "summary"
+  ],
+  "title": "EndUserEvaluation",
+  "type": "object"
+}
