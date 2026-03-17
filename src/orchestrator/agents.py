@@ -320,6 +320,13 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
         else:
             system_prompt = content
 
+    # Inject shared MCP tool documentation (if present) between the
+    # autonomous preamble and the role-specific system prompt.
+    tools_file = AGENTS_DIR / "_tools.md"
+    tools_section = ""
+    if tools_file.exists():
+        tools_section = tools_file.read_text().strip() + "\n\n"
+
     # Prepend a no-clarification directive so the agent never pauses to ask questions
     autonomous_prefix = (
         "You are operating autonomously in a pipeline. "
@@ -332,7 +339,7 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
         "NEVER use EnterPlanMode or ExitPlanMode tools. You are not in plan mode — you are executing. "
         "Do NOT write your output to a plan file. Write it to the exact artifact path specified in the instructions.\n\n"
     )
-    full_system_prompt = (autonomous_prefix + system_prompt) if system_prompt else autonomous_prefix
+    full_system_prompt = autonomous_prefix + tools_section + (system_prompt or "")
 
     # Use project root as cwd so the agent can explore the actual codebase.
     # Artifact paths in the prompt are absolute, so cwd only affects exploration.

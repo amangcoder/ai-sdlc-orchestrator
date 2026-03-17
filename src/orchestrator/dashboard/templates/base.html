@@ -13,6 +13,7 @@
     <a href="/runs" {% if page_title == "All Runs" %}class="active"{% endif %}>Runs</a>
     <a href="/metrics" {% if page_title == "Metrics" %}class="active"{% endif %}>Metrics</a>
     <a href="/alerts" {% if page_title == "Alerts" %}class="active"{% endif %}>Alerts</a>
+    <a href="/new-run" {% if page_title == "New Run" %}class="active"{% endif %} style="color: var(--accent); font-weight: 600;">New Run</a>
   </nav>
   <div class="container">
     {% block content %}{% endblock %}

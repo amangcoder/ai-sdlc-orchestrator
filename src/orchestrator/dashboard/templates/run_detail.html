@@ -11,6 +11,12 @@
 </h1>
 <p style="color: var(--text-dim); margin-bottom: 20px;">{{ run.feature_request }}</p>
 
+{% if run.status in ("failed", "running") %}
+<div style="margin-bottom: 12px;">
+  <button class="btn btn-primary btn-small" onclick="resumeRun('{{ run.run_id }}')">Resume This Run</button>
+</div>
+{% endif %}
+
 <div class="stats">
   <div class="stat">
     <div class="stat-value">${{ "%.4f"|format(run.total_cost_usd) }}</div>

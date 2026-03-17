@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>New Run</h1>
+
+{% if active_runs %}
+<div class="card" style="border-color: var(--yellow);">
+  <h2>Active Run</h2>
+  <p>A run is currently in progress:
+    <a href="/runs/{{ active_runs[0] }}/live">{{ active_runs[0][:8] }}...</a>
+    <button class="btn btn-danger btn-small" onclick="cancelRun('{{ active_runs[0] }}')">Cancel</button>
+  </p>
+</div>
+{% endif %}
+
+<form id="new-run-form" class="card">
+  <div class="form-group">
+    <label for="feature_request">Feature Request</label>
+    <textarea id="feature_request" name="feature_request" rows="5"
+              placeholder="Describe what you want to build..." required
+              maxlength="10000"></textarea>
+    <span class="form-hint">Max 10,000 characters. Be specific about what you want.</span>
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label for="workflow_type">Workflow Type</label>
+      <select id="workflow_type" name="workflow_type">
+        {% for wt in workflow_types %}
+        <option value="{{ wt }}" {% if wt == "feature_development" %}selected{% endif %}>
+          {{ wt.replace('_', ' ').title() }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="form-group">
+      <label for="max_budget_usd">Budget (USD)</label>
+      <input type="number" id="max_budget_usd" name="max_budget_usd"
+             value="50" min="1" max="500" step="1">
+    </div>
+
+    <div class="form-group">
+      <label for="max_concurrent_agents">Max Concurrent Agents</label>
+      <input type="number" id="max_concurrent_agents" name="max_concurrent_agents"
+             value="0" min="0" max="100">
+      <span class="form-hint">0 = use config default</span>
+    </div>
+  </div>
+
+  <div class="form-row">
+    <label class="checkbox">
+      <input type="checkbox" name="debate"> Enable Debate Phase
+    </label>
+    <label class="checkbox">
+      <input type="checkbox" name="knowledge" checked> Knowledge Integration
+    </label>
+    <label class="checkbox">
+      <input type="checkbox" name="enhanced_perception"> Enhanced Perception
+    </label>
+    <label class="checkbox">
+      <input type="checkbox" name="dry_run"> Dry Run
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary" id="submit-btn"
+            {% if active_runs %}disabled{% endif %}>
+      Start Run
+    </button>
+    <span id="submit-status"></span>
+  </div>
+</form>
+
+{% if resumable_runs %}
+<div class="card">
+  <h2>Resume a Run</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Run ID</th>
+        <th>Feature Request</th>
+        <th>Status</th>
+        <th>Cost</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in resumable_runs %}
+      <tr>
+        <td><a href="/runs/{{ run.run_id }}">{{ run.run_id[:8] }}...</a></td>
+        <td>{{ run.feature_request[:60] }}</td>
+        <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
+        <td>${{ "%.4f"|format(run.total_cost_usd) }}</td>
+        <td>
+          <button class="btn btn-small" onclick="resumeRun('{{ run.run_id }}')"
+                  {% if active_runs %}disabled{% endif %}>Resume</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

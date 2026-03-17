@@ -23,6 +23,10 @@ def main() -> None:
         "--host", type=str, default="127.0.0.1",
         help="Host to bind to (default: 127.0.0.1)",
     )
+    parser.add_argument(
+        "--config", type=Path, default=None, metavar="PATH",
+        help="Path to orchestrator config YAML file",
+    )
     args = parser.parse_args()
 
     try:
@@ -38,7 +42,7 @@ def main() -> None:
         print(f"Workspace directory not found: {workspace}")
         raise SystemExit(1)
 
-    app = create_app(workspace)
+    app = create_app(workspace, config_path=args.config)
     print(f"Dashboard: http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

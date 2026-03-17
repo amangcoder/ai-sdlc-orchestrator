@@ -42,8 +42,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.462Z",
-    "contentHash": "cd6aabfaf386ec4f68273fcfdf53e4cdbd0d95a7fc0818ed78aa851c3cf52761"
+    "lastUpdated": "2026-03-17T01:40:42.306Z",
+    "contentHash": "7c32c51707734985084ff024870ea8ebd3998f47f627a00b082b7b38155fa381"
   },
   "src/orchestrator/codenames.py": {
     "file": "src/orchestrator/codenames.py",
@@ -99,12 +99,17 @@
       "run_live_page",
       "metrics_page",
       "alerts_page",
+      "new_run_page",
       "api_runs",
+      "api_active_runs",
       "api_run_detail",
       "api_run_events",
       "api_run_timeline",
       "api_metrics",
       "api_alerts",
+      "api_start_run",
+      "api_cancel_run",
+      "api_resume_run",
       "sse_stream",
       "event_generator",
       "healthz"
@@ -121,12 +126,13 @@
       "fastapi.responses",
       "fastapi.staticfiles",
       "fastapi.templating",
-      "orchestrator.dashboard.data"
+      "orchestrator.dashboard.data",
+      "orchestrator.dashboard.runner"
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.463Z",
-    "contentHash": "1a6e8a3342aa89f87cd0bbea1511275ca799ab8c5092ffe04b7f427e6551590b"
+    "lastUpdated": "2026-03-17T02:15:25.445Z",
+    "contentHash": "29dfe1e9cb02855cd415528e732526e128c806c3bbd33291c1b6da22cfb34f77"
   },
   "src/orchestrator/dashboard/cli.py": {
     "file": "src/orchestrator/dashboard/cli.py",
@@ -141,8 +147,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.141Z",
-    "contentHash": "a2e9c0f70ab1baa006894e5be47b0513cc090d5ec51acccbfa61239066d6ec1d"
+    "lastUpdated": "2026-03-17T01:40:42.308Z",
+    "contentHash": "ed2ec7306007dbddab684efe84f62d913677dc31033dcc9af6a6d2b3354de0f1"
   },
   "src/orchestrator/dashboard/data.py": {
     "file": "src/orchestrator/dashboard/data.py",
@@ -225,8 +231,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.463Z",
-    "contentHash": "6d1a5e846cbc3d2671340c87213a1c8d144336b3b5f3358003f6adf338000da2"
+    "lastUpdated": "2026-03-17T01:40:42.308Z",
+    "contentHash": "4db97bf9447761dee961cd267470ebf8c98653ff32e462b7c3eb8f01ce851125"
   },
   "src/orchestrator/interruption.py": {
     "file": "src/orchestrator/interruption.py",
@@ -290,8 +296,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "3ccce2cfd77c9708d0775236ee57eb1671ad0561e0758d9b948a29b6be1f8032"
+    "lastUpdated": "2026-03-17T01:40:42.308Z",
+    "contentHash": "53c85d0f5c644f67a59de692a414ff4eda9c52108f654ae3a716d582c7b6f7f1"
   },
   "src/orchestrator/main.py": {
     "file": "src/orchestrator/main.py",
@@ -425,8 +431,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "79b23a079ea2c6e97a06bcd4369950b59906134288e8ffadd5d7be73e1385d3c"
+    "lastUpdated": "2026-03-17T01:40:42.308Z",
+    "contentHash": "026329a433070ef336dbde839c6a741f0714f7605a25c0f3596cd090ecc71745"
   },
   "src/orchestrator/monitoring/__init__.py": {
     "file": "src/orchestrator/monitoring/__init__.py",
@@ -784,8 +790,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "bd3760d23b90383d52893bb110a9a07a9a3eff12b9357fdf88d6059025866787"
+    "lastUpdated": "2026-03-17T01:40:42.309Z",
+    "contentHash": "e37dd46c2d4d425255caf6219ec0077444c62e6f1bcf73ee595fad3d3976ab19"
   },
   "src/orchestrator/progress.py": {
     "file": "src/orchestrator/progress.py",
@@ -861,8 +867,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "f69d19a65886fee9eaeaef0000560804d751f4fdf1db99cc2ba15bcbbd3efbcb"
+    "lastUpdated": "2026-03-17T01:40:42.309Z",
+    "contentHash": "0a7565cdc91345754a850cbeba1217c6f01dfb1e055c0b467eaac27c075c0d7c"
   },
   "src/orchestrator/spawning.py": {
     "file": "src/orchestrator/spawning.py",
@@ -965,8 +971,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.465Z",
-    "contentHash": "03e8a2192c7baf6edad32f559feac6c3f4316eb742a111f6365aba76df30fef0"
+    "lastUpdated": "2026-03-17T02:15:25.446Z",
+    "contentHash": "fbe7669d4688438a542a8c1d1496ee514c0e0ba173728f2b78b64d8399776fa5"
   },
   "src/orchestrator/workflows.py": {
     "file": "src/orchestrator/workflows.py",
@@ -977,14 +983,15 @@
     ],
     "dependencies": [
       "__future__",
+      "logging",
       "re",
       "typing",
       "orchestrator.models"
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "df06d78a932a62b0450ab03d443102ebf47f17a7b07a193902d27dd9b117b637"
+    "lastUpdated": "2026-03-17T02:15:25.446Z",
+    "contentHash": "b656617258761375b967ed4b301a954778d8fc9d6e68bcb573bc170f87f72b7c"
   },
   "tests/conftest.py": {
     "file": "tests/conftest.py",
@@ -1128,7 +1135,7 @@
       "test_backend_engineer_prompt",
       "test_security_engineer_prompt",
       "TestPromptBuilderRegistry",
-      "test_all_18_roles_have_builders",
+      "test_all_non_debate_roles_have_builders",
       "test_builders_are_callable",
       "TestGetEngineerTasks",
       "test_empty_without_tasks_json",
@@ -1148,8 +1155,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.143Z",
-    "contentHash": "7522f37c446af2c7844a2b00b71fbdfaee5ce81c6ebb7bdd52658850c550d660"
+    "lastUpdated": "2026-03-17T01:40:42.309Z",
+    "contentHash": "9238aa6dcabf0e5af62689c1fd18758f8fb4b9db9ce45fa1da4f108b99131bf9"
   },
   "tests/test_roles.py": {
     "file": "tests/test_roles.py",
@@ -1206,8 +1213,8 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.143Z",
-    "contentHash": "7521bcdd0e5358c83cd160de62850b44f16ff134b2f9defacd8defdb58198d9d"
+    "lastUpdated": "2026-03-17T01:40:42.309Z",
+    "contentHash": "353638601f3fbf21bb9a3ebaeafb6f86c7f2d1e8b7ce4f5cb1c07ebe914510b5"
   },
   "tests/test_workflows.py": {
     "file": "tests/test_workflows.py",
@@ -1325,5 +1332,46 @@
     "throws": [],
     "lastUpdated": "2026-03-16T14:29:52.464Z",
     "contentHash": "0cf1b93a9287a02a98e0a4859b12207f35cfd4609cae2033980c757c0b6f830e"
+  },
+  "src/orchestrator/dashboard/runner.py": {
+    "file": "src/orchestrator/dashboard/runner.py",
+    "purpose": "runner module",
+    "exports": [
+      "RunRequest",
+      "RunTracker",
+      "__init__",
+      "start_run",
+      "cancel_run",
+      "is_active",
+      "active_run_ids",
+      "get_error"
+    ],
+    "dependencies": [
+      "__future__",
+      "asyncio",
+      "logging",
+      "time",
+      "uuid",
+      "pathlib",
+      "typing",
+      "pydantic",
+      "orchestrator.config",
+      "orchestrator.main",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T01:40:42.308Z",
+    "contentHash": "6d8adc03aa713cb9ab2b27c2a3ff2f1e1b3eaf87ee2381c9623d6d2a8894108c"
+  },
+  "src/orchestrator/dashboard/static/app.js": {
+    "file": "src/orchestrator/dashboard/static/app.js",
+    "purpose": "app module",
+    "exports": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T01:40:42.309Z",
+    "contentHash": "06adfbe02ec74560ba4495fb1726dcacfc76d89f172586ed18910d070926e43a"
   }
 }

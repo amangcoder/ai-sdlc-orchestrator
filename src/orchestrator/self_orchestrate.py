@@ -55,6 +55,8 @@ def _discover_agents() -> str:
     agents: list[tuple[str, str]] = []  # (file_stem, display_name)
     for md_file in sorted(_AGENTS_DIR.glob("*.md")):
         stem = md_file.stem
+        if stem.startswith("_"):
+            continue  # Skip shared includes (e.g., _tools.md)
         content = md_file.read_text(errors="replace")
 
         # Extract name from YAML frontmatter

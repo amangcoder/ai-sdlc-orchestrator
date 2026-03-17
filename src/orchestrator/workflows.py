@@ -434,12 +434,34 @@ def _parse_field(body: str, key: str) -> str:
     return m.group(1).strip() if m else ""
 
 
+_KNOWN_FIELDS = frozenset({
+    "agent", "inputs", "outputs", "next", "parallel", "on_fail", "gate", "max_retries",
+})
+
+
 def _parse_list_field(body: str, key: str) -> list[str]:
-    """Extract a comma-separated list field."""
+    """Extract a comma-separated list field.
+
+    Filters out items that look like separate field definitions
+    (e.g. ``next: QA Execution``) which can end up on the same line
+    when LLMs generate malformed workflow definitions.
+    """
     raw = _parse_field(body, key)
     if not raw:
         return []
-    return [item.strip() for item in raw.split(",") if item.strip()]
+    items: list[str] = []
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        # If the item looks like "fieldname: value", it's a separate field
+        # that was accidentally placed on the same comma-separated line.
+        if ":" in item:
+            field_candidate = item.split(":", 1)[0].strip().lower()
+            if field_candidate in _KNOWN_FIELDS:
+                continue
+        items.append(item)
+    return items
 
 
 def _parse_bool_field(body: str, key: str) -> bool:
@@ -492,6 +514,37 @@ def parse_custom_workflow(definition: str, name: str = "Custom Workflow") -> Wor
 
     if not steps:
         raise ValueError("No workflow steps found in definition")
+
+    # Strip schema-validated artifacts from roles that don't own them.
+    # LLMs generating custom workflows often assign "review" as an output
+    # of the Implementation step, but that artifact belongs to a dedicated
+    # Code Review step.  Implementation agents may write a self-review
+    # file that doesn't conform to the review schema, causing validation
+    # failures.
+    # Map: artifact name → set of roles that legitimately produce it.
+    # Any other role that claims to produce these artifacts gets stripped.
+    _ARTIFACT_OWNERS: dict[str, frozenset[AgentRole]] = {
+        "review": frozenset({
+            AgentRole.BACKEND_CODE_REVIEWER,
+            AgentRole.FRONTEND_CODE_REVIEWER,
+        }),
+        "qa_report": frozenset({
+            AgentRole.QA_PLANNER,
+            AgentRole.QA_EXECUTOR,
+        }),
+    }
+    for step in steps:
+        stripped_outputs: list[str] = []
+        for o in step.outputs:
+            owners = _ARTIFACT_OWNERS.get(o)
+            if owners is not None and step.agent_role not in owners:
+                stripped_outputs.append(o)
+        if stripped_outputs:
+            logger.warning(
+                "Step '%s': stripped outputs %s — role %s is not an owner of these artifacts",
+                step.name, stripped_outputs, step.agent_role.value,
+            )
+            step.outputs = [o for o in step.outputs if o not in stripped_outputs]
 
     # Validate artifact chain: strip inputs that no prior step produces.
     # This prevents the common architect mistake of listing an artifact as

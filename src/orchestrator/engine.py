@@ -112,6 +112,7 @@ class OrchestratorEngine:
         resume_run_id: str | None = None,
         workflow_type: WorkflowType | None = None,
         custom_workflow: str | None = None,
+        run_id: str | None = None,
     ) -> RunState:
         """Execute the orchestration pipeline."""
         self.project_root = Path.cwd()
@@ -133,7 +134,7 @@ class OrchestratorEngine:
             logger.info(f"Resuming run {state.run_id} — skipping completed phases: "
                         f"{[p for p, s in state.phases.items() if s.status == PhaseStatus.COMPLETED]}")
         else:
-            run_id = uuid.uuid4().hex[:12]
+            run_id = run_id or uuid.uuid4().hex[:12]
             wf_type = workflow_type or self.config.default_workflow
             state = RunState(
                 run_id=run_id,

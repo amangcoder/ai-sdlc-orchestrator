@@ -14,6 +14,7 @@
     "src/orchestrator/dashboard/app.py": [],
     "src/orchestrator/dashboard/cli.py": [],
     "src/orchestrator/dashboard/data.py": [],
+    "src/orchestrator/dashboard/runner.py": [],
     "src/orchestrator/debate.py": [],
     "src/orchestrator/engine.py": [],
     "src/orchestrator/generate_schemas.py": [],
@@ -50,6 +51,7 @@
     "tests/test_phases.py": [],
     "tests/test_roles.py": [],
     "tests/test_validation.py": [],
-    "tests/test_workflows.py": []
+    "tests/test_workflows.py": [],
+    "src/orchestrator/dashboard/static/app.js": []
   }
 }

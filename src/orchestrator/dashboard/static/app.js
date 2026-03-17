@@ -150,3 +150,86 @@ function autoRefresh(interval) {
     if (active) { location.reload(); }
   }, interval);
 }
+
+// --- New Run form submission ---
+
+function initNewRunForm() {
+  const form = document.getElementById('new-run-form');
+  if (!form) return;
+
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    const btn = document.getElementById('submit-btn');
+    const status = document.getElementById('submit-status');
+    btn.disabled = true;
+    status.textContent = 'Starting run...';
+    status.style.color = 'var(--text-dim)';
+
+    const body = {
+      feature_request: form.querySelector('[name="feature_request"]').value,
+      workflow_type: form.querySelector('[name="workflow_type"]').value,
+      max_budget_usd: parseFloat(form.querySelector('[name="max_budget_usd"]').value) || 50,
+      max_concurrent_agents: parseInt(form.querySelector('[name="max_concurrent_agents"]').value) || 0,
+      debate: form.querySelector('[name="debate"]').checked,
+      knowledge: form.querySelector('[name="knowledge"]').checked,
+      enhanced_perception: form.querySelector('[name="enhanced_perception"]').checked,
+      dry_run: form.querySelector('[name="dry_run"]').checked,
+    };
+
+    try {
+      const resp = await fetch('/api/runs', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body),
+      });
+      const data = await resp.json();
+      if (resp.ok) {
+        window.location.href = data.redirect;
+      } else {
+        status.textContent = 'Error: ' + (data.error || 'Unknown error');
+        status.style.color = 'var(--red)';
+        btn.disabled = false;
+      }
+    } catch (err) {
+      status.textContent = 'Network error: ' + err.message;
+      status.style.color = 'var(--red)';
+      btn.disabled = false;
+    }
+  });
+}
+
+async function cancelRun(runId) {
+  if (!confirm('Cancel run ' + runId.substring(0, 8) + '...? It will stop at the next safe point and can be resumed later.')) {
+    return;
+  }
+  try {
+    const resp = await fetch('/api/runs/' + runId + '/cancel', { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok) {
+      location.reload();
+    } else {
+      alert('Failed to cancel: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Network error: ' + err.message);
+  }
+}
+
+async function resumeRun(runId) {
+  if (!confirm('Resume run ' + runId.substring(0, 8) + '...?')) {
+    return;
+  }
+  try {
+    const resp = await fetch('/api/runs/' + runId + '/resume', { method: 'POST' });
+    const data = await resp.json();
+    if (resp.ok) {
+      window.location.href = data.redirect;
+    } else {
+      alert('Failed to resume: ' + (data.error || 'Unknown error'));
+    }
+  } catch (err) {
+    alert('Network error: ' + err.message);
+  }
+}
+
+document.addEventListener('DOMContentLoaded', initNewRunForm);

@@ -274,6 +274,19 @@ class WorkflowEngine:
                     self.state.phases[phase_key].error = f"Artifact validation: {validation.errors}"
                     return "failed"
 
+            # If an implementation step wrote a review.json that isn't in its
+            # declared outputs, rename it so it doesn't collide with the
+            # downstream Code Review step's artifact.
+            if "review" not in step.outputs and step.parallel:
+                stale_review = workspace / "artifacts" / "review.json"
+                if stale_review.exists():
+                    dest = workspace / "artifacts" / f"review-impl-{step.name.lower().replace(' ', '_')}.json"
+                    stale_review.rename(dest)
+                    logger.info(
+                        "Renamed stale review.json written by implementation step '%s' → %s",
+                        step.name, dest.name,
+                    )
+
             self.state.phases[phase_key].status = PhaseStatus.COMPLETED
             self.state.completed_steps.append(step.name)
             # Update cumulative context so downstream steps see this step's decisions

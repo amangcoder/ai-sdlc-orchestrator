@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from orchestrator.dashboard.data import RunDataReader
+from orchestrator.dashboard.runner import RunRequest, RunTracker
 
 STATIC_DIR = Path(__file__).parent / "static"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -30,9 +31,10 @@ DASHBOARD_TOKEN = os.environ.get("ORCHESTRATOR_DASHBOARD_TOKEN")
 _active_sse_connections = 0
 
 
-def create_app(workspace_dir: Path) -> FastAPI:
+def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
     app = FastAPI(title="Orchestrator Dashboard", version="0.1.0")
     reader = RunDataReader(workspace_dir)
+    runner = RunTracker(workspace_dir, config_path)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -104,6 +106,22 @@ def create_app(workspace_dir: Path) -> FastAPI:
             "page_title": "Alerts",
         })
 
+    @app.get("/new-run", response_class=HTMLResponse)
+    async def new_run_page(request: Request):
+        from orchestrator.models import WorkflowType
+        workflow_types = [wt.value for wt in WorkflowType if wt != WorkflowType.CUSTOM]
+        active_runs = runner.active_run_ids()
+        all_runs = reader.list_runs()
+        active_set = set(active_runs)
+        resumable = [r for r in all_runs if r.status != "completed" and r.run_id not in active_set]
+        return templates.TemplateResponse("new_run.html", {
+            "request": request,
+            "workflow_types": workflow_types,
+            "active_runs": active_runs,
+            "resumable_runs": resumable,
+            "page_title": "New Run",
+        })
+
     # --- JSON API ---
 
     @app.get("/api/runs")
@@ -123,6 +141,10 @@ def create_app(workspace_dir: Path) -> FastAPI:
             }
             for r in runs
         ]
+
+    @app.get("/api/runs/active")
+    async def api_active_runs():
+        return {"active": runner.active_run_ids()}
 
     @app.get("/api/runs/{run_id}")
     async def api_run_detail(run_id: str):
@@ -158,6 +180,53 @@ def create_app(workspace_dir: Path) -> FastAPI:
     @app.get("/api/alerts")
     async def api_alerts(limit: int = 100):
         return reader.get_alert_history(limit)
+
+    @app.post("/api/runs")
+    async def api_start_run(body: RunRequest):
+        try:
+            run_id = await runner.start_run(body)
+            return {"run_id": run_id, "redirect": f"/runs/{run_id}/live"}
+        except ValueError as e:
+            return JSONResponse(status_code=409, content={"error": str(e)})
+        except Exception as e:
+            return JSONResponse(status_code=500, content={"error": str(e)})
+
+    @app.post("/api/runs/{run_id}/cancel")
+    async def api_cancel_run(run_id: str):
+        cancelled = await runner.cancel_run(run_id)
+        if cancelled:
+            return {"status": "cancelling", "run_id": run_id}
+        return JSONResponse(status_code=404, content={"error": "Run not active in this process"})
+
+    @app.post("/api/runs/{run_id}/resume")
+    async def api_resume_run(run_id: str):
+        state_path = workspace_dir / f"state-{run_id}.json"
+        if not state_path.exists():
+            # Try generic state.json
+            generic = workspace_dir / "state.json"
+            if generic.exists():
+                try:
+                    data = json.loads(generic.read_text())
+                    if data.get("run_id") != run_id:
+                        return JSONResponse(status_code=404, content={"error": "No state file for this run"})
+                except (json.JSONDecodeError, OSError):
+                    return JSONResponse(status_code=404, content={"error": "No state file for this run"})
+            else:
+                return JSONResponse(status_code=404, content={"error": "No state file for this run"})
+            state_data = data
+        else:
+            state_data = json.loads(state_path.read_text())
+
+        req = RunRequest(
+            feature_request=state_data.get("feature_request", ""),
+            resume_run_id=run_id,
+            workflow_type=state_data.get("workflow_type", "feature_development"),
+        )
+        try:
+            new_run_id = await runner.start_run(req)
+            return {"run_id": new_run_id, "redirect": f"/runs/{new_run_id}/live"}
+        except ValueError as e:
+            return JSONResponse(status_code=409, content={"error": str(e)})
 
     # --- SSE for live updates ---
 
