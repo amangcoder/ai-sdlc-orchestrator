@@ -8,6 +8,15 @@ checklist_verify: false            # use --no-checklist-verify to skip post-writ
 tech_stack_confirmation: true      # pause after Architecture to review proposed tech stack before implementation
 max_concurrent_agents: 100         # max parallel agents; set to 2-4 on low-resource machines
 
+# --- Exploration depth (how much codebase exploration agents perform) ---
+exploration:
+  exploration_depth: normal          # none | minimal | normal | deep
+                                     #   none:    skip exploration — rely on artifacts and MCP overview only
+                                     #   minimal: MCP overview + targeted reads (auto for QA/reviewers/auditors)
+                                     #   normal:  MCP drill-down or ~10 tool calls (default)
+                                     #   deep:    thorough — for architects and principal engineers
+  max_explore_calls: 0               # hard cap on exploration tool calls (0 = unlimited)
+
 # --- Dynamic agent spawning (agents can request sub-agents mid-execution) ---
 spawn:
   enabled: true                    # allow agents to spawn sub-agents dynamically
@@ -34,6 +43,7 @@ debate:
 knowledge:
   enabled: true                      # set to false to disable knowledge integration
   aicoder_path: ""                   # absolute path to AICoder installation; empty = auto-detect
+  richness: rich                     # minimal | standard | rich — depth of knowledge extraction
   build_timeout_seconds: 60          # max time for knowledge build
   skip_if_fresh_minutes: 5           # skip rebuild if .knowledge/ was built within this many minutes
   inject_brief: true                 # inject codebase brief into agent prompts

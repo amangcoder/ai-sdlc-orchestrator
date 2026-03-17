@@ -39,4 +39,5 @@ workspace/*.json
 # OS
 Thumbs.db
 
-.knwoledge
+.knowledge/
+workspace/

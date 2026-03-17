@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import jsonschema
 from pydantic import ValidationError
@@ -27,12 +29,41 @@ class ValidationResult:
     artifact_name: str = ""
 
 
-def validate_artifact_file(artifact_path: Path, artifact_name: str) -> ValidationResult:
+def _camel_to_snake(name: str) -> str:
+    """Convert camelCase, PascalCase, or kebab-case to snake_case."""
+    # Handle kebab-case
+    name = name.replace("-", "_")
+    # Insert underscores before uppercase runs
+    s1 = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+    return re.sub(r"([a-z\d])([A-Z])", r"\1_\2", s1).lower()
+
+
+def normalize_artifact_keys(data: Any) -> Any:
+    """Recursively normalize all dict keys to snake_case.
+
+    Handles camelCase, PascalCase, and kebab-case keys so that
+    agents producing non-snake_case output still pass validation.
+    """
+    if isinstance(data, dict):
+        return {_camel_to_snake(k): normalize_artifact_keys(v) for k, v in data.items()}
+    if isinstance(data, list):
+        return [normalize_artifact_keys(item) for item in data]
+    return data
+
+
+def validate_artifact_file(
+    artifact_path: Path, artifact_name: str, *, auto_normalize: bool = True,
+) -> ValidationResult:
     """Validate an artifact file against its JSON schema and Pydantic model.
 
     Performs two-layer validation:
     1. JSON Schema validation (structural)
     2. Pydantic model validation (semantic)
+
+    When *auto_normalize* is True (the default), dict keys are normalized
+    to snake_case before validation so that camelCase/kebab-case variants
+    from agents are accepted transparently.  If normalization changes the
+    data the file on disk is rewritten with the corrected keys.
     """
     errors: list[str] = []
 
@@ -52,6 +83,21 @@ def validate_artifact_file(artifact_path: Path, artifact_name: str) -> Validatio
             errors=[f"Invalid JSON: {e}"],
             artifact_name=artifact_name,
         )
+
+    # Normalize keys before validation (handles camelCase/kebab-case from agents)
+    if auto_normalize and isinstance(data, dict):
+        normalized = normalize_artifact_keys(data)
+        if normalized != data:
+            logger.info(
+                "Auto-normalized keys in %s (camelCase/kebab-case → snake_case)",
+                artifact_path.name,
+            )
+            data = normalized
+            # Rewrite file with corrected keys so downstream consumers see clean data
+            try:
+                artifact_path.write_text(json.dumps(data, indent=2))
+            except OSError:
+                pass
 
     # Layer 1: JSON Schema validation
     schema_errors, schema_warnings = _validate_json_schema(data, artifact_name)

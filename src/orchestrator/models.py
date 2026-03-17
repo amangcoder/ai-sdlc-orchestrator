@@ -765,6 +765,7 @@ class PhaseState(BaseModel):
     cost_usd: float = 0.0
     error: str | None = None
     error_code: str | None = None
+    artifact_retry_exhausted: bool = False
 
 
 class EngTaskState(BaseModel):
@@ -833,6 +834,7 @@ class KnowledgeConfig(BaseModel):
     """Configuration for AICoder knowledge integration."""
     enabled: bool = True
     aicoder_path: str = ""           # empty = auto-detect ../AICoder relative to project root
+    richness: str = "rich"           # minimal | standard | rich — controls depth of knowledge extraction
     build_timeout_seconds: int = 60
     skip_if_fresh_minutes: int = 5
     inject_brief: bool = True
@@ -854,6 +856,12 @@ class KnowledgeContext(BaseModel):
     mcp_server_config: dict[str, Any] | None = None  # MCP server dict for direct SDK injection
     build_time_ms: float = 0.0
     file_count: int = 0
+
+
+class ExplorationConfig(BaseModel):
+    """Configuration for codebase exploration depth."""
+    exploration_depth: str = "normal"  # none | minimal | normal | deep
+    max_explore_calls: int = 0  # 0 = unlimited
 
 
 class SpawnConfig(BaseModel):
@@ -902,6 +910,7 @@ class OrchestratorConfig(BaseModel):
     max_concurrent_agents: int = 10
     phases: dict[str, PhaseConfig] = Field(default_factory=dict)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
+    exploration: ExplorationConfig = Field(default_factory=ExplorationConfig)
     spawn: SpawnConfig = Field(default_factory=SpawnConfig)
     debate: DebateConfig = Field(default_factory=DebateConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)

@@ -80,6 +80,7 @@ class KnowledgeWatcher:
         brief_max_symbols: int = 15,
         inject_brief: bool = True,
         knowledge_context: Any | None = None,
+        richness: str = "rich",
     ) -> None:
         self.project_root = project_root
         self.aicoder_path = aicoder_path
@@ -89,6 +90,7 @@ class KnowledgeWatcher:
         self.brief_max_symbols = brief_max_symbols
         self.inject_brief = inject_brief
         self.knowledge_context = knowledge_context
+        self.richness = richness
 
         self._task: asyncio.Task | None = None
         self._stop_event = asyncio.Event()
@@ -193,6 +195,7 @@ class KnowledgeWatcher:
             aicoder_path=self.aicoder_path,
             timeout_seconds=self.build_timeout_seconds,
             skip_if_fresh_minutes=0,  # Always rebuild on file change
+            richness=self.richness,
         )
 
         elapsed_ms = (time.monotonic() - start) * 1000

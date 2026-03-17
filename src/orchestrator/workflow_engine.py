@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from collections import defaultdict
 from datetime import datetime, timezone
@@ -63,6 +64,250 @@ _ROLE_STRING_TO_ENUM: dict[str, AgentRole] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Artifact rescue helpers (module-level, stateless)
+# ---------------------------------------------------------------------------
+
+def _parse_json_blocks(text: str) -> list[str]:
+    """Extract JSON blocks from agent output text.
+
+    Handles:
+    - Fenced markdown blocks: ```json ... ```
+    - Raw top-level JSON objects (balanced braces)
+    """
+    blocks: list[str] = []
+
+    # 1. Fenced ```json ... ``` blocks
+    for match in re.finditer(r"```(?:json)?\s*\n(.*?)\n\s*```", text, re.DOTALL):
+        candidate = match.group(1).strip()
+        if candidate.startswith("{"):
+            blocks.append(candidate)
+
+    # 2. If no fenced blocks, try raw balanced-brace extraction
+    if not blocks:
+        depth = 0
+        start = None
+        for i, ch in enumerate(text):
+            if ch == "{":
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == "}":
+                depth -= 1
+                if depth == 0 and start is not None:
+                    candidate = text[start : i + 1]
+                    # Skip tiny objects (not real artifacts)
+                    if len(candidate) > 100:
+                        blocks.append(candidate)
+                    start = None
+
+    return blocks
+
+
+# Manual signature overrides for artifacts that need custom key hints
+# beyond what schemas provide.
+_MANUAL_SIGNATURE_OVERRIDES: dict[str, set[str]] = {
+    "ux_specification": {"screens", "user_flows", "design_tokens"},
+    "competitor_analysis": {"competitors", "comparison", "market_position"},
+    "user_psychology": {"personas", "user_needs", "behavioral_patterns"},
+    "user_psychology_research": {"personas", "user_needs", "behavioral_patterns"},
+    "security_review": {"vulnerabilities", "risk_assessment", "recommendations"},
+}
+
+
+def _build_artifact_signatures() -> dict[str, set[str]]:
+    """Build artifact signatures from JSON schema 'required' fields.
+
+    Falls back to all 'properties' keys when 'required' is absent.
+    Manual overrides are merged on top for edge cases.
+    """
+    signatures: dict[str, set[str]] = {}
+    schemas_dir = Path(__file__).resolve().parents[1] / "schemas"
+    if schemas_dir.is_dir():
+        for schema_file in schemas_dir.glob("*.schema.json"):
+            artifact_name = schema_file.stem.replace(".schema", "")
+            try:
+                schema = json.loads(schema_file.read_text())
+                required = set(schema.get("required", []))
+                properties = set(schema.get("properties", {}).keys())
+                signatures[artifact_name] = required or properties
+            except (json.JSONDecodeError, OSError):
+                pass
+    signatures.update(_MANUAL_SIGNATURE_OVERRIDES)
+    return signatures
+
+
+_ARTIFACT_SIGNATURES: dict[str, set[str]] = _build_artifact_signatures()
+
+
+def _normalize_key(key: str) -> str:
+    """Normalize a JSON key to snake_case for signature matching."""
+    key = key.replace("-", "_")
+    s1 = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", key)
+    return re.sub(r"([a-z\d])([A-Z])", r"\1_\2", s1).lower()
+
+
+def _match_json_to_artifact(data: dict, candidates: list[str]) -> str | None:
+    """Match a parsed JSON dict to one of the candidate artifact names.
+
+    Uses field-signature heuristics with key normalization (so camelCase
+    keys can match snake_case signatures), then falls back to a
+    single-candidate match.
+    """
+    # Normalize incoming keys to snake_case for comparison
+    keys = {_normalize_key(k) for k in data.keys()}
+
+    best_match: str | None = None
+    best_score = 0
+
+    for candidate in candidates:
+        sig = _ARTIFACT_SIGNATURES.get(candidate, set())
+        if sig:
+            overlap = len(keys & sig)
+            if overlap > best_score:
+                best_score = overlap
+                best_match = candidate
+
+    # If no signature matched but only one candidate, just use it
+    if best_match is None and len(candidates) == 1:
+        best_match = candidates[0]
+
+    return best_match
+
+
+# Standalone rescue functions — usable from both WorkflowEngine and legacy engine.
+
+
+def _normalize_artifact_stem(name: str) -> str:
+    """Normalize artifact filename stem for fuzzy matching.
+
+    Strips separators and lowercases so that 'benchmark_report', 'benchmark-report',
+    'benchmarkReport', and 'BenchmarkReport' all normalize to 'benchmarkreport'.
+    """
+    return name.lower().replace("-", "").replace("_", "").replace(" ", "")
+
+
+def _rescue_misplaced_artifacts(
+    missing: list[str], workspace: Path, project_root: Path | None = None,
+) -> list[str]:
+    """Search for artifacts written to wrong paths and move them.
+
+    Uses two-pass matching:
+    1. Exact filename match in common wrong directories
+    2. Fuzzy match — normalizes stems to catch kebab-case, camelCase, etc.
+    """
+    artifacts_dir = workspace / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    rescued: list[str] = []
+    search_roots = [workspace, project_root, workspace / "workspace"]
+
+    for artifact_name in list(missing):
+        filename = f"{artifact_name}.json"
+        canonical = artifacts_dir / filename
+        if canonical.exists():
+            continue
+
+        found = False
+        # Pass 1: exact filename match (fast path)
+        for root in search_roots:
+            if not root or not root.exists():
+                continue
+            candidate = root / filename
+            if candidate.exists() and candidate != canonical:
+                try:
+                    candidate.rename(canonical)
+                    logger.info(f"Rescued misplaced artifact '{artifact_name}': {candidate} → {canonical}")
+                    rescued.append(artifact_name)
+                    found = True
+                    break
+                except OSError:
+                    pass
+            for depth_glob in [f"*/{filename}", f"*/*/{filename}"]:
+                for match in root.glob(depth_glob):
+                    if match != canonical and match.is_file():
+                        try:
+                            match.rename(canonical)
+                            logger.info(f"Rescued misplaced artifact '{artifact_name}': {match} → {canonical}")
+                            rescued.append(artifact_name)
+                            found = True
+                            break
+                        except OSError:
+                            pass
+                if found:
+                    break
+            if found:
+                break
+
+        if found:
+            continue
+
+        # Pass 2: fuzzy filename match — normalize stems to catch naming variants
+        expected_stem = _normalize_artifact_stem(artifact_name)
+        for root in search_roots:
+            if not root or not root.exists():
+                continue
+            for json_file in root.rglob("*.json"):
+                if json_file == canonical or not json_file.is_file():
+                    continue
+                if _normalize_artifact_stem(json_file.stem) == expected_stem:
+                    try:
+                        json_file.rename(canonical)
+                        logger.info(
+                            f"Fuzzy-rescued artifact '{artifact_name}': "
+                            f"found as '{json_file.name}' at {json_file.parent} → {canonical}"
+                        )
+                        rescued.append(artifact_name)
+                        found = True
+                        break
+                    except OSError:
+                        pass
+            if found:
+                break
+
+    return rescued
+
+
+def _rescue_artifacts_from_output(
+    output: str, missing: list[str], workspace: Path,
+) -> list[str]:
+    """Extract artifact JSON from agent output text and write to disk.
+
+    Returns artifact names that were rescued.
+    """
+    if not output or not missing:
+        return []
+    artifacts_dir = workspace / "artifacts"
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+    json_blocks = _parse_json_blocks(output)
+    if not json_blocks:
+        return []
+
+    rescued: list[str] = []
+    remaining = list(missing)
+
+    for block in sorted(json_blocks, key=len, reverse=True):
+        if not remaining:
+            break
+        try:
+            data = json.loads(block)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        match = _match_json_to_artifact(data, remaining)
+        if match:
+            artifact_path = artifacts_dir / f"{match}.json"
+            try:
+                artifact_path.write_text(json.dumps(data, indent=2))
+                logger.info(f"Rescued artifact '{match}' from agent output ({len(block)} bytes)")
+                rescued.append(match)
+                remaining.remove(match)
+            except OSError as e:
+                logger.warning(f"Failed to write rescued artifact '{match}': {e}")
+    return rescued
+
+
 class WorkflowEngine:
     """Executes a workflow definition step-by-step with full task lifecycle management.
 
@@ -96,6 +341,10 @@ class WorkflowEngine:
         self.progress = ProgressTracker(workflow, state)
         self._step_start_times: dict[str, float] = {}
         self._knowledge_watcher: KnowledgeWatcher | None = None
+        # Temporary storage for agent outputs — used to rescue artifacts
+        # when agents output JSON in response text instead of calling Write tool.
+        self._task_outputs: dict[str, str] = {}  # task_id -> result.output
+        self._task_written_files: list[str] = []  # file paths from Write tool calls
 
     @property
     def _mcp_servers(self) -> dict[str, Any] | None:
@@ -240,39 +489,131 @@ class WorkflowEngine:
         workspace = Path(self.state.workspace_dir)
 
         if success:
-            # Validate output artifacts; retry once if missing (agent may have
-            # forgotten to use the Write tool — a common failure mode).
-            missing_artifacts = self._check_missing_artifacts(step, workspace)
-            if missing_artifacts and self.state.phases[phase_key].retry_count == 0:
-                self.state.phases[phase_key].retry_count += 1
-                missing_files = ", ".join(f"{a}.json" for a in missing_artifacts)
-                logger.warning(
-                    f"Artifact(s) not found after step '{step.name}' — "
-                    f"retrying with explicit Write tool reminder: {missing_files}"
-                )
-                retry_tasks = self._create_artifact_retry_tasks(step, tasks, missing_artifacts, workspace)
-                try:
-                    retry_success = await self._execute_step_tasks(step, retry_tasks)
-                finally:
-                    await self._stop_knowledge_watcher()
-                if retry_success:
+            # Artifact rescue & validation retry loop.
+            max_art_retries = step.max_retries
+            missing_artifacts: list[str] = []
+            invalid_artifacts: dict[str, list[str]] = {}  # name -> errors
+
+            for artifact_attempt in range(max_art_retries + 1):
+                # --- Check for missing artifacts ---
+                missing_artifacts = self._check_missing_artifacts(step, workspace)
+
+                if missing_artifacts:
+                    # Layer 1: Search for misplaced files (agent wrote to wrong path / wrong name)
+                    self._rescue_misplaced_artifacts(missing_artifacts, workspace)
                     missing_artifacts = self._check_missing_artifacts(step, workspace)
 
+                if missing_artifacts:
+                    # Layer 1b: Check files the agent actually wrote via Write tool
+                    rescued = self._rescue_from_written_files(missing_artifacts, workspace)
+                    if rescued:
+                        logger.info(f"Rescued {len(rescued)} artifact(s) from agent-written files: {rescued}")
+                    missing_artifacts = self._check_missing_artifacts(step, workspace)
+
+                if missing_artifacts:
+                    # Layer 2: Extract artifact JSON from agent output text
+                    extracted = self._rescue_artifacts_from_output(missing_artifacts, workspace)
+                    if extracted:
+                        logger.info(f"Auto-rescued {len(extracted)} artifact(s) from agent output: {extracted}")
+                    missing_artifacts = self._check_missing_artifacts(step, workspace)
+
+                if missing_artifacts:
+                    # Layer 3: Artifact writer agent
+                    missing_files = ", ".join(f"{a}.json" for a in missing_artifacts)
+                    logger.warning(
+                        f"Artifact(s) not found after step '{step.name}' (attempt {artifact_attempt + 1}) — "
+                        f"running artifact-writer retry: {missing_files}"
+                    )
+                    retry_tasks = self._create_artifact_writer_tasks(
+                        step, tasks, missing_artifacts, workspace,
+                        escalate=(artifact_attempt > 0),
+                    )
+                    try:
+                        retry_success = await self._execute_step_tasks(step, retry_tasks)
+                    finally:
+                        await self._stop_knowledge_watcher()
+                    if retry_success:
+                        missing_artifacts = self._check_missing_artifacts(step, workspace)
+
+                if missing_artifacts:
+                    # Artifacts are truly missing — no point validating
+                    break
+
+                # --- All files exist — run schema + Pydantic validation ---
+                invalid_artifacts = {}
+                for artifact_name in step.outputs:
+                    artifact_path = workspace / "artifacts" / f"{artifact_name}.json"
+                    validation = validate_artifact_file(artifact_path, artifact_name)
+                    if not validation.valid:
+                        invalid_artifacts[artifact_name] = validation.errors
+                        logger.warning(
+                            f"Artifact {artifact_name} validation failed "
+                            f"(attempt {artifact_attempt + 1}): {validation.errors}"
+                        )
+
+                if not invalid_artifacts:
+                    break  # All artifacts present and valid
+
+                # Validation failed — try repair if we have retries left
+                if artifact_attempt < max_art_retries:
+                    logger.info(
+                        f"Running validation repair for {list(invalid_artifacts)} "
+                        f"(attempt {artifact_attempt + 1}/{max_art_retries})"
+                    )
+                    repair_tasks = self._create_validation_repair_tasks(
+                        step, invalid_artifacts, workspace,
+                        escalate=(artifact_attempt > 0),
+                    )
+                    try:
+                        await self._execute_step_tasks(step, repair_tasks)
+                    finally:
+                        await self._stop_knowledge_watcher()
+                # Loop back to re-check
+
+            # --- Post-loop: full step retry as final fallback ---
+            if (missing_artifacts or invalid_artifacts) and not self.state.phases[phase_key].artifact_retry_exhausted:
+                # Budget check before expensive full-step retry
+                budget_ok = True
+                if self.run_logger and self.config.max_budget_usd:
+                    budget_ok = self.run_logger.check_budget(self.config.max_budget_usd) != "exceeded"
+
+                if budget_ok:
+                    self.state.phases[phase_key].artifact_retry_exhausted = True
+                    error_context = self._build_artifact_error_context(missing_artifacts, invalid_artifacts)
+                    logger.warning(
+                        f"Artifact rescue exhausted for '{step.name}' — "
+                        f"performing full step re-execution with error context"
+                    )
+                    for task in tasks:
+                        task.status = TaskStatus.PENDING
+                        task.description += f"\n\n{error_context}"
+                        task.retry_count = 0
+                    try:
+                        success = await self._execute_step_tasks(step, tasks)
+                    finally:
+                        await self._stop_knowledge_watcher()
+                    if success:
+                        # Re-validate after full retry
+                        missing_artifacts = self._check_missing_artifacts(step, workspace)
+                        invalid_artifacts = {}
+                        if not missing_artifacts:
+                            for artifact_name in step.outputs:
+                                artifact_path = workspace / "artifacts" / f"{artifact_name}.json"
+                                validation = validate_artifact_file(artifact_path, artifact_name)
+                                if not validation.valid:
+                                    invalid_artifacts[artifact_name] = validation.errors
+
+            # --- Final verdict ---
             if missing_artifacts:
                 missing_files = ", ".join(f"{a}.json" for a in missing_artifacts)
                 self.state.phases[phase_key].status = PhaseStatus.FAILED
                 self.state.phases[phase_key].error = f"Artifact(s) not written to disk: {missing_files}"
                 return "failed"
 
-            # Full schema validation on all output artifacts
-            for artifact_name in step.outputs:
-                artifact_path = workspace / "artifacts" / f"{artifact_name}.json"
-                validation = validate_artifact_file(artifact_path, artifact_name)
-                if not validation.valid:
-                    logger.warning(f"Artifact {artifact_name} validation failed: {validation.errors}")
-                    self.state.phases[phase_key].status = PhaseStatus.FAILED
-                    self.state.phases[phase_key].error = f"Artifact validation: {validation.errors}"
-                    return "failed"
+            if invalid_artifacts:
+                self.state.phases[phase_key].status = PhaseStatus.FAILED
+                self.state.phases[phase_key].error = f"Artifact validation: {invalid_artifacts}"
+                return "failed"
 
             # If an implementation step wrote a review.json that isn't in its
             # declared outputs, rename it so it doesn't collide with the
@@ -289,17 +630,19 @@ class WorkflowEngine:
 
             self.state.phases[phase_key].status = PhaseStatus.COMPLETED
             self.state.completed_steps.append(step.name)
-            # Update cumulative context so downstream steps see this step's decisions
             update_cumulative_context(
                 workspace=workspace,
                 phase_name=step.name,
                 artifacts=list(step.outputs),
             )
-            # Re-index knowledge after implementation steps so QA/review see fresh code
             await self._refresh_knowledge(step.name)
+            self._task_outputs.clear()
+            self._task_written_files.clear()
             return "completed"
         else:
             self.state.phases[phase_key].status = PhaseStatus.FAILED
+            self._task_outputs.clear()
+            self._task_written_files.clear()
             return "failed"
 
     def _check_missing_artifacts(
@@ -313,36 +656,238 @@ class WorkflowEngine:
                 missing.append(artifact_name)
         return missing
 
-    def _create_artifact_retry_tasks(
+    # ------------------------------------------------------------------
+    # Artifact rescue — delegates to module-level standalone functions
+    # ------------------------------------------------------------------
+
+    def _rescue_misplaced_artifacts(
+        self, missing: list[str], workspace: Path,
+    ) -> list[str]:
+        """Search for artifacts written to wrong paths and move them."""
+        return _rescue_misplaced_artifacts(missing, workspace, self.project_root)
+
+    def _rescue_from_written_files(
+        self, missing: list[str], workspace: Path,
+    ) -> list[str]:
+        """Rescue artifacts by checking files the agent actually wrote via Write tool.
+
+        The agent may have written the artifact to a wrong filename (e.g.,
+        benchmark-report.json instead of benchmark_report.json). This method
+        checks recorded Write tool paths against missing artifacts using
+        fuzzy filename matching.
+        """
+        if not self._task_written_files:
+            return []
+
+        artifacts_dir = workspace / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        rescued: list[str] = []
+
+        for artifact_name in list(missing):
+            canonical = artifacts_dir / f"{artifact_name}.json"
+            if canonical.exists():
+                continue
+
+            expected_stem = _normalize_artifact_stem(artifact_name)
+
+            for written_path_str in self._task_written_files:
+                written_path = Path(written_path_str)
+                if not written_path.exists() or not written_path.is_file():
+                    continue
+                if written_path == canonical:
+                    continue
+
+                # Check if this written file matches the expected artifact
+                if _normalize_artifact_stem(written_path.stem) == expected_stem:
+                    try:
+                        written_path.rename(canonical)
+                        logger.info(
+                            f"Rescued artifact '{artifact_name}' from agent-written file: "
+                            f"'{written_path.name}' → {canonical}"
+                        )
+                        rescued.append(artifact_name)
+                        break
+                    except OSError:
+                        pass
+
+        return rescued
+
+    def _rescue_artifacts_from_output(
+        self, missing: list[str], workspace: Path,
+    ) -> list[str]:
+        """Extract artifact JSON from stored agent output text."""
+        if not self._task_outputs:
+            return []
+        combined_output = "\n\n".join(self._task_outputs.values())
+        return _rescue_artifacts_from_output(combined_output, missing, workspace)
+
+    def _create_artifact_writer_tasks(
         self,
         step: WorkflowStepDefinition,
         original_tasks: list[WorkflowTaskState],
         missing_artifacts: list[str],
         workspace: Path,
+        escalate: bool = False,
     ) -> list[WorkflowTaskState]:
-        """Create retry tasks with an explicit Write tool reminder for missing artifacts."""
-        artifacts_dir = workspace / "artifacts"
-        missing_files = ", ".join(f"{artifacts_dir}/{a}.json" for a in missing_artifacts)
+        """Create lightweight retry tasks focused solely on writing artifacts.
 
-        retry_suffix = (
-            f"\n\nRETRY — PREVIOUS ATTEMPT FAILED: The following artifact files were NOT created on disk: "
-            f"{missing_files}. "
-            f"You MUST use the Write tool to create each file. "
-            f"Do NOT just output JSON in your response text — call the Write tool with the file path and content."
-        )
+        Instead of re-running the full agent, this creates a targeted prompt
+        that includes any prior output and asks the agent to just write the file.
+        Uses fewer max_turns since the only job is to call Write.
+        """
+        artifacts_dir = workspace / "artifacts"
+
+        # Gather any prior output to feed into the retry
+        prior_output = "\n\n".join(self._task_outputs.values()).strip()
+        prior_section = ""
+        if prior_output:
+            # Cap at 16KB to avoid prompt bloat
+            if len(prior_output) > 16000:
+                prior_output = prior_output[:15997] + "..."
+            prior_section = (
+                f"\n\n## Previous Agent Output (extract the artifact from this)\n\n"
+                f"{prior_output}\n"
+            )
 
         retry_tasks: list[WorkflowTaskState] = []
-        for task in original_tasks:
-            retry_task = WorkflowTaskState(
-                task_id=f"{task.task_id}-retry",
-                workflow_step=task.workflow_step,
-                description=task.description + retry_suffix,
-                assigned_role=task.assigned_role,
-                dependencies=[],
-                expected_outputs=task.expected_outputs,
+        for artifact_name in missing_artifacts:
+            artifact_path = artifacts_dir / f"{artifact_name}.json"
+
+            # Read any input artifacts for context
+            input_context = ""
+            for inp in step.inputs:
+                inp_path = artifacts_dir / f"{inp}.json"
+                if inp_path.exists():
+                    try:
+                        content = inp_path.read_text()
+                        if len(content) > 4000:
+                            content = content[:3997] + "..."
+                        input_context += f"\n### {inp}.json\n```json\n{content}\n```\n"
+                    except OSError:
+                        pass
+
+            # Inject JSON schema so the writer knows the exact structure
+            schema_section = ""
+            from orchestrator.models import ARTIFACT_MODELS
+            model_cls = ARTIFACT_MODELS.get(artifact_name)
+            if model_cls:
+                try:
+                    schema_json = json.dumps(model_cls.model_json_schema(), indent=2)
+                    if len(schema_json) <= 4000:
+                        schema_section = (
+                            f"\n### Required JSON Schema\n"
+                            f"Your output MUST conform to this schema. Use snake_case keys.\n"
+                            f"```json\n{schema_json}\n```\n"
+                        )
+                except Exception:
+                    pass
+
+            description = (
+                f"ARTIFACT WRITER TASK — your ONLY job is to create this file:\n\n"
+                f"  {artifact_path}\n\n"
+                f"The filename MUST be exactly: {artifact_name}.json\n"
+                f"Use the Write tool to create the file at exactly that path.\n"
+                f"The file must contain valid JSON for a '{artifact_name}' artifact.\n"
+                f"Use snake_case for all JSON keys (e.g. 'test_results', NOT 'testResults').\n"
+                f"Do NOT output JSON in your response — you MUST call the Write tool.\n"
+                f"After writing, use the Read tool to verify the file exists.\n"
+                f"{schema_section}"
+                f"\nFeature request: {self.state.feature_request}\n"
+                f"{input_context}{prior_section}"
             )
-            retry_tasks.append(retry_task)
+
+            # Use the original task's role but this is a simple write job
+            role = original_tasks[0].assigned_role if original_tasks else step.agent_role
+            retry_tasks.append(WorkflowTaskState(
+                task_id=f"ARTIFACT-WRITE-{artifact_name}",
+                workflow_step=step.name,
+                description=description,
+                assigned_role=role,
+                dependencies=[],
+                expected_outputs=[artifact_name],
+                override_max_turns=10,
+            ))
         return retry_tasks
+
+    def _create_validation_repair_tasks(
+        self,
+        step: WorkflowStepDefinition,
+        invalid_artifacts: dict[str, list[str]],
+        workspace: Path,
+        *,
+        escalate: bool = False,
+    ) -> list[WorkflowTaskState]:
+        """Create tasks to fix artifacts that failed schema/Pydantic validation."""
+        artifacts_dir = workspace / "artifacts"
+        repair_tasks: list[WorkflowTaskState] = []
+
+        for artifact_name, errors in invalid_artifacts.items():
+            artifact_path = artifacts_dir / f"{artifact_name}.json"
+
+            current_content = ""
+            try:
+                raw = artifact_path.read_text()
+                current_content = raw[:8000] + "..." if len(raw) > 8000 else raw
+            except OSError:
+                pass
+
+            error_list = "\n".join(f"- {e}" for e in errors)
+
+            # Inject schema for guidance
+            schema_section = ""
+            from orchestrator.models import ARTIFACT_MODELS
+            model_cls = ARTIFACT_MODELS.get(artifact_name)
+            if model_cls:
+                try:
+                    schema_json = json.dumps(model_cls.model_json_schema(), indent=2)
+                    if len(schema_json) <= 4000:
+                        schema_section = (
+                            f"\n### Required JSON Schema\n"
+                            f"```json\n{schema_json}\n```\n"
+                        )
+                except Exception:
+                    pass
+
+            description = (
+                f"ARTIFACT REPAIR TASK — fix validation errors in:\n\n"
+                f"  {artifact_path}\n\n"
+                f"The file exists but has these validation errors:\n{error_list}\n\n"
+                f"Current content:\n```json\n{current_content}\n```\n"
+                f"{schema_section}\n"
+                f"Use snake_case for all JSON keys (e.g. 'test_results', NOT 'testResults').\n"
+                f"Read the file, fix ALL the validation errors listed above, "
+                f"and Write the corrected JSON back to the SAME path.\n"
+                f"Then Read the file again to verify it was written correctly."
+            )
+
+            repair_tasks.append(WorkflowTaskState(
+                task_id=f"ARTIFACT-REPAIR-{artifact_name}",
+                workflow_step=step.name,
+                description=description,
+                assigned_role=step.agent_role,
+                dependencies=[],
+                expected_outputs=[artifact_name],
+                override_max_turns=15,
+            ))
+
+        return repair_tasks
+
+    def _build_artifact_error_context(
+        self,
+        missing: list[str],
+        invalid: dict[str, list[str]],
+    ) -> str:
+        """Build error context string to append to task descriptions for full-step retry."""
+        parts = ["--- ARTIFACT ERROR CONTEXT (from previous attempt) ---"]
+        if missing:
+            parts.append(f"Missing artifacts (not written to disk): {', '.join(f'{a}.json' for a in missing)}")
+        for name, errors in invalid.items():
+            parts.append(f"Artifact '{name}.json' validation errors:\n" + "\n".join(f"  - {e}" for e in errors))
+        parts.append(
+            "IMPORTANT: You MUST use the Write tool to create each artifact file at the exact path. "
+            "Use snake_case for all JSON keys. After writing, use Read to verify the file exists."
+        )
+        return "\n\n".join(parts)
 
     async def _execute_step_tasks(
         self,
@@ -664,6 +1209,11 @@ class WorkflowEngine:
         else:
             task.status = TaskStatus.FAILED
             task.error = result.error
+        # Store output for artifact rescue (cleared after step completes)
+        if result.output:
+            self._task_outputs[task.task_id] = result.output
+        if result.written_files:
+            self._task_written_files.extend(result.written_files)
 
     async def _run_spawn_loop_for_task(
         self,
@@ -696,6 +1246,7 @@ class WorkflowEngine:
             max_concurrent=self.config.max_concurrent_agents,
             agents_config=self.config.agents,
             run_logger=self.run_logger,
+            mcp_servers=self._mcp_servers,
         )
 
         # Record spawn history in run state
@@ -745,6 +1296,7 @@ class WorkflowEngine:
             brief_max_symbols=self.config.knowledge.brief_max_symbols,
             inject_brief=self.config.knowledge.inject_brief,
             knowledge_context=self.config.knowledge_context,
+            richness=self.config.knowledge.richness,
         )
         await self._knowledge_watcher.start()
 
@@ -780,6 +1332,7 @@ class WorkflowEngine:
             aicoder_path=self.config.knowledge.aicoder_path,
             timeout_seconds=self.config.knowledge.build_timeout_seconds,
             skip_if_fresh_minutes=0,  # Force rebuild — code just changed
+            richness=self.config.knowledge.richness,
         )
         if result.success:
             if self.config.knowledge.inject_brief:
@@ -1073,7 +1626,7 @@ class WorkflowEngine:
         artifact_digest_section = _inject_artifact_digests(
             workspace, list(step.inputs), self.config,
         )
-        exploration = _exploration_instruction(self.config)
+        exploration = _exploration_instruction(self.config, role=task.assigned_role.value)
 
         input_section = ""
         if step.inputs:
@@ -1082,8 +1635,19 @@ class WorkflowEngine:
 
         output_section = ""
         if step.outputs:
-            output_files = "\n".join(f"- {artifacts_dir}/{name}.json" for name in step.outputs)
-            output_section = f"\n## Expected Outputs\n\nWrite these artifacts:\n{output_files}\n"
+            output_lines = []
+            for name in step.outputs:
+                output_lines.append(f"  **{artifacts_dir}/{name}.json**")
+            output_list = "\n".join(output_lines)
+            output_section = (
+                f"\n## REQUIRED Output Artifacts\n\n"
+                f"You MUST create these files using the **Write tool**:\n\n"
+                f"{output_list}\n\n"
+                f"**CRITICAL**: Use the Write tool to physically create each file on disk.\n"
+                f"Do NOT just output JSON in your response text — downstream phases depend on "
+                f"the file existing at the exact path above.\n"
+                f"After writing each file, use the Read tool to verify it was created successfully.\n"
+            )
 
         access_note = ""
         if role_def.access.value == "read_only":
@@ -1110,7 +1674,7 @@ class WorkflowEngine:
 1. Read all input artifacts listed above
 2. {exploration}
 3. Perform your role's responsibilities
-4. Write any required output artifacts as valid JSON{access_note}
+4. For EACH output artifact listed above: call the **Write tool** with the exact file path and valid JSON content. Then call **Read** to verify the file exists.{access_note}
 {spawn_section}"""
 
     async def _handle_step_failure(self, step: WorkflowStepDefinition, *, _routing_depth: int = 0) -> bool:

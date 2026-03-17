@@ -13,6 +13,7 @@ from orchestrator.agents import AgentInvocation, AgentResult, invoke_agent, invo
 from orchestrator.knowledge import (
     build_knowledge,
     cleanup_mcp_config,
+    ensure_gitignore_entries,
     ensure_mcp_config,
     get_mcp_server_config,
     synthesize_brief,
@@ -40,7 +41,11 @@ from orchestrator.phases import (
 )
 from orchestrator.validation import validate_artifact_file
 from orchestrator.workflows import BUILTIN_WORKFLOWS, parse_custom_workflow, select_workflow
-from orchestrator.workflow_engine import WorkflowEngine
+from orchestrator.workflow_engine import (
+    WorkflowEngine,
+    _rescue_artifacts_from_output,
+    _rescue_misplaced_artifacts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -120,6 +125,9 @@ class OrchestratorEngine:
         workspace.mkdir(parents=True, exist_ok=True)
         (workspace / "artifacts").mkdir(exist_ok=True)
 
+        # Ensure .knowledge/ and workspace/ are in the target project's .gitignore
+        ensure_gitignore_entries(self.project_root)
+
         # Resume from saved state, or start fresh
         if resume or resume_run_id:
             state = self._load_state(workspace, run_id=resume_run_id)
@@ -161,6 +169,7 @@ class OrchestratorEngine:
                 aicoder_path=self.config.knowledge.aicoder_path,
                 timeout_seconds=self.config.knowledge.build_timeout_seconds,
                 skip_if_fresh_minutes=self.config.knowledge.skip_if_fresh_minutes,
+                richness=self.config.knowledge.richness,
             )
             if knowledge_result.success:
                 brief = ""
@@ -507,34 +516,94 @@ class OrchestratorEngine:
             phase_state.error = result.error
             return
 
-        # Validate artifacts, retry once if missing (agent may have forgotten to use Write tool)
-        artifact_errors = self._validate_phase_artifacts(phase_def, workspace)
-        if artifact_errors and phase_state.retry_count == 0:
-            phase_state.retry_count += 1
-            missing_files = ", ".join(artifact_errors)
-            logger.warning(
-                f"Artifact(s) not found after {phase_name} — retrying with explicit reminder: {missing_files}"
-            )
-            retry_prompt = (
-                f"{prompt}\n\n"
-                f"RETRY — PREVIOUS ATTEMPT FAILED: The following artifact files were NOT created on disk: {missing_files}. "
-                f"You MUST use the Write tool to create each file. Do NOT just output JSON in your response text."
-            )
-            retry_result = await self._invoke_with_retry(
-                agent_name=phase_def.agent_name,
-                prompt=retry_prompt,
-                model=phase_state.model_tier,
-                max_turns=agent_config.max_turns if agent_config else 40,
-                max_retries=0,  # single retry attempt
-                escalation_model=agent_config.escalation_model if agent_config else None,
-                workspace=workspace,
-            )
-            phase_state.cost_usd += retry_result.cost_usd
-            state.total_cost_usd += retry_result.cost_usd
-            state.total_input_tokens += retry_result.input_tokens
-            state.total_output_tokens += retry_result.output_tokens
-            # Re-validate after retry
+        # Artifact rescue & validation retry loop.
+        max_art_retries = 2
+        for artifact_attempt in range(max_art_retries + 1):
             artifact_errors = self._validate_phase_artifacts(phase_def, workspace)
+
+            if artifact_errors:
+                # Layer 1: Search for misplaced files (now with fuzzy matching)
+                missing_names = list(artifact_errors.keys())
+                _rescue_misplaced_artifacts(missing_names, workspace, self.project_root)
+                artifact_errors = self._validate_phase_artifacts(phase_def, workspace)
+
+            if artifact_errors and result.output:
+                # Layer 2: Extract artifact JSON from agent output text
+                missing_names = list(artifact_errors.keys())
+                extracted = _rescue_artifacts_from_output(result.output, missing_names, workspace)
+                if extracted:
+                    logger.info(f"Auto-rescued {len(extracted)} artifact(s) from agent output: {extracted}")
+                artifact_errors = self._validate_phase_artifacts(phase_def, workspace)
+
+            if artifact_errors:
+                # Layer 3: Artifact writer retry with schema injection
+                missing_names = list(artifact_errors.keys())
+                missing_files = ", ".join(missing_names)
+                logger.warning(
+                    f"Artifact(s) not found after {phase_name} (attempt {artifact_attempt + 1}) — "
+                    f"running artifact-writer retry: {missing_files}"
+                )
+                prior_output_section = ""
+                if result.output:
+                    prior = result.output[:16000] if len(result.output) > 16000 else result.output
+                    prior_output_section = (
+                        f"\n\n## Previous Agent Output (extract artifact from this)\n\n{prior}\n"
+                    )
+                artifacts_dir = workspace / "artifacts"
+
+                # Inject schema for each missing artifact
+                schema_sections = ""
+                from orchestrator.models import ARTIFACT_MODELS
+                for a_name in missing_names:
+                    model_cls = ARTIFACT_MODELS.get(a_name)
+                    if model_cls:
+                        try:
+                            schema_json = json.dumps(model_cls.model_json_schema(), indent=2)
+                            if len(schema_json) <= 4000:
+                                schema_sections += (
+                                    f"\n### Schema for {a_name}.json\n"
+                                    f"```json\n{schema_json}\n```\n"
+                                )
+                        except Exception:
+                            pass
+
+                file_list = "\n".join(f"  {artifacts_dir}/{a}.json" for a in missing_names)
+                retry_prompt = (
+                    f"ARTIFACT WRITER TASK — your ONLY job is to create these files:\n\n"
+                    f"{file_list}\n\n"
+                    f"Use the Write tool to create each file at exactly the path above.\n"
+                    f"Each file must contain valid JSON. Use snake_case for all JSON keys.\n"
+                    f"Do NOT output JSON in your response — you MUST call the Write tool.\n"
+                    f"After writing, use Read to verify.\n"
+                    f"{schema_sections}"
+                    f"\nOriginal task: {prompt[:2000]}\n"
+                    f"{prior_output_section}"
+                )
+                # Escalate model on second+ attempt
+                retry_model = phase_state.model_tier
+                if artifact_attempt > 0 and agent_config and agent_config.escalation_model:
+                    retry_model = agent_config.escalation_model
+
+                retry_result = await self._invoke_with_retry(
+                    agent_name=phase_def.agent_name,
+                    prompt=retry_prompt,
+                    model=retry_model,
+                    max_turns=10,
+                    max_retries=0,
+                    escalation_model=agent_config.escalation_model if agent_config else None,
+                    workspace=workspace,
+                )
+                phase_state.cost_usd += retry_result.cost_usd
+                state.total_cost_usd += retry_result.cost_usd
+                state.total_input_tokens += retry_result.input_tokens
+                state.total_output_tokens += retry_result.output_tokens
+                artifact_errors = self._validate_phase_artifacts(phase_def, workspace)
+
+            if not artifact_errors:
+                break  # All artifacts valid
+
+            if artifact_attempt >= max_art_retries:
+                break  # Exhausted retries
 
         if artifact_errors:
             for artifact_name in artifact_errors:
@@ -978,6 +1047,7 @@ class OrchestratorEngine:
             aicoder_path=self.config.knowledge.aicoder_path,
             timeout_seconds=self.config.knowledge.build_timeout_seconds,
             skip_if_fresh_minutes=0,  # Force rebuild after code changes
+            richness=self.config.knowledge.richness,
         )
         if result.success:
             # Update the knowledge context with fresh data

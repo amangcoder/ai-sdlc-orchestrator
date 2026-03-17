@@ -266,6 +266,7 @@ async def execute_spawn_requests(
     project_root: str,
     max_concurrent: int = 10,
     agents_config: dict[str, Any] | None = None,
+    mcp_servers: dict[str, Any] | None = None,
 ) -> list[SpawnResult]:
     """Execute a batch of spawn requests in parallel.
 
@@ -337,6 +338,7 @@ async def execute_spawn_requests(
             workspace_dir=workspace_dir,
             project_root=project_root,
             display_name=f"{codename} (spawned:{req.role})",
+            mcp_servers=mcp_servers,
         ))
 
     logger.info(
@@ -420,6 +422,7 @@ async def run_spawn_loop(
     agents_config: dict[str, Any] | None = None,
     run_logger: Any | None = None,
     max_budget_usd: float = 0.0,
+    mcp_servers: dict[str, Any] | None = None,
 ) -> tuple[AgentResult, list[SpawnRoundSummary]]:
     """Run the spawn-continue loop after an initial agent result.
 
@@ -493,6 +496,7 @@ async def run_spawn_loop(
             project_root=project_root,
             max_concurrent=max_concurrent,
             agents_config=agents_config,
+            mcp_servers=mcp_servers,
         )
 
         round_cost = sum(sr.cost_usd for sr in spawn_results)
@@ -543,6 +547,7 @@ async def run_spawn_loop(
             max_turns=max_turns,
             workspace_dir=workspace_dir,
             project_root=project_root,
+            mcp_servers=mcp_servers,
         ))
 
         # Accumulate costs from continuation

@@ -43,6 +43,7 @@ class AgentResult:
     output_tokens: int = 0
     error: str | None = None
     error_code: str | None = None
+    written_files: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -173,6 +174,7 @@ class AgentActivityTracker:
         self.turn_count = 0
         self.tool_calls = 0
         self.start_time = time.time()
+        self.written_files: list[str] = []
         self._spinner_idx = 0
         self._last_activity: str = "starting..."
         # Threading for continuous spinner
@@ -294,6 +296,11 @@ class AgentActivityTracker:
                 elif isinstance(block, ToolUseBlock):
                     self.tool_calls += 1
                     self._last_activity = f"→ {block.name}"
+                    # Track files written by Write tool for artifact rescue
+                    if block.name == "Write" and isinstance(block.input, dict):
+                        file_path = block.input.get("file_path", "")
+                        if file_path:
+                            self.written_files.append(file_path)
                     input_summary = str(block.input)[:80]
                     tool_display = f"\033[33m{block.name}\033[0m"
                     print(
@@ -432,6 +439,7 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         error=result_msg.result if result_msg.is_error else None,
+        written_files=tracker.written_files,
     )
 
 

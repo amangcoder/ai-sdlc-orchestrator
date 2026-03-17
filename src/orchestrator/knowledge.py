@@ -67,14 +67,59 @@ def _find_aicoder(configured_path: str, project_root: Path) -> Path | None:
     return None
 
 
-def _knowledge_is_fresh(project_root: Path, max_age_minutes: int) -> bool:
-    """Check if the .knowledge/ directory is recent enough to skip rebuilding."""
+def ensure_gitignore_entries(project_root: Path, entries: list[str] | None = None) -> None:
+    """Ensure .knowledge/ and workspace/ are listed in the project's .gitignore.
+
+    Idempotent — only appends entries that are missing.
+    """
+    if entries is None:
+        entries = [".knowledge/", "workspace/"]
+
+    gitignore_path = project_root / ".gitignore"
+
+    existing_lines: set[str] = set()
+    if gitignore_path.exists():
+        try:
+            existing_lines = {line.rstrip() for line in gitignore_path.read_text().splitlines()}
+        except OSError:
+            pass
+
+    missing = [e for e in entries if e not in existing_lines and e.rstrip("/") not in existing_lines]
+    if not missing:
+        return
+
+    # Append missing entries
+    block = "\n# Orchestrator runtime artifacts\n" + "\n".join(missing) + "\n"
+    try:
+        with gitignore_path.open("a") as f:
+            # Ensure we start on a new line
+            if existing_lines and not gitignore_path.read_text().endswith("\n"):
+                f.write("\n")
+            f.write(block)
+        logger.info(f"Added {missing} to {gitignore_path}")
+    except OSError as e:
+        logger.warning(f"Could not update .gitignore: {e}")
+
+
+def _knowledge_is_fresh(project_root: Path, max_age_minutes: int, richness: str = "rich") -> bool:
+    """Check if the .knowledge/ directory is recent enough to skip rebuilding.
+
+    Also invalidates the cache if the requested richness level differs from
+    what was used in the last build.
+    """
     index_path = project_root / ".knowledge" / "index.json"
     if not index_path.exists():
         return False
 
     try:
         index = json.loads(index_path.read_text())
+
+        # Invalidate if richness level changed
+        existing_richness = index.get("richness", "minimal")
+        if existing_richness != richness:
+            logger.info(f"Knowledge richness changed ({existing_richness} → {richness}), forcing rebuild")
+            return False
+
         last_built = index.get("lastBuilt")
         if not last_built:
             return False
@@ -90,16 +135,17 @@ async def build_knowledge(
     aicoder_path: str = "",
     timeout_seconds: int = 60,
     skip_if_fresh_minutes: int = 5,
+    richness: str = "rich",
 ) -> KnowledgeResult:
     """Build AICoder knowledge base for the target project.
 
     Runs AICoder's build-knowledge script against project_root.
-    Skips if .knowledge/ is fresh enough.
+    Skips if .knowledge/ is fresh enough and richness level matches.
     """
     knowledge_root = project_root / ".knowledge"
 
-    # Skip if fresh
-    if _knowledge_is_fresh(project_root, skip_if_fresh_minutes):
+    # Skip if fresh (also checks richness match)
+    if _knowledge_is_fresh(project_root, skip_if_fresh_minutes, richness=richness):
         try:
             index = json.loads((knowledge_root / "index.json").read_text())
             file_count = index.get("fileCount", 0)
@@ -132,6 +178,7 @@ async def build_knowledge(
         "npx", "tsx",
         str(build_script),
         "--root", str(project_root),
+        "--richness", richness,
     ]
 
     start = time.monotonic()
