@@ -53,6 +53,17 @@ def normalize_artifact_keys(data: Any) -> Any:
     return data
 
 
+def _fix_invalid_json_escapes(raw: str) -> str:
+    """Fix invalid backslash escape sequences in JSON strings.
+
+    LLMs sometimes produce escapes like \\e, \\s, \\a etc. that are not
+    valid in JSON.  This replaces them with double-backslash so that the
+    literal character is preserved (e.g. \\e → \\\\e).
+    """
+    # Valid JSON escapes: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
+    return re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
+
+
 def validate_artifact_file(
     artifact_path: Path, artifact_name: str, *, auto_normalize: bool = True,
 ) -> ValidationResult:
@@ -79,12 +90,22 @@ def validate_artifact_file(
     try:
         with open(artifact_path) as f:
             data = json.load(f)
-    except json.JSONDecodeError as e:
-        return ValidationResult(
-            valid=False,
-            errors=[f"Invalid JSON: {e}"],
-            artifact_name=artifact_name,
-        )
+    except json.JSONDecodeError:
+        # LLMs often produce invalid escape sequences — try to fix them
+        try:
+            raw = artifact_path.read_text()
+            fixed = _fix_invalid_json_escapes(raw)
+            data = json.loads(fixed)
+            logger.info(
+                "Auto-fixed invalid escape sequences in %s", artifact_path.name
+            )
+            artifact_path.write_text(fixed)
+        except (json.JSONDecodeError, OSError) as e:
+            return ValidationResult(
+                valid=False,
+                errors=[f"Invalid JSON: {e}"],
+                artifact_name=artifact_name,
+            )
 
     # Normalize keys before validation (handles camelCase/kebab-case from agents)
     if auto_normalize and isinstance(data, dict):
