@@ -6,8 +6,24 @@
     "dependencies": [],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.140Z",
-    "contentHash": "42825be48aff518a31422e81d2cc7823bf7c49ba16fadbe950d084cfaa54c70b"
+    "lastUpdated": "2026-03-17T06:05:22.416Z",
+    "contentHash": "1b8dfab22be1f0d47ea2b26e7c3528452d37defcec2f4cb1eff50f5d346bf483",
+    "detailedPurpose": "Internal module with 0 private symbol(s).",
+    "publicAPI": [],
+    "internalPatterns": []
+  },
+  "src/orchestrator/_version.py": {
+    "file": "src/orchestrator/_version.py",
+    "purpose": "_version module",
+    "exports": [],
+    "dependencies": [],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.417Z",
+    "contentHash": "ac8555225cae3a03db4f90d873290d0052afab364a9199d1e6de15f8d44a51f2",
+    "detailedPurpose": "Internal module with 0 private symbol(s).",
+    "publicAPI": [],
+    "internalPatterns": []
   },
   "src/orchestrator/agents.py": {
     "file": "src/orchestrator/agents.py",
@@ -38,12 +54,109 @@
       "dataclasses",
       "pathlib",
       "typing",
+      "pydantic",
       "orchestrator.models"
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.306Z",
-    "contentHash": "7c32c51707734985084ff024870ea8ebd3998f47f627a00b082b7b38155fa381"
+    "lastUpdated": "2026-03-17T09:02:55.701Z",
+    "contentHash": "68e59e69802a06e20c2a0a77dd55fcda23fb09826d70fc463eb6284e432677f7",
+    "detailedPurpose": "Result from a sub-agent invocation. Exports: AgentResult, AgentInvocation, invoke_agent, AgentActivityTracker, __init__ and 6 more.",
+    "publicAPI": [
+      {
+        "name": "AgentResult",
+        "type": "class",
+        "signature": "@dataclass class AgentResult",
+        "jsdoc": "Result from a sub-agent invocation."
+      },
+      {
+        "name": "AgentInvocation",
+        "type": "class",
+        "signature": "class AgentInvocation(BaseModel)",
+        "jsdoc": "Parameters for invoking a sub-agent.\n\n    Validated at construction time to prevent silent failures:\n    - agent_name must be non-empty and contain only word chars and hyphens\n      (prevents path traversal like '../secret' and empty name bugs)\n    - prompt must be non-empty (prevents silent no-op invocations)\n    - max_turns must be 1..200 (prevents SDK rejection for 0/-1 and runaway agents)"
+      },
+      {
+        "name": "invoke_agent",
+        "type": "function",
+        "signature": "async def invoke_agent(invocation: AgentInvocation) -> AgentResult",
+        "jsdoc": "Invoke a Claude Code sub-agent via the SDK.\n\n    Uses claude_agent_sdk.query() when available, falls back to CLI subprocess.\n    When enhanced_perception is enabled, enriches the prompt via a lightweight\n    Haiku pre-processing call before the main agent invocation."
+      },
+      {
+        "name": "AgentActivityTracker",
+        "type": "class",
+        "signature": "class AgentActivityTracker",
+        "jsdoc": "Tracks and displays live activity for a running agent.\n\n    Runs a background thread that continuously rotates a spinner on the\n    current line so the user always sees movement. When a real SDK message\n    arrives, the spinner line is replaced with the message content."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(agent_name: str, model: str, max_turns: int) -> None"
+      },
+      {
+        "name": "start_spinner",
+        "type": "method",
+        "signature": "def start_spinner() -> None",
+        "jsdoc": "Start the background spinner thread."
+      },
+      {
+        "name": "stop_spinner",
+        "type": "method",
+        "signature": "def stop_spinner() -> None",
+        "jsdoc": "Stop the background spinner and clear its line."
+      },
+      {
+        "name": "print_start",
+        "type": "method",
+        "signature": "def print_start() -> None"
+      },
+      {
+        "name": "print_done",
+        "type": "method",
+        "signature": "def print_done(success: bool, cost: float) -> None"
+      },
+      {
+        "name": "log_message",
+        "type": "method",
+        "signature": "def log_message(message: Any) -> None",
+        "jsdoc": "Print live progress from the SDK stream with activity context."
+      },
+      {
+        "name": "invoke_agents_parallel",
+        "type": "function",
+        "signature": "async def invoke_agents_parallel(invocations: list[AgentInvocation], max_concurrent: int = 0,) -> list[AgentResult]"
+      }
+    ],
+    "internalPatterns": []
+  },
+  "src/orchestrator/audit.py": {
+    "file": "src/orchestrator/audit.py",
+    "purpose": "audit module",
+    "exports": [
+      "audit_artifacts"
+    ],
+    "dependencies": [
+      "__future__",
+      "logging",
+      "sys",
+      "pathlib",
+      "yaml",
+      "orchestrator.models",
+      "orchestrator.validation"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.418Z",
+    "contentHash": "7cfc195a6044a910c6e08024114bf8139dfa608effc644a86d3ac83cedd27fee",
+    "detailedPurpose": "Return list of inconsistency messages. Empty means all clear. Exports: audit_artifacts.",
+    "publicAPI": [
+      {
+        "name": "audit_artifacts",
+        "type": "function",
+        "signature": "def audit_artifacts(config_path: Path | None = None) -> list[str]",
+        "jsdoc": "Return list of inconsistency messages. Empty means all clear."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/codenames.py": {
     "file": "src/orchestrator/codenames.py",
@@ -57,8 +170,18 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.141Z",
-    "contentHash": "b2527490337accc8ad14de04cdd245d6263c76534ed4c294afe346ef64e62fd0"
+    "lastUpdated": "2026-03-17T06:05:22.418Z",
+    "contentHash": "98d9a07cbc9f3b6348853460d1ca6a2810f869e57450e60d75a9733d9a7f7228",
+    "detailedPurpose": "Generate a unique adjective-noun codename not in the exclude set. Exports: generate_codename.",
+    "publicAPI": [
+      {
+        "name": "generate_codename",
+        "type": "function",
+        "signature": "def generate_codename(exclude: set[str] | None = None) -> str",
+        "jsdoc": "Generate a unique adjective-noun codename not in the exclude set."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/config.py": {
     "file": "src/orchestrator/config.py",
@@ -70,12 +193,24 @@
       "__future__",
       "pathlib",
       "yaml",
-      "orchestrator.models"
+      "pydantic",
+      "orchestrator.models",
+      "orchestrator.monitoring.errors"
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.463Z",
-    "contentHash": "2898425d6fe6b5adde10fab8e6a0ad06bfeb0f46fa81802589a8ad94861d93f0"
+    "lastUpdated": "2026-03-17T08:35:59.058Z",
+    "contentHash": "8e615bba7910c2c3cd5e683c8ae3159b6137fbb63ddabf9e73bd38aa3334b9d0",
+    "detailedPurpose": "Load orchestrator configuration from a YAML file. Exports: load_config.",
+    "publicAPI": [
+      {
+        "name": "load_config",
+        "type": "function",
+        "signature": "def load_config(config_path: Path | None = None) -> OrchestratorConfig",
+        "jsdoc": "Load orchestrator configuration from a YAML file."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/dashboard/__init__.py": {
     "file": "src/orchestrator/dashboard/__init__.py",
@@ -84,8 +219,11 @@
     "dependencies": [],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.141Z",
-    "contentHash": "d3c03c6eb1d033063f9e44bc0c8382a2187de78637fe3ad70e9cdfa7cc1fd7ae"
+    "lastUpdated": "2026-03-17T06:05:22.418Z",
+    "contentHash": "6433b2c398a56be9703b43d5e1ce9a71fac3905e012304582f9af968b02ea6cf",
+    "detailedPurpose": "Internal module with 0 private symbol(s).",
+    "publicAPI": [],
+    "internalPatterns": []
   },
   "src/orchestrator/dashboard/app.py": {
     "file": "src/orchestrator/dashboard/app.py",
@@ -131,8 +269,124 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T02:15:25.445Z",
-    "contentHash": "29dfe1e9cb02855cd415528e732526e128c806c3bbd33291c1b6da22cfb34f77"
+    "lastUpdated": "2026-03-17T06:05:22.418Z",
+    "contentHash": "cd7a09090c95b415161b13fcf00a90681f868afe76fde0bf9cfad04cb5c042f9",
+    "detailedPurpose": "Provides 22 exported function(s): create_app, auth_middleware, index, runs_page, run_detail_page and 17 more.",
+    "publicAPI": [
+      {
+        "name": "create_app",
+        "type": "function",
+        "signature": "def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI"
+      },
+      {
+        "name": "auth_middleware",
+        "type": "function",
+        "signature": "@app.middleware async def auth_middleware(request: Request, call_next)"
+      },
+      {
+        "name": "index",
+        "type": "function",
+        "signature": "@app.get async def index()"
+      },
+      {
+        "name": "runs_page",
+        "type": "function",
+        "signature": "@app.get async def runs_page(request: Request)"
+      },
+      {
+        "name": "run_detail_page",
+        "type": "function",
+        "signature": "@app.get async def run_detail_page(request: Request, run_id: str)"
+      },
+      {
+        "name": "run_live_page",
+        "type": "function",
+        "signature": "@app.get async def run_live_page(request: Request, run_id: str)"
+      },
+      {
+        "name": "metrics_page",
+        "type": "function",
+        "signature": "@app.get async def metrics_page(request: Request)"
+      },
+      {
+        "name": "alerts_page",
+        "type": "function",
+        "signature": "@app.get async def alerts_page(request: Request)"
+      },
+      {
+        "name": "new_run_page",
+        "type": "function",
+        "signature": "@app.get async def new_run_page(request: Request)"
+      },
+      {
+        "name": "api_runs",
+        "type": "function",
+        "signature": "@app.get async def api_runs()"
+      },
+      {
+        "name": "api_active_runs",
+        "type": "function",
+        "signature": "@app.get async def api_active_runs()"
+      },
+      {
+        "name": "api_run_detail",
+        "type": "function",
+        "signature": "@app.get async def api_run_detail(run_id: str)"
+      },
+      {
+        "name": "api_run_events",
+        "type": "function",
+        "signature": "@app.get async def api_run_events(run_id: str, offset: int = 0, limit: int = 100)"
+      },
+      {
+        "name": "api_run_timeline",
+        "type": "function",
+        "signature": "@app.get async def api_run_timeline(run_id: str)"
+      },
+      {
+        "name": "api_metrics",
+        "type": "function",
+        "signature": "@app.get async def api_metrics()"
+      },
+      {
+        "name": "api_alerts",
+        "type": "function",
+        "signature": "@app.get async def api_alerts(limit: int = 100)"
+      },
+      {
+        "name": "api_start_run",
+        "type": "function",
+        "signature": "@app.post async def api_start_run(body: RunRequest)"
+      },
+      {
+        "name": "api_cancel_run",
+        "type": "function",
+        "signature": "@app.post async def api_cancel_run(run_id: str)"
+      },
+      {
+        "name": "api_resume_run",
+        "type": "function",
+        "signature": "@app.post async def api_resume_run(run_id: str)"
+      },
+      {
+        "name": "sse_stream",
+        "type": "function",
+        "signature": "@app.get async def sse_stream(run_id: str)"
+      },
+      {
+        "name": "event_generator",
+        "type": "function",
+        "signature": "async def event_generator()"
+      },
+      {
+        "name": "healthz",
+        "type": "function",
+        "signature": "@app.get async def healthz()"
+      }
+    ],
+    "internalPatterns": [
+      "factory"
+    ]
   },
   "src/orchestrator/dashboard/cli.py": {
     "file": "src/orchestrator/dashboard/cli.py",
@@ -147,8 +401,17 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.308Z",
-    "contentHash": "ed2ec7306007dbddab684efe84f62d913677dc31033dcc9af6a6d2b3354de0f1"
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "dca7c3419eef49b7b6b8dc387b4451ec36b1a5c844f76d94440685ca00909e65",
+    "detailedPurpose": "Provides 1 exported function(s): main.",
+    "publicAPI": [
+      {
+        "name": "main",
+        "type": "function",
+        "signature": "def main() -> None"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/dashboard/data.py": {
     "file": "src/orchestrator/dashboard/data.py",
@@ -175,8 +438,143 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.141Z",
-    "contentHash": "cee7da674e40ff4acd4dcf2386f55c8e04a0ea2bb19f8e4b0ba2547e78404d48"
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "445c4db48a8bd1f8896396129254a0edec8680fe451b0daf18dc470df9a75bbc",
+    "detailedPurpose": "Reads orchestrator workspace data for dashboard consumption. Exports: RunSummary, RunDetail, RunDataReader, __init__, list_runs and 5 more.",
+    "publicAPI": [
+      {
+        "name": "RunSummary",
+        "type": "class",
+        "signature": "@dataclass class RunSummary"
+      },
+      {
+        "name": "RunDetail",
+        "type": "class",
+        "signature": "@dataclass class RunDetail"
+      },
+      {
+        "name": "RunDataReader",
+        "type": "class",
+        "signature": "class RunDataReader",
+        "jsdoc": "Reads orchestrator workspace data for dashboard consumption."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(workspace: Path) -> None"
+      },
+      {
+        "name": "list_runs",
+        "type": "method",
+        "signature": "def list_runs() -> list[RunSummary]"
+      },
+      {
+        "name": "get_run",
+        "type": "method",
+        "signature": "def get_run(run_id: str) -> RunDetail | None"
+      },
+      {
+        "name": "get_events",
+        "type": "method",
+        "signature": "def get_events(run_id: str, offset: int = 0, limit: int = 100,) -> list[dict[str, Any]]"
+      },
+      {
+        "name": "tail_events",
+        "type": "method",
+        "signature": "def tail_events(run_id: str, after_line: int = 0) -> list[dict[str, Any]]"
+      },
+      {
+        "name": "get_alert_history",
+        "type": "method",
+        "signature": "def get_alert_history(limit: int = 100) -> list[dict[str, Any]]"
+      },
+      {
+        "name": "get_metrics_summary",
+        "type": "method",
+        "signature": "def get_metrics_summary() -> dict[str, Any]",
+        "jsdoc": "Aggregate metrics across all runs for dashboard charts."
+      }
+    ],
+    "internalPatterns": []
+  },
+  "src/orchestrator/dashboard/runner.py": {
+    "file": "src/orchestrator/dashboard/runner.py",
+    "purpose": "runner module",
+    "exports": [
+      "RunRequest",
+      "RunTracker",
+      "__init__",
+      "start_run",
+      "cancel_run",
+      "is_active",
+      "active_run_ids",
+      "get_error"
+    ],
+    "dependencies": [
+      "__future__",
+      "asyncio",
+      "logging",
+      "time",
+      "uuid",
+      "pathlib",
+      "typing",
+      "pydantic",
+      "orchestrator.config",
+      "orchestrator.main",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "d7b82371fdab17a05421ddb43623ac974427ec2710099d06f59296516569f022",
+    "detailedPurpose": "Validated input for starting an orchestration run from the web UI. Exports: RunRequest, RunTracker, __init__, start_run, cancel_run and 3 more.",
+    "publicAPI": [
+      {
+        "name": "RunRequest",
+        "type": "class",
+        "signature": "class RunRequest(BaseModel)",
+        "jsdoc": "Validated input for starting an orchestration run from the web UI."
+      },
+      {
+        "name": "RunTracker",
+        "type": "class",
+        "signature": "class RunTracker",
+        "jsdoc": "Manages background orchestration runs within the dashboard process."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(workspace: Path, config_path: Path | None = None) -> None"
+      },
+      {
+        "name": "start_run",
+        "type": "method",
+        "signature": "async def start_run(request: RunRequest) -> str",
+        "jsdoc": "Start a new orchestration run as a background task.\n\n        Returns the run_id. Raises ValueError if a run is already active."
+      },
+      {
+        "name": "cancel_run",
+        "type": "method",
+        "signature": "async def cancel_run(run_id: str) -> bool",
+        "jsdoc": "Request graceful cancellation of an active run via sentinel file."
+      },
+      {
+        "name": "is_active",
+        "type": "method",
+        "signature": "def is_active(run_id: str) -> bool"
+      },
+      {
+        "name": "active_run_ids",
+        "type": "method",
+        "signature": "def active_run_ids() -> list[str]"
+      },
+      {
+        "name": "get_error",
+        "type": "method",
+        "signature": "def get_error(run_id: str) -> str | None"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/debate.py": {
     "file": "src/orchestrator/debate.py",
@@ -201,8 +599,33 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.463Z",
-    "contentHash": "c512c25b97fe4741cda40e08f78e642d0495670a6a40d19faace30254b1f4325"
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "eaa2b0e3f8c714429de5f49f5c75ab9cc1d8efbec301b781c735fefb66b77b9a",
+    "detailedPurpose": "Orchestrates multi-agent adversarial debate before the SDLC pipeline. Exports: DebateEngine, __init__, run_debate, enrich_feature_request.",
+    "publicAPI": [
+      {
+        "name": "DebateEngine",
+        "type": "class",
+        "signature": "class DebateEngine",
+        "jsdoc": "Orchestrates multi-agent adversarial debate before the SDLC pipeline."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(config: OrchestratorConfig, workspace_dir: Path, project_root: Path, run_logger: RunLogger | None = None, dry_run: bool = False,) -> None"
+      },
+      {
+        "name": "run_debate",
+        "type": "method",
+        "signature": "async def run_debate(feature_request: str, researcher_count: int | None = None, brainstormer_count: int | None = None, max_rounds: int | None = None, convergence_threshold: float | None = None,) -> DebateConclusion"
+      },
+      {
+        "name": "enrich_feature_request",
+        "type": "method",
+        "signature": "def enrich_feature_request(feature_request: str, conclusion: DebateConclusion) -> str"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/engine.py": {
     "file": "src/orchestrator/engine.py",
@@ -231,8 +654,55 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.308Z",
-    "contentHash": "4db97bf9447761dee961cd267470ebf8c98653ff32e462b7c3eb8f01ce851125"
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "d8d24197a684d04a4d14875e255ebb4a6b0db50bc6822b2d2e7343563de6b5fc",
+    "detailedPurpose": "Runs the full SDLC orchestration pipeline. Exports: OrchestratorEngine, __init__, run.",
+    "publicAPI": [
+      {
+        "name": "OrchestratorEngine",
+        "type": "class",
+        "signature": "class OrchestratorEngine",
+        "jsdoc": "Runs the full SDLC orchestration pipeline.\n\n    Supports two execution modes:\n    1. Workflow mode (new) — uses WorkflowEngine with workflow definitions\n    2. Legacy mode — uses the original hardcoded PHASE_ORDER pipeline\n\n    Legacy mode is used when single_phase or from_phase are specified\n    with old phase names."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(config: OrchestratorConfig, dry_run: bool = False, interrupt_manager: Any | None = None, confirm_callback: Any | None = None,) -> None"
+      },
+      {
+        "name": "run",
+        "type": "method",
+        "signature": "async def run(feature_request: str, single_phase: str | None = None, from_phase: str | None = None, resume: bool = False, resume_run_id: str | None = None, workflow_type: WorkflowType | None = None, custom_workflow: str | None = None, run_id: str | None = None,) -> RunState"
+      }
+    ],
+    "internalPatterns": []
+  },
+  "src/orchestrator/generate_schemas.py": {
+    "file": "src/orchestrator/generate_schemas.py",
+    "purpose": "generate_schemas module",
+    "exports": [
+      "generate_missing_schemas"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "pathlib",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "8aac85b70f0009ef723ecedc4c51bc9c810d681ed56a09f237ee8d652e8ed2d2",
+    "detailedPurpose": "Generate .schema.json files for any ARTIFACT_MODELS that lack one. Exports: generate_missing_schemas.",
+    "publicAPI": [
+      {
+        "name": "generate_missing_schemas",
+        "type": "function",
+        "signature": "def generate_missing_schemas() -> list[str]",
+        "jsdoc": "Generate .schema.json files for any ARTIFACT_MODELS that lack one.\n\n    Returns list of newly generated schema names."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/interruption.py": {
     "file": "src/orchestrator/interruption.py",
@@ -266,14 +736,76 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "51e616895b3613a3c0bc1cfadbeb54860b993506af26f0ec0fa7636e1f8c1750"
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "89b00ccf0329a2fe277321ecb7a2ba22f6654cc5223df14a1b89f5b948126381",
+    "detailedPurpose": "Manages pipeline interruption via Ctrl+C or sentinel file. Exports: InterruptManager, __init__, request_interrupt, should_interrupt, clear and 5 more.",
+    "publicAPI": [
+      {
+        "name": "InterruptManager",
+        "type": "class",
+        "signature": "class InterruptManager",
+        "jsdoc": "Manages pipeline interruption via Ctrl+C or sentinel file.\n\n    Detection happens at safe boundaries only (between steps, between waves,\n    between sequential tasks). The manager never forcefully kills running agents.\n\n    Two trigger mechanisms:\n    1. SIGINT (Ctrl+C) — first press pauses, second within 2s hard-exits\n    2. Sentinel file (workspace/.interrupt) — for external/headless triggering"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__() -> None"
+      },
+      {
+        "name": "request_interrupt",
+        "type": "method",
+        "signature": "def request_interrupt(reason: str = \"user_request\") -> None",
+        "jsdoc": "Signal that the pipeline should pause at the next safe boundary."
+      },
+      {
+        "name": "should_interrupt",
+        "type": "method",
+        "signature": "def should_interrupt() -> bool",
+        "jsdoc": "Check if an interrupt has been requested (signal or sentinel file)."
+      },
+      {
+        "name": "clear",
+        "type": "method",
+        "signature": "def clear() -> None",
+        "jsdoc": "Reset interrupt state after handling."
+      },
+      {
+        "name": "setup_signal_handler",
+        "type": "method",
+        "signature": "def setup_signal_handler() -> None",
+        "jsdoc": "Register SIGINT handler on the current asyncio event loop.\n\n        Must be called from within a running event loop (i.e., inside an async function).\n        Falls back to signal.signal() if no event loop is available."
+      },
+      {
+        "name": "restore_signal_handler",
+        "type": "method",
+        "signature": "def restore_signal_handler() -> None",
+        "jsdoc": "Restore the original SIGINT handler."
+      },
+      {
+        "name": "setup_sentinel",
+        "type": "method",
+        "signature": "def setup_sentinel(workspace: Path) -> None",
+        "jsdoc": "Enable sentinel file detection for external interrupt triggering.\n\n        Any process can write to ``workspace/.interrupt`` to trigger a pause."
+      },
+      {
+        "name": "handle_interruption",
+        "type": "function",
+        "signature": "async def handle_interruption(state: RunState, config: OrchestratorConfig, interrupt_manager: InterruptManager, run_logger: RunLogger | None, project_root: Path, context: str = \"between_steps\",) -> str"
+      },
+      {
+        "name": "run_injected_task",
+        "type": "function",
+        "signature": "async def run_injected_task(prompt: str, config: OrchestratorConfig, workspace: Path, project_root: Path, run_logger: RunLogger | None = None,) -> AgentResult"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/knowledge.py": {
     "file": "src/orchestrator/knowledge.py",
     "purpose": "knowledge module",
     "exports": [
       "KnowledgeResult",
+      "ensure_gitignore_entries",
       "build_knowledge",
       "synthesize_brief",
       "ensure_mcp_config",
@@ -296,8 +828,119 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.308Z",
-    "contentHash": "53c85d0f5c644f67a59de692a414ff4eda9c52108f654ae3a716d582c7b6f7f1"
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "74d64dbfda8483e7c88bf3b9fcc2b29590b2dbef16c765e267cc7c47266f8286",
+    "detailedPurpose": "Result from building codebase knowledge. Exports: KnowledgeResult, ensure_gitignore_entries, build_knowledge, synthesize_brief, ensure_mcp_config and 4 more.",
+    "publicAPI": [
+      {
+        "name": "KnowledgeResult",
+        "type": "class",
+        "signature": "@dataclass class KnowledgeResult",
+        "jsdoc": "Result from building codebase knowledge."
+      },
+      {
+        "name": "ensure_gitignore_entries",
+        "type": "function",
+        "signature": "def ensure_gitignore_entries(project_root: Path, entries: list[str] | None = None) -> None",
+        "jsdoc": "Ensure .knowledge/ and workspace/ are listed in the project's .gitignore.\n\n    Idempotent — only appends entries that are missing."
+      },
+      {
+        "name": "build_knowledge",
+        "type": "function",
+        "signature": "async def build_knowledge(project_root: Path, aicoder_path: str = \"\", timeout_seconds: int = 60, skip_if_fresh_minutes: int = 5, richness: str = \"rich\",) -> KnowledgeResult"
+      },
+      {
+        "name": "synthesize_brief",
+        "type": "function",
+        "signature": "def synthesize_brief(knowledge_root: Path, max_files: int = 30, max_symbols: int = 15,) -> str"
+      },
+      {
+        "name": "ensure_mcp_config",
+        "type": "function",
+        "signature": "def ensure_mcp_config(aicoder_path: str, target_project: Path, project_root: Path | None = None,) -> bool"
+      },
+      {
+        "name": "get_mcp_server_config",
+        "type": "function",
+        "signature": "def get_mcp_server_config(aicoder_path: str, project_root: Path,) -> dict[str, Any] | None"
+      },
+      {
+        "name": "cleanup_mcp_config",
+        "type": "function",
+        "signature": "def cleanup_mcp_config(target_project: Path) -> None",
+        "jsdoc": "Remove the AICoder MCP server entry from .mcp.json."
+      },
+      {
+        "name": "generate_artifact_digest",
+        "type": "function",
+        "signature": "def generate_artifact_digest(workspace: Path, artifact_name: str) -> str",
+        "jsdoc": "Read an artifact JSON and produce a condensed digest for prompt injection."
+      },
+      {
+        "name": "update_cumulative_context",
+        "type": "function",
+        "signature": "def update_cumulative_context(workspace: Path, phase_name: str, artifacts: list[str] | None = None,) -> None"
+      }
+    ],
+    "internalPatterns": [
+      "factory"
+    ]
+  },
+  "src/orchestrator/knowledge_watcher.py": {
+    "file": "src/orchestrator/knowledge_watcher.py",
+    "purpose": "knowledge_watcher module",
+    "exports": [
+      "KnowledgeWatcher",
+      "__init__",
+      "rebuild_count",
+      "start",
+      "stop"
+    ],
+    "dependencies": [
+      "__future__",
+      "asyncio",
+      "logging",
+      "time",
+      "pathlib",
+      "typing",
+      "orchestrator.knowledge"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.419Z",
+    "contentHash": "9e858b98e41112e0cd3616f3183c815cd33b495ec9dba29cd56fdd30a047605b",
+    "detailedPurpose": "Watches the project root for file changes and triggers knowledge rebuilds. Exports: KnowledgeWatcher, __init__, rebuild_count, start, stop.",
+    "publicAPI": [
+      {
+        "name": "KnowledgeWatcher",
+        "type": "class",
+        "signature": "class KnowledgeWatcher",
+        "jsdoc": "Watches the project root for file changes and triggers knowledge rebuilds.\n\n    Usage::\n\n        watcher = KnowledgeWatcher(project_root, config)\n        await watcher.start()\n        # ... implementation step runs ...\n        await watcher.stop()"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(project_root: Path, aicoder_path: str = \"\", build_timeout_seconds: int = 60, debounce_seconds: float = 5.0, brief_max_files: int = 30, brief_max_symbols: int = 15, inject_brief: bool = True, knowledge_context: Any | None = None, richness: str = \"rich\",) -> None"
+      },
+      {
+        "name": "rebuild_count",
+        "type": "method",
+        "signature": "@property def rebuild_count() -> int"
+      },
+      {
+        "name": "start",
+        "type": "method",
+        "signature": "async def start() -> None",
+        "jsdoc": "Start watching for file changes in the background."
+      },
+      {
+        "name": "stop",
+        "type": "method",
+        "signature": "async def stop() -> None",
+        "jsdoc": "Stop the watcher and wait for cleanup."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/main.py": {
     "file": "src/orchestrator/main.py",
@@ -325,8 +968,63 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "8a029014860f189b21bac95274693815bf99c1239998e235283338567d9bb839"
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "9677a4fbb8af26b79c09ec0027bfb1c6d661fd99894517f3b1a4d7db072b0707",
+    "detailedPurpose": "Validate and sanitize user-provided feature request text. Exports: sanitize_feature_request, main.",
+    "publicAPI": [
+      {
+        "name": "sanitize_feature_request",
+        "type": "function",
+        "signature": "def sanitize_feature_request(text: str) -> str",
+        "jsdoc": "Validate and sanitize user-provided feature request text."
+      },
+      {
+        "name": "main",
+        "type": "function",
+        "signature": "def main() -> None"
+      }
+    ],
+    "internalPatterns": []
+  },
+  "src/orchestrator/model_routing.py": {
+    "file": "src/orchestrator/model_routing.py",
+    "purpose": "model_routing module",
+    "exports": [
+      "AgentCategory",
+      "RoutingMode",
+      "apply_routing_mode"
+    ],
+    "dependencies": [
+      "__future__",
+      "enum",
+      "structlog",
+      "orchestrator.models",
+      "orchestrator.roles"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "6cffc2523f85081be586c9ece1b930d655c96a55a590ca7ac825fa59e6228704",
+    "detailedPurpose": "Override all agent model assignments based on the selected routing mode. Exports: AgentCategory, RoutingMode, apply_routing_mode.",
+    "publicAPI": [
+      {
+        "name": "AgentCategory",
+        "type": "class",
+        "signature": "class AgentCategory(str, Enum)"
+      },
+      {
+        "name": "RoutingMode",
+        "type": "class",
+        "signature": "class RoutingMode(str, Enum)"
+      },
+      {
+        "name": "apply_routing_mode",
+        "type": "function",
+        "signature": "def apply_routing_mode(config: OrchestratorConfig, mode: RoutingMode) -> None",
+        "jsdoc": "Override all agent model assignments based on the selected routing mode.\n\n    Mutates ``config`` in place: updates every agent's ``model`` and\n    ``escalation_model``, plus the debate config model tiers."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/models.py": {
     "file": "src/orchestrator/models.py",
@@ -417,10 +1115,22 @@
       "PhaseConfig",
       "KnowledgeConfig",
       "KnowledgeContext",
+      "ExplorationConfig",
       "SpawnConfig",
       "SpawnRecord",
       "DebateConfig",
-      "OrchestratorConfig"
+      "OrchestratorConfig",
+      "validate_max_budget_usd",
+      "validate_max_review_cycles",
+      "validate_max_concurrent_agents",
+      "MarketInsight",
+      "MarketResearch",
+      "CompetitorEntry",
+      "CompetitorResearch",
+      "DomainFinding",
+      "FieldSpecialistReview",
+      "TestCase",
+      "QAPlan"
     ],
     "dependencies": [
       "__future__",
@@ -431,8 +1141,531 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.308Z",
-    "contentHash": "026329a433070ef336dbde839c6a741f0714f7605a25c0f3596cd090ecc71745"
+    "lastUpdated": "2026-03-17T08:35:18.839Z",
+    "contentHash": "20596f3ab35148881e6819cf9e7dbd35cc4e29e62d184eb033e7c969d10d89b6",
+    "detailedPurpose": "A single agent's position in one round of debate. Exports: Priority, Complexity, IssueSeverity, QAVerdict, ReviewVerdict and 96 more.",
+    "publicAPI": [
+      {
+        "name": "Priority",
+        "type": "class",
+        "signature": "class Priority(str, Enum)"
+      },
+      {
+        "name": "Complexity",
+        "type": "class",
+        "signature": "class Complexity(str, Enum)"
+      },
+      {
+        "name": "IssueSeverity",
+        "type": "class",
+        "signature": "class IssueSeverity(str, Enum)"
+      },
+      {
+        "name": "QAVerdict",
+        "type": "class",
+        "signature": "class QAVerdict(str, Enum)"
+      },
+      {
+        "name": "ReviewVerdict",
+        "type": "class",
+        "signature": "class ReviewVerdict(str, Enum)"
+      },
+      {
+        "name": "PhaseStatus",
+        "type": "class",
+        "signature": "class PhaseStatus(str, Enum)"
+      },
+      {
+        "name": "TaskStatus",
+        "type": "class",
+        "signature": "class TaskStatus(str, Enum)"
+      },
+      {
+        "name": "ModelTier",
+        "type": "class",
+        "signature": "class ModelTier(str, Enum)"
+      },
+      {
+        "name": "WorkflowType",
+        "type": "class",
+        "signature": "class WorkflowType(str, Enum)"
+      },
+      {
+        "name": "AgentRole",
+        "type": "class",
+        "signature": "class AgentRole(str, Enum)"
+      },
+      {
+        "name": "RoleAccess",
+        "type": "class",
+        "signature": "class RoleAccess(str, Enum)"
+      },
+      {
+        "name": "Requirement",
+        "type": "class",
+        "signature": "class Requirement(BaseModel)"
+      },
+      {
+        "name": "PRD",
+        "type": "class",
+        "signature": "class PRD(BaseModel)"
+      },
+      {
+        "name": "Component",
+        "type": "class",
+        "signature": "class Component(BaseModel)"
+      },
+      {
+        "name": "TechDecision",
+        "type": "class",
+        "signature": "class TechDecision(BaseModel)"
+      },
+      {
+        "name": "Architecture",
+        "type": "class",
+        "signature": "class Architecture(BaseModel)"
+      },
+      {
+        "name": "Task",
+        "type": "class",
+        "signature": "class Task(BaseModel)"
+      },
+      {
+        "name": "validate_assigned_role",
+        "type": "method",
+        "signature": "@field_validator @classmethod def validate_assigned_role(v: str) -> str"
+      },
+      {
+        "name": "TaskList",
+        "type": "class",
+        "signature": "class TaskList(BaseModel)"
+      },
+      {
+        "name": "EngineeringPlan",
+        "type": "class",
+        "signature": "class EngineeringPlan(BaseModel)"
+      },
+      {
+        "name": "Threat",
+        "type": "class",
+        "signature": "class Threat(BaseModel)"
+      },
+      {
+        "name": "ThreatModel",
+        "type": "class",
+        "signature": "class ThreatModel(BaseModel)"
+      },
+      {
+        "name": "BenchmarkResult",
+        "type": "class",
+        "signature": "class BenchmarkResult(BaseModel)"
+      },
+      {
+        "name": "BenchmarkReport",
+        "type": "class",
+        "signature": "class BenchmarkReport(BaseModel)"
+      },
+      {
+        "name": "TestResults",
+        "type": "class",
+        "signature": "class TestResults(BaseModel)"
+      },
+      {
+        "name": "QAIssue",
+        "type": "class",
+        "signature": "class QAIssue(BaseModel)"
+      },
+      {
+        "name": "QAReport",
+        "type": "class",
+        "signature": "class QAReport(BaseModel)"
+      },
+      {
+        "name": "ReviewIssue",
+        "type": "class",
+        "signature": "class ReviewIssue(BaseModel)"
+      },
+      {
+        "name": "Review",
+        "type": "class",
+        "signature": "class Review(BaseModel)"
+      },
+      {
+        "name": "Vulnerability",
+        "type": "class",
+        "signature": "class Vulnerability(BaseModel)"
+      },
+      {
+        "name": "VulnerabilityReport",
+        "type": "class",
+        "signature": "class VulnerabilityReport(BaseModel)"
+      },
+      {
+        "name": "APIEndpointParam",
+        "type": "class",
+        "signature": "class APIEndpointParam(BaseModel)"
+      },
+      {
+        "name": "APIEndpointResponse",
+        "type": "class",
+        "signature": "class APIEndpointResponse(BaseModel)"
+      },
+      {
+        "name": "APIEndpoint",
+        "type": "class",
+        "signature": "class APIEndpoint(BaseModel)"
+      },
+      {
+        "name": "APIContract",
+        "type": "class",
+        "signature": "class APIContract(BaseModel)"
+      },
+      {
+        "name": "MigrationPhase",
+        "type": "class",
+        "signature": "class MigrationPhase(BaseModel)"
+      },
+      {
+        "name": "MigrationPlan",
+        "type": "class",
+        "signature": "class MigrationPlan(BaseModel)"
+      },
+      {
+        "name": "UXFlowStep",
+        "type": "class",
+        "signature": "class UXFlowStep(BaseModel)"
+      },
+      {
+        "name": "UXAlternateFlow",
+        "type": "class",
+        "signature": "class UXAlternateFlow(BaseModel)"
+      },
+      {
+        "name": "UXFlow",
+        "type": "class",
+        "signature": "class UXFlow(BaseModel)"
+      },
+      {
+        "name": "UXComponent",
+        "type": "class",
+        "signature": "class UXComponent(BaseModel)"
+      },
+      {
+        "name": "UXSpec",
+        "type": "class",
+        "signature": "class UXSpec(BaseModel)"
+      },
+      {
+        "name": "DebtItem",
+        "type": "class",
+        "signature": "class DebtItem(BaseModel)"
+      },
+      {
+        "name": "TechDebtInventory",
+        "type": "class",
+        "signature": "class TechDebtInventory(BaseModel)"
+      },
+      {
+        "name": "RolloutStage",
+        "type": "class",
+        "signature": "class RolloutStage(BaseModel)"
+      },
+      {
+        "name": "ReleasePlan",
+        "type": "class",
+        "signature": "class ReleasePlan(BaseModel)"
+      },
+      {
+        "name": "AffectedCode",
+        "type": "class",
+        "signature": "class AffectedCode(BaseModel)"
+      },
+      {
+        "name": "IncidentReport",
+        "type": "class",
+        "signature": "class IncidentReport(BaseModel)"
+      },
+      {
+        "name": "LoadTestProfile",
+        "type": "class",
+        "signature": "class LoadTestProfile(BaseModel)"
+      },
+      {
+        "name": "LoadTestReport",
+        "type": "class",
+        "signature": "class LoadTestReport(BaseModel)"
+      },
+      {
+        "name": "ComplianceGap",
+        "type": "class",
+        "signature": "class ComplianceGap(BaseModel)"
+      },
+      {
+        "name": "ComplianceReport",
+        "type": "class",
+        "signature": "class ComplianceReport(BaseModel)"
+      },
+      {
+        "name": "DependencyVulnerability",
+        "type": "class",
+        "signature": "class DependencyVulnerability(BaseModel)"
+      },
+      {
+        "name": "DependencyAudit",
+        "type": "class",
+        "signature": "class DependencyAudit(BaseModel)"
+      },
+      {
+        "name": "AccessibilityFinding",
+        "type": "class",
+        "signature": "class AccessibilityFinding(BaseModel)"
+      },
+      {
+        "name": "AccessibilityAudit",
+        "type": "class",
+        "signature": "class AccessibilityAudit(BaseModel)"
+      },
+      {
+        "name": "LegalFinding",
+        "type": "class",
+        "signature": "class LegalFinding(BaseModel)"
+      },
+      {
+        "name": "LegalReview",
+        "type": "class",
+        "signature": "class LegalReview(BaseModel)"
+      },
+      {
+        "name": "BehavioralFinding",
+        "type": "class",
+        "signature": "class BehavioralFinding(BaseModel)"
+      },
+      {
+        "name": "BehavioralReview",
+        "type": "class",
+        "signature": "class BehavioralReview(BaseModel)"
+      },
+      {
+        "name": "IntegrationTestPlan",
+        "type": "class",
+        "signature": "class IntegrationTestPlan(BaseModel)"
+      },
+      {
+        "name": "FrictionPoint",
+        "type": "class",
+        "signature": "class FrictionPoint(BaseModel)"
+      },
+      {
+        "name": "JourneyStep",
+        "type": "class",
+        "signature": "class JourneyStep(BaseModel)"
+      },
+      {
+        "name": "EndUserEvaluation",
+        "type": "class",
+        "signature": "class EndUserEvaluation(BaseModel)"
+      },
+      {
+        "name": "DebatePositionCritique",
+        "type": "class",
+        "signature": "class DebatePositionCritique(BaseModel)"
+      },
+      {
+        "name": "DebatePositionAgreement",
+        "type": "class",
+        "signature": "class DebatePositionAgreement(BaseModel)"
+      },
+      {
+        "name": "DebatePosition",
+        "type": "class",
+        "signature": "class DebatePosition(BaseModel)",
+        "jsdoc": "A single agent's position in one round of debate."
+      },
+      {
+        "name": "DebateRound",
+        "type": "class",
+        "signature": "class DebateRound(BaseModel)",
+        "jsdoc": "All positions from a single round."
+      },
+      {
+        "name": "DebateConclusionRequirement",
+        "type": "class",
+        "signature": "class DebateConclusionRequirement(BaseModel)"
+      },
+      {
+        "name": "DebateConclusionTension",
+        "type": "class",
+        "signature": "class DebateConclusionTension(BaseModel)"
+      },
+      {
+        "name": "DebateConclusionRisk",
+        "type": "class",
+        "signature": "class DebateConclusionRisk(BaseModel)"
+      },
+      {
+        "name": "DebateConclusionDissent",
+        "type": "class",
+        "signature": "class DebateConclusionDissent(BaseModel)"
+      },
+      {
+        "name": "DebateConclusion",
+        "type": "class",
+        "signature": "class DebateConclusion(BaseModel)",
+        "jsdoc": "Mediator's final synthesis of the debate."
+      },
+      {
+        "name": "DebateState",
+        "type": "class",
+        "signature": "class DebateState(BaseModel)",
+        "jsdoc": "Tracks the full debate lifecycle."
+      },
+      {
+        "name": "WorkflowStepDefinition",
+        "type": "class",
+        "signature": "class WorkflowStepDefinition(BaseModel)",
+        "jsdoc": "A single step in a workflow definition."
+      },
+      {
+        "name": "WorkflowDefinition",
+        "type": "class",
+        "signature": "class WorkflowDefinition(BaseModel)",
+        "jsdoc": "Complete workflow definition with ordered steps."
+      },
+      {
+        "name": "WorkflowTaskState",
+        "type": "class",
+        "signature": "class WorkflowTaskState(BaseModel)",
+        "jsdoc": "State of a single task within a workflow step."
+      },
+      {
+        "name": "PhaseState",
+        "type": "class",
+        "signature": "class PhaseState(BaseModel)"
+      },
+      {
+        "name": "EngTaskState",
+        "type": "class",
+        "signature": "class EngTaskState(BaseModel)",
+        "jsdoc": "Legacy task state — kept for backward compatibility."
+      },
+      {
+        "name": "InterruptEvent",
+        "type": "class",
+        "signature": "class InterruptEvent(BaseModel)",
+        "jsdoc": "Records a pipeline interruption and optional ad-hoc task injection."
+      },
+      {
+        "name": "RunState",
+        "type": "class",
+        "signature": "class RunState(BaseModel)"
+      },
+      {
+        "name": "AgentConfig",
+        "type": "class",
+        "signature": "class AgentConfig(BaseModel)"
+      },
+      {
+        "name": "PhaseConfig",
+        "type": "class",
+        "signature": "class PhaseConfig(BaseModel)"
+      },
+      {
+        "name": "KnowledgeConfig",
+        "type": "class",
+        "signature": "class KnowledgeConfig(BaseModel)",
+        "jsdoc": "Configuration for AICoder knowledge integration."
+      },
+      {
+        "name": "KnowledgeContext",
+        "type": "class",
+        "signature": "class KnowledgeContext(BaseModel)",
+        "jsdoc": "Runtime knowledge context populated after knowledge build."
+      },
+      {
+        "name": "ExplorationConfig",
+        "type": "class",
+        "signature": "class ExplorationConfig(BaseModel)",
+        "jsdoc": "Configuration for codebase exploration depth."
+      },
+      {
+        "name": "SpawnConfig",
+        "type": "class",
+        "signature": "class SpawnConfig(BaseModel)",
+        "jsdoc": "Configuration for dynamic agent spawning."
+      },
+      {
+        "name": "SpawnRecord",
+        "type": "class",
+        "signature": "class SpawnRecord(BaseModel)",
+        "jsdoc": "Records a single spawn event in the run state."
+      },
+      {
+        "name": "DebateConfig",
+        "type": "class",
+        "signature": "class DebateConfig(BaseModel)"
+      },
+      {
+        "name": "OrchestratorConfig",
+        "type": "class",
+        "signature": "class OrchestratorConfig(BaseModel)"
+      },
+      {
+        "name": "validate_max_budget_usd",
+        "type": "method",
+        "signature": "@field_validator @classmethod def validate_max_budget_usd(v: float) -> float"
+      },
+      {
+        "name": "validate_max_review_cycles",
+        "type": "method",
+        "signature": "@field_validator @classmethod def validate_max_review_cycles(v: int) -> int"
+      },
+      {
+        "name": "validate_max_concurrent_agents",
+        "type": "method",
+        "signature": "@field_validator @classmethod def validate_max_concurrent_agents(v: int) -> int"
+      },
+      {
+        "name": "MarketInsight",
+        "type": "class",
+        "signature": "class MarketInsight(BaseModel)"
+      },
+      {
+        "name": "MarketResearch",
+        "type": "class",
+        "signature": "class MarketResearch(BaseModel)"
+      },
+      {
+        "name": "CompetitorEntry",
+        "type": "class",
+        "signature": "class CompetitorEntry(BaseModel)"
+      },
+      {
+        "name": "CompetitorResearch",
+        "type": "class",
+        "signature": "class CompetitorResearch(BaseModel)"
+      },
+      {
+        "name": "DomainFinding",
+        "type": "class",
+        "signature": "class DomainFinding(BaseModel)"
+      },
+      {
+        "name": "FieldSpecialistReview",
+        "type": "class",
+        "signature": "class FieldSpecialistReview(BaseModel)"
+      },
+      {
+        "name": "TestCase",
+        "type": "class",
+        "signature": "class TestCase(BaseModel)"
+      },
+      {
+        "name": "QAPlan",
+        "type": "class",
+        "signature": "class QAPlan(BaseModel)"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/__init__.py": {
     "file": "src/orchestrator/monitoring/__init__.py",
@@ -467,8 +1700,98 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "de0c595b1c085dbf1e7b52652c19102e9e181df2675beed381e0266adb8e84df"
+    "lastUpdated": "2026-03-17T08:49:46.075Z",
+    "contentHash": "15ec9222e401cc4dbd646b7f7825195d3222b13146e2ed7e84861e51558cab2d",
+    "detailedPurpose": "Facade that initializes and delegates to enabled monitoring subsystems. Exports: MonitoringStack, __init__, budget_forecaster, timeline, on_run_start and 12 more.",
+    "publicAPI": [
+      {
+        "name": "MonitoringStack",
+        "type": "class",
+        "signature": "class MonitoringStack",
+        "jsdoc": "Facade that initializes and delegates to enabled monitoring subsystems.\n\n    Each on_* method fans out to the subsystems that are active.\n    Missing dependencies are handled gracefully — the subsystem is simply skipped."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(config: MonitoringConfig, run_id: str, workspace: Path, max_budget_usd: float = 0.0, total_steps: int = 0,) -> None"
+      },
+      {
+        "name": "budget_forecaster",
+        "type": "method",
+        "signature": "@property def budget_forecaster() -> Any"
+      },
+      {
+        "name": "timeline",
+        "type": "method",
+        "signature": "@property def timeline() -> Any"
+      },
+      {
+        "name": "on_run_start",
+        "type": "method",
+        "signature": "def on_run_start(workflow_type: str, feature_request: str,) -> None"
+      },
+      {
+        "name": "on_run_complete",
+        "type": "method",
+        "signature": "def on_run_complete(success: bool, total_cost_usd: float, workflow_type: str,) -> None"
+      },
+      {
+        "name": "on_step_start",
+        "type": "method",
+        "signature": "def on_step_start(step_name: str, role: str = \"\", model_tier: str = \"\",) -> None"
+      },
+      {
+        "name": "on_step_end",
+        "type": "method",
+        "signature": "def on_step_end(step_name: str, success: bool, cost_usd: float, duration_s: float, model_tier: str = \"\",) -> None"
+      },
+      {
+        "name": "on_agent_invoke",
+        "type": "method",
+        "signature": "def on_agent_invoke(agent: str, model: str, attempt: int,) -> None"
+      },
+      {
+        "name": "on_agent_result",
+        "type": "method",
+        "signature": "def on_agent_result(agent: str, model: str, success: bool, cost_usd: float, attempt: int, error_code: str | None = None, input_tokens: int = 0, output_tokens: int = 0,) -> None"
+      },
+      {
+        "name": "on_task_invoke",
+        "type": "method",
+        "signature": "def on_task_invoke(task_id: str, step: str, agent: str, model: str, attempt: int, dependencies: list[str] | None = None,) -> None"
+      },
+      {
+        "name": "on_task_result",
+        "type": "method",
+        "signature": "def on_task_result(task_id: str, success: bool, cost_usd: float, step: str = \"\", role: str = \"\", model_tier: str = \"\", duration_s: float = 0.0, error_code: str | None = None,) -> None"
+      },
+      {
+        "name": "on_budget_warning",
+        "type": "method",
+        "signature": "def on_budget_warning(cumulative_cost_usd: float, max_budget_usd: float,) -> None"
+      },
+      {
+        "name": "on_model_escalation",
+        "type": "method",
+        "signature": "def on_model_escalation(agent: str, from_model: str, to_model: str,) -> None"
+      },
+      {
+        "name": "on_retry",
+        "type": "method",
+        "signature": "def on_retry(agent: str) -> None"
+      },
+      {
+        "name": "on_error",
+        "type": "method",
+        "signature": "def on_error(agent: str, error_code: str, message: str,) -> None"
+      },
+      {
+        "name": "shutdown",
+        "type": "method",
+        "signature": "def shutdown() -> None"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/alerting.py": {
     "file": "src/orchestrator/monitoring/alerting.py",
@@ -493,8 +1816,34 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "5d1099c13a8cd5ee5d5d42d72124771e89631a2fe292e87b86d0a0cfb5b3701b"
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "ef45bd51deadb13eb55716b8afbd5018e1409b69f1a6826ff31b09a525b76c86",
+    "detailedPurpose": "Dispatches alerts to configured webhook endpoints. Exports: AlertManager, __init__, shutdown, send_alert.",
+    "publicAPI": [
+      {
+        "name": "AlertManager",
+        "type": "class",
+        "signature": "class AlertManager",
+        "jsdoc": "Dispatches alerts to configured webhook endpoints."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(webhooks: list[WebhookConfig], workspace: Path | None = None,) -> None"
+      },
+      {
+        "name": "shutdown",
+        "type": "method",
+        "signature": "def shutdown() -> None",
+        "jsdoc": "Shut down the thread pool, waiting for pending webhook deliveries."
+      },
+      {
+        "name": "send_alert",
+        "type": "method",
+        "signature": "def send_alert(event_type: str, payload: dict[str, Any]) -> None"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/budget.py": {
     "file": "src/orchestrator/monitoring/budget.py",
@@ -517,8 +1866,53 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "1e45f26ea151a5833a908aa2b0cb17d0744634a1c4c222da78e403f180cfa470"
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "001883f2dd4bbffeb8ae0c25e7bc4c02899309d71088e4ffb2ddf75ef255b15d",
+    "detailedPurpose": "Tracks cost accumulation and predicts budget exhaustion. Exports: BudgetForecast, CostDataPoint, BudgetForecaster, __init__, record_cost and 3 more.",
+    "publicAPI": [
+      {
+        "name": "BudgetForecast",
+        "type": "class",
+        "signature": "@dataclass class BudgetForecast"
+      },
+      {
+        "name": "CostDataPoint",
+        "type": "class",
+        "signature": "@dataclass class CostDataPoint"
+      },
+      {
+        "name": "BudgetForecaster",
+        "type": "class",
+        "signature": "class BudgetForecaster",
+        "jsdoc": "Tracks cost accumulation and predicts budget exhaustion."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(max_budget_usd: float, total_steps: int = 0) -> None"
+      },
+      {
+        "name": "record_cost",
+        "type": "method",
+        "signature": "def record_cost(step_name: str, cost_usd: float) -> None"
+      },
+      {
+        "name": "spent_usd",
+        "type": "method",
+        "signature": "@property def spent_usd() -> float"
+      },
+      {
+        "name": "forecast",
+        "type": "method",
+        "signature": "def forecast(remaining_steps: int | None = None) -> BudgetForecast"
+      },
+      {
+        "name": "should_warn",
+        "type": "method",
+        "signature": "def should_warn() -> bool"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/config.py": {
     "file": "src/orchestrator/monitoring/config.py",
@@ -534,8 +1928,30 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "1fa67e47d90381cd179d19a1c03908bbaaf7d3c56f2a08ac667cdfb8e2e59adf"
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "6e49e0efeb5f7fe5fa69143d6fb928786d1ee9fb143888b41014693827ecc732",
+    "detailedPurpose": "A single webhook endpoint for alerting. Exports: WebhookConfig, AlertConfig, MonitoringConfig.",
+    "publicAPI": [
+      {
+        "name": "WebhookConfig",
+        "type": "class",
+        "signature": "class WebhookConfig(BaseModel)",
+        "jsdoc": "A single webhook endpoint for alerting."
+      },
+      {
+        "name": "AlertConfig",
+        "type": "class",
+        "signature": "class AlertConfig(BaseModel)",
+        "jsdoc": "Controls which alert events are enabled."
+      },
+      {
+        "name": "MonitoringConfig",
+        "type": "class",
+        "signature": "class MonitoringConfig(BaseModel)",
+        "jsdoc": "Top-level monitoring configuration — all features opt-in."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/errors.py": {
     "file": "src/orchestrator/monitoring/errors.py",
@@ -557,6 +1973,8 @@
       "MissingInputArtifactError",
       "__init__",
       "WorkflowStepFailedError",
+      "__init__",
+      "ConfigurationError",
       "__init__"
     ],
     "dependencies": [
@@ -565,8 +1983,109 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "44537832b755c605b4e0b67f21de3d9ee45bd5fe369dbeb654b0354e4c9fee99"
+    "lastUpdated": "2026-03-17T08:34:50.815Z",
+    "contentHash": "90911b5588ad94b6a5197a207233f918fbfc97e672b4ef963d149b7808efe925",
+    "detailedPurpose": "Base exception with a structured error code. Exports: ErrorCode, OrchestratorError, __init__, BudgetExceededError, __init__ and 14 more.",
+    "publicAPI": [
+      {
+        "name": "ErrorCode",
+        "type": "class",
+        "signature": "class ErrorCode(str, Enum)"
+      },
+      {
+        "name": "OrchestratorError",
+        "type": "class",
+        "signature": "class OrchestratorError(Exception)",
+        "jsdoc": "Base exception with a structured error code."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str, error_code: ErrorCode = ErrorCode.UNKNOWN) -> None"
+      },
+      {
+        "name": "BudgetExceededError",
+        "type": "class",
+        "signature": "class BudgetExceededError(OrchestratorError)"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str) -> None"
+      },
+      {
+        "name": "ArtifactValidationError",
+        "type": "class",
+        "signature": "class ArtifactValidationError(OrchestratorError)"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str) -> None"
+      },
+      {
+        "name": "AgentTimeoutError",
+        "type": "class",
+        "signature": "class AgentTimeoutError(OrchestratorError)"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str) -> None"
+      },
+      {
+        "name": "AgentCrashedError",
+        "type": "class",
+        "signature": "class AgentCrashedError(OrchestratorError)"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str) -> None"
+      },
+      {
+        "name": "MaxRetriesExhaustedError",
+        "type": "class",
+        "signature": "class MaxRetriesExhaustedError(OrchestratorError)"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str) -> None"
+      },
+      {
+        "name": "MissingInputArtifactError",
+        "type": "class",
+        "signature": "class MissingInputArtifactError(OrchestratorError)"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str) -> None"
+      },
+      {
+        "name": "WorkflowStepFailedError",
+        "type": "class",
+        "signature": "class WorkflowStepFailedError(OrchestratorError)"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str) -> None"
+      },
+      {
+        "name": "ConfigurationError",
+        "type": "class",
+        "signature": "class ConfigurationError(OrchestratorError)",
+        "jsdoc": "Raised when the orchestrator YAML configuration is invalid.\n\n    The message always identifies the offending field(s) and expected range so\n    users can fix their config without reading a raw Pydantic stack-trace."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(message: str) -> None"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/health.py": {
     "file": "src/orchestrator/monitoring/health.py",
@@ -588,8 +2107,38 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "5d26ee97d597913326af39737599777745a12921f16de0d361dfc1d91217d7ad"
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "f94eabab3cd556afb5dfe5c58d7f2ab8498701bc14a0f4b46b95d0565151c0b7",
+    "detailedPurpose": "Shared mutable state for the health check endpoint. Exports: HealthState, __init__, update, to_dict, get_health_state.",
+    "publicAPI": [
+      {
+        "name": "HealthState",
+        "type": "class",
+        "signature": "class HealthState",
+        "jsdoc": "Shared mutable state for the health check endpoint."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__() -> None"
+      },
+      {
+        "name": "update",
+        "type": "method",
+        "signature": "def update(run_id: str | None = None, current_step: str | None = None, budget_remaining_usd: float | None = None,) -> None"
+      },
+      {
+        "name": "to_dict",
+        "type": "method",
+        "signature": "def to_dict() -> dict[str, Any]"
+      },
+      {
+        "name": "get_health_state",
+        "type": "function",
+        "signature": "def get_health_state() -> HealthState"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/metrics.py": {
     "file": "src/orchestrator/monitoring/metrics.py",
@@ -609,7 +2158,8 @@
       "record_error",
       "update_budget_utilization",
       "inc_active_agents",
-      "dec_active_agents"
+      "dec_active_agents",
+      "shutdown"
     ],
     "dependencies": [
       "__future__",
@@ -619,8 +2169,94 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "1160ac20e507c3cd4cbf0d2d8fa318ad99e6707e3db7e6cd25ecf327db74c01e"
+    "lastUpdated": "2026-03-17T08:44:52.905Z",
+    "contentHash": "7f57127dcaa9828280f6997ac6cd62584f10d66ba90be9de96dccdadd4ea23f7",
+    "detailedPurpose": "Collects Prometheus metrics and serves them on a background HTTP server. Exports: MetricsManager, __init__, enabled, record_run_complete, record_agent_invocation and 11 more.",
+    "publicAPI": [
+      {
+        "name": "MetricsManager",
+        "type": "class",
+        "signature": "class MetricsManager",
+        "jsdoc": "Collects Prometheus metrics and serves them on a background HTTP server."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(port: int = 9090) -> None"
+      },
+      {
+        "name": "enabled",
+        "type": "method",
+        "signature": "@property def enabled() -> bool"
+      },
+      {
+        "name": "record_run_complete",
+        "type": "method",
+        "signature": "def record_run_complete(workflow_type: str, status: str) -> None"
+      },
+      {
+        "name": "record_agent_invocation",
+        "type": "method",
+        "signature": "def record_agent_invocation(agent: str, model: str, status: str) -> None"
+      },
+      {
+        "name": "record_agent_cost",
+        "type": "method",
+        "signature": "def record_agent_cost(agent: str, model: str, cost_usd: float) -> None"
+      },
+      {
+        "name": "record_agent_tokens",
+        "type": "method",
+        "signature": "def record_agent_tokens(agent: str, model: str, input_tokens: int, output_tokens: int) -> None"
+      },
+      {
+        "name": "record_phase_duration",
+        "type": "method",
+        "signature": "def record_phase_duration(phase: str, model_tier: str, duration_s: float) -> None"
+      },
+      {
+        "name": "record_task_duration",
+        "type": "method",
+        "signature": "def record_task_duration(step: str, role: str, model_tier: str, duration_s: float) -> None"
+      },
+      {
+        "name": "record_model_escalation",
+        "type": "method",
+        "signature": "def record_model_escalation() -> None"
+      },
+      {
+        "name": "record_retry",
+        "type": "method",
+        "signature": "def record_retry(agent: str) -> None"
+      },
+      {
+        "name": "record_error",
+        "type": "method",
+        "signature": "def record_error(agent: str, error_type: str) -> None"
+      },
+      {
+        "name": "update_budget_utilization",
+        "type": "method",
+        "signature": "def update_budget_utilization(ratio: float) -> None"
+      },
+      {
+        "name": "inc_active_agents",
+        "type": "method",
+        "signature": "def inc_active_agents() -> None"
+      },
+      {
+        "name": "dec_active_agents",
+        "type": "method",
+        "signature": "def dec_active_agents() -> None"
+      },
+      {
+        "name": "shutdown",
+        "type": "method",
+        "signature": "def shutdown() -> None",
+        "jsdoc": "Stop the Prometheus HTTP server and release the port.\n\n        Safe to call multiple times. When *enabled* is ``False`` or the server\n        was never started (e.g. the port was already in use at startup) this is\n        a no-op."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/timeline.py": {
     "file": "src/orchestrator/monitoring/timeline.py",
@@ -647,8 +2283,63 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "3bc5b0c73bde261a57b9bdc485b87c15d21bdb04af57614faa626530a694ac48"
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "6dbcf6ab113a692050f6deaa0737197acc88062939ed5767953eee4b3fe1694b",
+    "detailedPurpose": "Records execution timeline entries and exports to JSON/HTML. Exports: TimelineEntry, TimelineRecorder, __init__, set_run_start, set_run_end and 5 more.",
+    "publicAPI": [
+      {
+        "name": "TimelineEntry",
+        "type": "class",
+        "signature": "@dataclass class TimelineEntry"
+      },
+      {
+        "name": "TimelineRecorder",
+        "type": "class",
+        "signature": "class TimelineRecorder",
+        "jsdoc": "Records execution timeline entries and exports to JSON/HTML."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__() -> None"
+      },
+      {
+        "name": "set_run_start",
+        "type": "method",
+        "signature": "def set_run_start() -> None"
+      },
+      {
+        "name": "set_run_end",
+        "type": "method",
+        "signature": "def set_run_end() -> None"
+      },
+      {
+        "name": "record_start",
+        "type": "method",
+        "signature": "def record_start(task_id: str, agent: str, step: str, dependencies: list[str] | None = None, model_tier: str = \"\",) -> None"
+      },
+      {
+        "name": "record_end",
+        "type": "method",
+        "signature": "def record_end(task_id: str, status: str, cost_usd: float = 0.0, error_code: str | None = None,) -> None"
+      },
+      {
+        "name": "get_entries",
+        "type": "method",
+        "signature": "def get_entries() -> list[TimelineEntry]"
+      },
+      {
+        "name": "export_json",
+        "type": "method",
+        "signature": "def export_json(path: Path) -> None"
+      },
+      {
+        "name": "export_html",
+        "type": "method",
+        "signature": "def export_html(path: Path) -> None"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/monitoring/tracing.py": {
     "file": "src/orchestrator/monitoring/tracing.py",
@@ -657,6 +2348,7 @@
       "TracingManager",
       "__init__",
       "enabled",
+      "span_context",
       "start_run_span",
       "end_run_span",
       "start_step_span",
@@ -674,8 +2366,73 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "89de70d0864f5daff6f1d05386230b4ca13629bb9b7fe5e9de0ed048e8ce95dd"
+    "lastUpdated": "2026-03-17T08:49:34.182Z",
+    "contentHash": "0f2f9333bd927b590c8f1e07ee7e6c87e88032613546080185357336fe24c46f",
+    "detailedPurpose": "Manages OpenTelemetry spans for the orchestrator pipeline. Exports: TracingManager, __init__, enabled, span_context, start_run_span and 7 more.",
+    "publicAPI": [
+      {
+        "name": "TracingManager",
+        "type": "class",
+        "signature": "class TracingManager",
+        "jsdoc": "Manages OpenTelemetry spans for the orchestrator pipeline."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(endpoint: str = \"http://localhost:4317\", console_export: bool = False,) -> None"
+      },
+      {
+        "name": "enabled",
+        "type": "method",
+        "signature": "@property def enabled() -> bool"
+      },
+      {
+        "name": "span_context",
+        "type": "method",
+        "signature": "@contextmanager def span_context(name: str, attributes: dict | None = None,) -> Generator[Any, None, None]"
+      },
+      {
+        "name": "start_run_span",
+        "type": "method",
+        "signature": "def start_run_span(run_id: str, workflow_type: str, feature_request: str) -> None"
+      },
+      {
+        "name": "end_run_span",
+        "type": "method",
+        "signature": "def end_run_span(success: bool, total_cost_usd: float) -> None"
+      },
+      {
+        "name": "start_step_span",
+        "type": "method",
+        "signature": "def start_step_span(step_name: str, role: str, model_tier: str) -> None"
+      },
+      {
+        "name": "end_step_span",
+        "type": "method",
+        "signature": "def end_step_span(success: bool, cost_usd: float, duration_s: float) -> None"
+      },
+      {
+        "name": "start_agent_span",
+        "type": "method",
+        "signature": "def start_agent_span(agent_name: str, model: str, attempt: int,) -> Any"
+      },
+      {
+        "name": "end_agent_span",
+        "type": "method",
+        "signature": "def end_agent_span(span: Any, success: bool, cost_usd: float, error_code: str | None = None,) -> None"
+      },
+      {
+        "name": "record_escalation",
+        "type": "method",
+        "signature": "def record_escalation(agent: str, from_model: str, to_model: str) -> None"
+      },
+      {
+        "name": "shutdown",
+        "type": "method",
+        "signature": "def shutdown() -> None"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/observability.py": {
     "file": "src/orchestrator/observability.py",
@@ -702,8 +2459,58 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "8b78dd8bc4e2ea88658359f0859ac0286380f70dcd4fa0dc2087483db3ef5ef5"
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "73db941e3d710657430aea3d8daf2c5a642c4b6bb6c68cda04d1288e254a03ca",
+    "detailedPurpose": "Attach a MonitoringStack to receive all events. Exports: RunLogger, __init__, set_monitoring_stack, cumulative_input_tokens, cumulative_output_tokens and 4 more.",
+    "publicAPI": [
+      {
+        "name": "RunLogger",
+        "type": "class",
+        "signature": "class RunLogger"
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(log_dir: Path, run_id: str) -> None"
+      },
+      {
+        "name": "set_monitoring_stack",
+        "type": "method",
+        "signature": "def set_monitoring_stack(stack: MonitoringStack) -> None",
+        "jsdoc": "Attach a MonitoringStack to receive all events."
+      },
+      {
+        "name": "cumulative_input_tokens",
+        "type": "method",
+        "signature": "@property def cumulative_input_tokens() -> int"
+      },
+      {
+        "name": "cumulative_output_tokens",
+        "type": "method",
+        "signature": "@property def cumulative_output_tokens() -> int"
+      },
+      {
+        "name": "cumulative_total_tokens",
+        "type": "method",
+        "signature": "@property def cumulative_total_tokens() -> int"
+      },
+      {
+        "name": "log_event",
+        "type": "method",
+        "signature": "def log_event(event_type: str, data: dict) -> None"
+      },
+      {
+        "name": "check_budget",
+        "type": "method",
+        "signature": "def check_budget(max_budget_usd: float) -> str | None"
+      },
+      {
+        "name": "cumulative_cost_usd",
+        "type": "method",
+        "signature": "@property def cumulative_cost_usd() -> float"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/perception.py": {
     "file": "src/orchestrator/perception.py",
@@ -721,8 +2528,54 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "ef697aac48f2ec692bdddf1171a188ac1582d8cdfb3e5be644c0774c0260ec84"
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "3ed9ae5a56ec7ad778edfa47a5f94598b4e3c7617020f10927bdf4db64a249d7",
+    "detailedPurpose": "Provides 1 exported function(s): enhance_prompt.",
+    "publicAPI": [
+      {
+        "name": "enhance_prompt",
+        "type": "function",
+        "signature": "async def enhance_prompt(invocation: AgentInvocation,) -> tuple[AgentInvocation, float]"
+      }
+    ],
+    "internalPatterns": []
+  },
+  "src/orchestrator/persistence.py": {
+    "file": "src/orchestrator/persistence.py",
+    "purpose": "persistence module",
+    "exports": [
+      "atomic_write",
+      "save_run_state"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "os",
+      "tempfile",
+      "threading",
+      "pathlib",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.420Z",
+    "contentHash": "f49c417e973ef9a62570cc8552a3559d8baf4d86574016aefd441862af5e8100",
+    "detailedPurpose": "Write data to target atomically via temp file + os.replace. Exports: atomic_write, save_run_state.",
+    "publicAPI": [
+      {
+        "name": "atomic_write",
+        "type": "function",
+        "signature": "def atomic_write(target: Path, data: str) -> None",
+        "jsdoc": "Write data to target atomically via temp file + os.replace.\n\n    On POSIX, os.replace is atomic, so readers never see a partially\n    written file. If the write fails, the original file is untouched."
+      },
+      {
+        "name": "save_run_state",
+        "type": "function",
+        "signature": "def save_run_state(state: RunState, workspace: Path) -> None",
+        "jsdoc": "Centralized state save — writes both state.json and state-<run_id>.json atomically.\n\n    Thread-safe: uses a module-level lock so concurrent saves from parallel\n    agents don't corrupt the file."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/phases.py": {
     "file": "src/orchestrator/phases.py",
@@ -790,8 +2643,271 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.309Z",
-    "contentHash": "e37dd46c2d4d425255caf6219ec0077444c62e6f1bcf73ee595fad3d3976ab19"
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "ded9f41c214119e8a93eb7b7ba35f4b63a311a1e316e15066b7b1c56f938f01b",
+    "detailedPurpose": "Definition of an orchestration phase (legacy — kept for backward compat). Exports: PhaseDefinition, build_pm_prompt, build_architect_prompt, build_principal_engineer_prompt, build_tpm_prompt and 46 more.",
+    "publicAPI": [
+      {
+        "name": "PhaseDefinition",
+        "type": "class",
+        "signature": "@dataclass class PhaseDefinition",
+        "jsdoc": "Definition of an orchestration phase (legacy — kept for backward compat)."
+      },
+      {
+        "name": "build_pm_prompt",
+        "type": "function",
+        "signature": "def build_pm_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_architect_prompt",
+        "type": "function",
+        "signature": "def build_architect_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_principal_engineer_prompt",
+        "type": "function",
+        "signature": "def build_principal_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_tpm_prompt",
+        "type": "function",
+        "signature": "def build_tpm_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_frontend_engineer_prompt",
+        "type": "function",
+        "signature": "def build_frontend_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_backend_engineer_prompt",
+        "type": "function",
+        "signature": "def build_backend_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_engineer_prompt",
+        "type": "function",
+        "signature": "def build_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_database_engineer_prompt",
+        "type": "function",
+        "signature": "def build_database_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_caching_engineer_prompt",
+        "type": "function",
+        "signature": "def build_caching_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_backend_reviewer_prompt",
+        "type": "function",
+        "signature": "def build_backend_reviewer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None, review_cycle: int = 1, previous_review: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_frontend_reviewer_prompt",
+        "type": "function",
+        "signature": "def build_frontend_reviewer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None, review_cycle: int = 1, previous_review: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_qa_planner_prompt",
+        "type": "function",
+        "signature": "def build_qa_planner_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_qa_executor_prompt",
+        "type": "function",
+        "signature": "def build_qa_executor_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_qa_prompt",
+        "type": "function",
+        "signature": "def build_qa_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_reviewer_prompt",
+        "type": "function",
+        "signature": "def build_reviewer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None, review_cycle: int = 1, previous_review: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_automation_engineer_prompt",
+        "type": "function",
+        "signature": "def build_automation_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_devops_prompt",
+        "type": "function",
+        "signature": "def build_devops_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_security_engineer_prompt",
+        "type": "function",
+        "signature": "def build_security_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_observability_prompt",
+        "type": "function",
+        "signature": "def build_observability_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_documentation_prompt",
+        "type": "function",
+        "signature": "def build_documentation_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_git_manager_prompt",
+        "type": "function",
+        "signature": "def build_git_manager_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_api_contract_designer_prompt",
+        "type": "function",
+        "signature": "def build_api_contract_designer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_migration_engineer_prompt",
+        "type": "function",
+        "signature": "def build_migration_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_ux_specifier_prompt",
+        "type": "function",
+        "signature": "def build_ux_specifier_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_tech_debt_assessor_prompt",
+        "type": "function",
+        "signature": "def build_tech_debt_assessor_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_release_engineer_prompt",
+        "type": "function",
+        "signature": "def build_release_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_incident_analyst_prompt",
+        "type": "function",
+        "signature": "def build_incident_analyst_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_load_test_engineer_prompt",
+        "type": "function",
+        "signature": "def build_load_test_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_compliance_auditor_prompt",
+        "type": "function",
+        "signature": "def build_compliance_auditor_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_dependency_auditor_prompt",
+        "type": "function",
+        "signature": "def build_dependency_auditor_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_accessibility_auditor_prompt",
+        "type": "function",
+        "signature": "def build_accessibility_auditor_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_integration_test_engineer_prompt",
+        "type": "function",
+        "signature": "def build_integration_test_engineer_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_legal_advisor_prompt",
+        "type": "function",
+        "signature": "def build_legal_advisor_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_user_behavior_psychologist_prompt",
+        "type": "function",
+        "signature": "def build_user_behavior_psychologist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_cicd_specialist_prompt",
+        "type": "function",
+        "signature": "def build_cicd_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_aws_specialist_prompt",
+        "type": "function",
+        "signature": "def build_aws_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_azure_specialist_prompt",
+        "type": "function",
+        "signature": "def build_azure_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_gcp_specialist_prompt",
+        "type": "function",
+        "signature": "def build_gcp_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_runpod_specialist_prompt",
+        "type": "function",
+        "signature": "def build_runpod_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_llm_specialist_prompt",
+        "type": "function",
+        "signature": "def build_llm_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_agentic_ai_specialist_prompt",
+        "type": "function",
+        "signature": "def build_agentic_ai_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_ml_specialist_prompt",
+        "type": "function",
+        "signature": "def build_ml_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_market_researcher_prompt",
+        "type": "function",
+        "signature": "def build_market_researcher_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_competitor_researcher_prompt",
+        "type": "function",
+        "signature": "def build_competitor_researcher_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_field_specialist_prompt",
+        "type": "function",
+        "signature": "def build_field_specialist_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "build_end_user_simulator_prompt",
+        "type": "function",
+        "signature": "def build_end_user_simulator_prompt(feature_request: str, workspace: Path, config: OrchestratorConfig, task_data: dict[str, Any] | None = None,) -> str"
+      },
+      {
+        "name": "get_engineer_tasks",
+        "type": "function",
+        "signature": "def get_engineer_tasks(workspace: Path) -> list[dict[str, Any]]",
+        "jsdoc": "Load and return individual engineer tasks from the tasks artifact."
+      },
+      {
+        "name": "build_debate_opening_prompt",
+        "type": "function",
+        "signature": "def build_debate_opening_prompt(feature_request: str, agent_id: str, agent_type: str, artifacts_dir: Path,) -> str"
+      },
+      {
+        "name": "build_debate_critique_prompt",
+        "type": "function",
+        "signature": "def build_debate_critique_prompt(feature_request: str, agent_id: str, agent_type: str, round_number: int, previous_positions: list[dict], artifacts_dir: Path,) -> str"
+      },
+      {
+        "name": "build_debate_mediation_prompt",
+        "type": "function",
+        "signature": "def build_debate_mediation_prompt(feature_request: str, all_rounds: list[dict], artifacts_dir: Path,) -> str"
+      }
+    ],
+    "internalPatterns": [
+      "factory"
+    ]
   },
   "src/orchestrator/progress.py": {
     "file": "src/orchestrator/progress.py",
@@ -818,8 +2934,53 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "cbdc4cf6ad3794e25766ecad1028cca0a2a7fbc82b73099c84992d875ee55ab7"
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "f48bc90ed1af84c14a47e61f3aa42d11081a269b21964c880943e39e194fdc10",
+    "detailedPurpose": "Tracks and displays workflow progress with ETA estimation. Exports: ProgressTracker, __init__, set_budget_forecaster, show, on_task_complete and 2 more.",
+    "publicAPI": [
+      {
+        "name": "ProgressTracker",
+        "type": "class",
+        "signature": "class ProgressTracker",
+        "jsdoc": "Tracks and displays workflow progress with ETA estimation."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(workflow: WorkflowDefinition, state: RunState) -> None"
+      },
+      {
+        "name": "set_budget_forecaster",
+        "type": "method",
+        "signature": "def set_budget_forecaster(forecaster: Any) -> None",
+        "jsdoc": "Attach a BudgetForecaster for cost projection display."
+      },
+      {
+        "name": "show",
+        "type": "method",
+        "signature": "def show(event: str = \"update\") -> None",
+        "jsdoc": "Display the progress report if appropriate for the event type."
+      },
+      {
+        "name": "on_task_complete",
+        "type": "method",
+        "signature": "def on_task_complete() -> None",
+        "jsdoc": "Track a task completion for ETA calculation."
+      },
+      {
+        "name": "render",
+        "type": "method",
+        "signature": "def render() -> Panel",
+        "jsdoc": "Produce the formatted progress report."
+      },
+      {
+        "name": "calculate_eta",
+        "type": "method",
+        "signature": "def calculate_eta() -> tuple[float, float]",
+        "jsdoc": "Calculate estimated time remaining.\n\n        Returns (this_step_seconds, total_workflow_seconds)."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/roles.py": {
     "file": "src/orchestrator/roles.py",
@@ -841,8 +3002,48 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "802d2f645e57cba2242619426afb0c4616bfd628d8722ac11e8042e6f8ff299a"
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "1526c990c2f8279f5e1c1a5d0f0cd86da3f3524ab944caf61d89dfe9bdb795da",
+    "detailedPurpose": "Static definition of an agent role. Exports: RoleDefinition, get_role, get_role_agent_file, validate_role_access, get_roles_for_workflow and 1 more.",
+    "publicAPI": [
+      {
+        "name": "RoleDefinition",
+        "type": "class",
+        "signature": "@dataclass class RoleDefinition",
+        "jsdoc": "Static definition of an agent role."
+      },
+      {
+        "name": "get_role",
+        "type": "function",
+        "signature": "def get_role(role: AgentRole) -> RoleDefinition",
+        "jsdoc": "Get the definition for a role."
+      },
+      {
+        "name": "get_role_agent_file",
+        "type": "function",
+        "signature": "def get_role_agent_file(role: AgentRole) -> Path | None",
+        "jsdoc": "Get the agent .md file path for a role, or None if it doesn't exist."
+      },
+      {
+        "name": "validate_role_access",
+        "type": "function",
+        "signature": "def validate_role_access(role: AgentRole, is_write: bool) -> bool",
+        "jsdoc": "Check if a role is allowed to perform the given action.\n\n    Returns True if the action is permitted, False if it violates role boundaries."
+      },
+      {
+        "name": "get_roles_for_workflow",
+        "type": "function",
+        "signature": "def get_roles_for_workflow(workflow: WorkflowDefinition) -> set[AgentRole]",
+        "jsdoc": "Return only the roles needed for a given workflow."
+      },
+      {
+        "name": "role_to_legacy_agent_name",
+        "type": "function",
+        "signature": "def role_to_legacy_agent_name(role: AgentRole) -> str",
+        "jsdoc": "Map an AgentRole to the legacy agent name used in config and agent files.\n\n    This bridges the old 5-agent system to the new 17-role system."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/self_orchestrate.py": {
     "file": "src/orchestrator/self_orchestrate.py",
@@ -867,8 +3068,39 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.309Z",
-    "contentHash": "0a7565cdc91345754a850cbeba1217c6f01dfb1e055c0b467eaac27c075c0d7c"
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "f5edd74816fe4e0ec6e3ffdc6593d8ffe1d638955444609212d57e04700051c2",
+    "detailedPurpose": "Result of a clarification round. Exports: ClarificationResult, OrchestrationPlan, clarify, revise_plan, self_orchestrate.",
+    "publicAPI": [
+      {
+        "name": "ClarificationResult",
+        "type": "class",
+        "signature": "@dataclass class ClarificationResult",
+        "jsdoc": "Result of a clarification round."
+      },
+      {
+        "name": "OrchestrationPlan",
+        "type": "class",
+        "signature": "@dataclass class OrchestrationPlan",
+        "jsdoc": "The result of self-orchestration analysis."
+      },
+      {
+        "name": "clarify",
+        "type": "function",
+        "signature": "async def clarify(feature_request: str, conversation: list[tuple[str, str]], project_root: Path | None = None, model_override: ModelTier | None = None,) -> ClarificationResult"
+      },
+      {
+        "name": "revise_plan",
+        "type": "function",
+        "signature": "async def revise_plan(feature_request: str, current_plan: OrchestrationPlan, user_feedback: str, project_root: Path | None = None, model_override: ModelTier | None = None,) -> OrchestrationPlan"
+      },
+      {
+        "name": "self_orchestrate",
+        "type": "function",
+        "signature": "async def self_orchestrate(feature_request: str, project_root: Path | None = None, model_override: ModelTier | None = None,) -> OrchestrationPlan"
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/spawning.py": {
     "file": "src/orchestrator/spawning.py",
@@ -896,14 +3128,101 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "4c1f5a91450f689938c3b5a3e49126998415db368b1b8e3c9bf089ab92180369"
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "54444315dedf7d01c98e09797cc1b3c289663993499b481b224db239999c6657",
+    "detailedPurpose": "A single sub-agent spawn request from a parent agent. Exports: SpawnRequest, SpawnResult, SpawnRoundSummary, validate_spawn_request, extract_spawn_requests and 4 more.",
+    "publicAPI": [
+      {
+        "name": "SpawnRequest",
+        "type": "class",
+        "signature": "@dataclass class SpawnRequest",
+        "jsdoc": "A single sub-agent spawn request from a parent agent."
+      },
+      {
+        "name": "SpawnResult",
+        "type": "class",
+        "signature": "@dataclass class SpawnResult",
+        "jsdoc": "Result from a spawned sub-agent."
+      },
+      {
+        "name": "SpawnRoundSummary",
+        "type": "class",
+        "signature": "@dataclass class SpawnRoundSummary",
+        "jsdoc": "Summary of one round of spawn execution."
+      },
+      {
+        "name": "validate_spawn_request",
+        "type": "function",
+        "signature": "def validate_spawn_request(parent_role: str, request: SpawnRequest, config: SpawnConfig,) -> str | None"
+      },
+      {
+        "name": "extract_spawn_requests",
+        "type": "function",
+        "signature": "def extract_spawn_requests(output: str) -> list[SpawnRequest]",
+        "jsdoc": "Parse SPAWN_REQUESTS from agent output text.\n\n    Expected format in agent output:\n        SPAWN_REQUESTS:\n        ```json\n        [\n          {\n            \"role\": \"market_researcher\",\n            \"prompt\": \"Research the market for ...\",\n            \"reason\": \"Need market sizing data\"\n          }\n        ]\n        ```"
+      },
+      {
+        "name": "strip_spawn_block",
+        "type": "function",
+        "signature": "def strip_spawn_block(output: str) -> str",
+        "jsdoc": "Remove the SPAWN_REQUESTS block from agent output (for clean artifact writing)."
+      },
+      {
+        "name": "execute_spawn_requests",
+        "type": "function",
+        "signature": "async def execute_spawn_requests(requests: list[SpawnRequest], parent_role: str, config: SpawnConfig, workspace_dir: str, project_root: str, max_concurrent: int = 10, agents_config: dict[str, Any] | None = None, mcp_servers: dict[str, Any] | None = None,) -> list[SpawnResult]"
+      },
+      {
+        "name": "build_continuation_prompt",
+        "type": "function",
+        "signature": "def build_continuation_prompt(original_output: str, spawn_results: list[SpawnResult],) -> str"
+      },
+      {
+        "name": "run_spawn_loop",
+        "type": "function",
+        "signature": "async def run_spawn_loop(initial_result: AgentResult, agent_name: str, parent_role: str, original_prompt: str, config: SpawnConfig, model: ModelTier, max_turns: int, workspace_dir: str, project_root: str, max_concurrent: int = 10, agents_config: dict[str, Any] | None = None, run_logger: Any | None = None, max_budget_usd: float = 0.0, mcp_servers: dict[str, Any] | None = None,) -> tuple[AgentResult, list[SpawnRoundSummary]]"
+      }
+    ],
+    "internalPatterns": [
+      "factory"
+    ]
+  },
+  "src/orchestrator/tech_stack.py": {
+    "file": "src/orchestrator/tech_stack.py",
+    "purpose": "tech_stack module",
+    "exports": [
+      "confirm_tech_stack"
+    ],
+    "dependencies": [
+      "__future__",
+      "json",
+      "logging",
+      "pathlib",
+      "rich.console",
+      "rich.panel",
+      "rich.table"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "527948bace55a4e8c107d42bd47e65df24a17357aa306276954d2d84098f0d75",
+    "detailedPurpose": "Present the proposed tech stack and get user confirmation. Exports: confirm_tech_stack.",
+    "publicAPI": [
+      {
+        "name": "confirm_tech_stack",
+        "type": "function",
+        "signature": "def confirm_tech_stack(workspace: Path, dry_run: bool = False) -> str | None",
+        "jsdoc": "Present the proposed tech stack and get user confirmation.\n\n    Reads ``architecture.json``, extracts ``tech_decisions``, and displays\n    them with rationale.  The user can approve, modify, or abort.\n\n    Returns:\n        None — if approved (or no tech decisions found, or dry_run).\n        str  — the user's modification text (already persisted to architecture.json).\n\n    Raises:\n        KeyboardInterrupt if the user chooses to abort."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/validation.py": {
     "file": "src/orchestrator/validation.py",
     "purpose": "validation module",
     "exports": [
       "ValidationResult",
+      "normalize_artifact_keys",
       "validate_artifact_file",
       "validate_all_artifacts"
     ],
@@ -911,16 +3230,45 @@
       "__future__",
       "json",
       "logging",
+      "re",
       "dataclasses",
       "pathlib",
+      "typing",
       "jsonschema",
       "pydantic",
       "orchestrator.models"
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "b02ae825273847fbe7dbbc70bc2e967029261c36fee614b141d2ae4afa96bbbf"
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "94978232ef7eeeefe80cfc3d9b054c149d9286b374774f4f1a400b583005d30f",
+    "detailedPurpose": "Result of validating an artifact. Exports: ValidationResult, normalize_artifact_keys, validate_artifact_file, validate_all_artifacts.",
+    "publicAPI": [
+      {
+        "name": "ValidationResult",
+        "type": "class",
+        "signature": "@dataclass class ValidationResult",
+        "jsdoc": "Result of validating an artifact."
+      },
+      {
+        "name": "normalize_artifact_keys",
+        "type": "function",
+        "signature": "def normalize_artifact_keys(data: Any) -> Any",
+        "jsdoc": "Recursively normalize all dict keys to snake_case.\n\n    Handles camelCase, PascalCase, and kebab-case keys so that\n    agents producing non-snake_case output still pass validation."
+      },
+      {
+        "name": "validate_artifact_file",
+        "type": "function",
+        "signature": "def validate_artifact_file(artifact_path: Path, artifact_name: str, *, auto_normalize: bool = True,) -> ValidationResult"
+      },
+      {
+        "name": "validate_all_artifacts",
+        "type": "function",
+        "signature": "def validate_all_artifacts(artifacts_dir: Path, expected: list[str]) -> dict[str, ValidationResult]",
+        "jsdoc": "Validate all expected artifacts in a directory."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/watchdog.py": {
     "file": "src/orchestrator/watchdog.py",
@@ -940,8 +3288,23 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "380e9209d67672e4e4f4ec16a7e01d53a1477d49fb8077a92ea1190fe1a85523"
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "5211814807e85f8aa4a800de8da7c823f568ad161b01028f003332935af92ae9",
+    "detailedPurpose": "CLI entry point for orchestrate-watchdog. Exports: run_with_watchdog, main.",
+    "publicAPI": [
+      {
+        "name": "run_with_watchdog",
+        "type": "function",
+        "signature": "def run_with_watchdog(args: list[str], max_restarts: int = 3, cooldown_seconds: float = 2.0,) -> int"
+      },
+      {
+        "name": "main",
+        "type": "function",
+        "signature": "def main() -> None",
+        "jsdoc": "CLI entry point for orchestrate-watchdog."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/workflow_engine.py": {
     "file": "src/orchestrator/workflow_engine.py",
@@ -955,6 +3318,7 @@
       "__future__",
       "json",
       "logging",
+      "re",
       "time",
       "collections",
       "datetime",
@@ -971,8 +3335,29 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T02:15:25.446Z",
-    "contentHash": "fbe7669d4688438a542a8c1d1496ee514c0e0ba173728f2b78b64d8399776fa5"
+    "lastUpdated": "2026-03-17T06:05:22.421Z",
+    "contentHash": "465de34d698d214e571ab932f1dca1bfeec50600ca28ebd1c37acc82534b7e06",
+    "detailedPurpose": "Executes a workflow definition step-by-step with full task lifecycle management. Exports: WorkflowEngine, __init__, execute.",
+    "publicAPI": [
+      {
+        "name": "WorkflowEngine",
+        "type": "class",
+        "signature": "class WorkflowEngine",
+        "jsdoc": "Executes a workflow definition step-by-step with full task lifecycle management.\n\n    Supports dependency-aware parallel execution: tasks are scheduled in waves\n    based on their dependency graph. Within each wave, independent tasks run\n    concurrently (each dispatched to its specialist agent in an isolated worktree).\n    Tasks with file conflicts within a wave are serialized."
+      },
+      {
+        "name": "__init__",
+        "type": "method",
+        "signature": "def __init__(workflow: WorkflowDefinition, state: RunState, config: OrchestratorConfig, run_logger: RunLogger | None = None, project_root: Path | None = None, dry_run: bool = False, approval_callback: Any | None = None, interrupt_manager: Any | None = None, confirm_callback: Any | None = None,) -> None"
+      },
+      {
+        "name": "execute",
+        "type": "method",
+        "signature": "async def execute() -> RunState",
+        "jsdoc": "Execute the entire workflow from start to finish."
+      }
+    ],
+    "internalPatterns": []
   },
   "src/orchestrator/workflows.py": {
     "file": "src/orchestrator/workflows.py",
@@ -990,8 +3375,24 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T02:15:25.446Z",
-    "contentHash": "b656617258761375b967ed4b301a954778d8fc9d6e68bcb573bc170f87f72b7c"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "ea2b635dfd2ef163bfd151be3c91b256480c7ec4c9c48e127d63a9f55010ea56",
+    "detailedPurpose": "Return a built-in workflow by type. Exports: select_workflow, parse_custom_workflow.",
+    "publicAPI": [
+      {
+        "name": "select_workflow",
+        "type": "function",
+        "signature": "def select_workflow(workflow_type: WorkflowType) -> WorkflowDefinition",
+        "jsdoc": "Return a built-in workflow by type."
+      },
+      {
+        "name": "parse_custom_workflow",
+        "type": "function",
+        "signature": "def parse_custom_workflow(definition: str, name: str = \"Custom Workflow\") -> WorkflowDefinition",
+        "jsdoc": "Parse a custom workflow definition string into a WorkflowDefinition.\n\n    Expected format (from the system prompt spec):\n        STEP: <STEP_NAME>\n          agent: <role>\n          inputs: <comma-separated list>\n          outputs: <comma-separated list>\n          next: <step name>\n          parallel: true|false\n          on_fail: <step name or \"escalate\">\n          gate: <\"approval\" or empty>"
+      }
+    ],
+    "internalPatterns": []
   },
   "tests/conftest.py": {
     "file": "tests/conftest.py",
@@ -1008,8 +3409,52 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "72bfc7ed208c3f945c96fa899fa55f8217c16bcaf0ab302729e1e90ccf6faece"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "c5608d5b516a79b4d87ce9d7ddc92ba6ec4346841da67671f664afe0fe0acfe1",
+    "detailedPurpose": "Provides 3 exported function(s): tmp_workspace, valid_prd_data, valid_tasks_data.",
+    "publicAPI": [
+      {
+        "name": "tmp_workspace",
+        "type": "function",
+        "signature": "@pytest.fixture def tmp_workspace(tmp_path: Path) -> Path"
+      },
+      {
+        "name": "valid_prd_data",
+        "type": "function",
+        "signature": "@pytest.fixture def valid_prd_data() -> dict"
+      },
+      {
+        "name": "valid_tasks_data",
+        "type": "function",
+        "signature": "@pytest.fixture def valid_tasks_data() -> dict"
+      }
+    ],
+    "internalPatterns": []
+  },
+  "tests/test_audit.py": {
+    "file": "tests/test_audit.py",
+    "purpose": "test_audit module",
+    "exports": [
+      "test_artifact_consistency"
+    ],
+    "dependencies": [
+      "orchestrator.audit"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "2a99403a3e5124a51873c5efc3122bf9da1b0f61d22a990b255d1891fe6ac7c2",
+    "detailedPurpose": "Provides 1 exported function(s): test_artifact_consistency.",
+    "publicAPI": [
+      {
+        "name": "test_artifact_consistency",
+        "type": "function",
+        "signature": "def test_artifact_consistency()"
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
   },
   "tests/test_engine.py": {
     "file": "tests/test_engine.py",
@@ -1061,8 +3506,352 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "cfb379d42490129b46b2a061aa60a880de1d2b4e7aa91c05650257f5bc5afd4b"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "ff49556d249e7d37660d8b2f2dd037a4469932b11520a2265e28164ffb3067d0",
+    "detailedPurpose": "Test legacy mode dry run (using --phase flag). Exports: config, engine, dry_engine, TestPhaseOrder, test_phase_order and 27 more.",
+    "publicAPI": [
+      {
+        "name": "config",
+        "type": "function",
+        "signature": "@pytest.fixture def config() -> OrchestratorConfig"
+      },
+      {
+        "name": "engine",
+        "type": "function",
+        "signature": "@pytest.fixture def engine(config, tmp_workspace) -> OrchestratorEngine"
+      },
+      {
+        "name": "dry_engine",
+        "type": "function",
+        "signature": "@pytest.fixture def dry_engine(tmp_workspace) -> OrchestratorEngine"
+      },
+      {
+        "name": "TestPhaseOrder",
+        "type": "class",
+        "signature": "class TestPhaseOrder"
+      },
+      {
+        "name": "test_phase_order",
+        "type": "method",
+        "signature": "def test_phase_order()"
+      },
+      {
+        "name": "TestTasksHaveFileConflicts",
+        "type": "class",
+        "signature": "class TestTasksHaveFileConflicts"
+      },
+      {
+        "name": "test_no_conflict",
+        "type": "method",
+        "signature": "def test_no_conflict()"
+      },
+      {
+        "name": "test_with_conflict",
+        "type": "method",
+        "signature": "def test_with_conflict()"
+      },
+      {
+        "name": "test_empty_files",
+        "type": "method",
+        "signature": "def test_empty_files()"
+      },
+      {
+        "name": "test_empty_list",
+        "type": "method",
+        "signature": "def test_empty_list()"
+      },
+      {
+        "name": "TestLegacyDryRun",
+        "type": "class",
+        "signature": "class TestLegacyDryRun",
+        "jsdoc": "Test legacy mode dry run (using --phase flag)."
+      },
+      {
+        "name": "test_single_phase_dry_run",
+        "type": "method",
+        "signature": "async def test_single_phase_dry_run(dry_engine)"
+      },
+      {
+        "name": "test_full_legacy_dry_run_all_phases",
+        "type": "method",
+        "signature": "async def test_full_legacy_dry_run_all_phases(dry_engine)",
+        "jsdoc": "Legacy mode: all 5 phases should complete."
+      },
+      {
+        "name": "test_legacy_state_json_written",
+        "type": "method",
+        "signature": "async def test_legacy_state_json_written(dry_engine, tmp_workspace)"
+      },
+      {
+        "name": "TestWorkflowDryRun",
+        "type": "class",
+        "signature": "class TestWorkflowDryRun",
+        "jsdoc": "Test workflow engine dry run."
+      },
+      {
+        "name": "test_workflow_dry_run_completes",
+        "type": "method",
+        "signature": "async def test_workflow_dry_run_completes(dry_engine)"
+      },
+      {
+        "name": "test_workflow_dry_run_bugfix",
+        "type": "method",
+        "signature": "async def test_workflow_dry_run_bugfix(dry_engine)"
+      },
+      {
+        "name": "test_workflow_dry_run_state_persisted",
+        "type": "method",
+        "signature": "async def test_workflow_dry_run_state_persisted(dry_engine, tmp_workspace)"
+      },
+      {
+        "name": "TestMockedAgentInvocation",
+        "type": "class",
+        "signature": "class TestMockedAgentInvocation"
+      },
+      {
+        "name": "test_failing_agent_stops_legacy_pipeline",
+        "type": "method",
+        "signature": "async def test_failing_agent_stops_legacy_pipeline(engine)",
+        "jsdoc": "Legacy mode: failing agent stops the pipeline."
+      },
+      {
+        "name": "test_approve_review_ends_legacy_cycle",
+        "type": "method",
+        "signature": "async def test_approve_review_ends_legacy_cycle(engine, tmp_workspace)",
+        "jsdoc": "Legacy mode: approved review ends the cycle."
+      },
+      {
+        "name": "TestComputeDependencyWaves",
+        "type": "class",
+        "signature": "class TestComputeDependencyWaves",
+        "jsdoc": "Tests for the DAG scheduler that computes execution waves."
+      },
+      {
+        "name": "test_empty_tasks",
+        "type": "method",
+        "signature": "def test_empty_tasks()"
+      },
+      {
+        "name": "test_no_dependencies_single_wave",
+        "type": "method",
+        "signature": "def test_no_dependencies_single_wave()"
+      },
+      {
+        "name": "test_linear_chain",
+        "type": "method",
+        "signature": "def test_linear_chain()",
+        "jsdoc": "T1 → T2 → T3 should produce 3 waves of 1 task each."
+      },
+      {
+        "name": "test_diamond_dependency",
+        "type": "method",
+        "signature": "def test_diamond_dependency()",
+        "jsdoc": "Diamond: T1 → T2, T1 → T3, T2+T3 → T4. Waves: [T1], [T2,T3], [T4]."
+      },
+      {
+        "name": "test_external_dependencies_ignored",
+        "type": "method",
+        "signature": "def test_external_dependencies_ignored()",
+        "jsdoc": "Dependencies on tasks outside this step's set are ignored."
+      },
+      {
+        "name": "test_circular_dependency_falls_back",
+        "type": "method",
+        "signature": "def test_circular_dependency_falls_back()",
+        "jsdoc": "Circular deps should produce waves ending with a fallback wave."
+      },
+      {
+        "name": "test_mixed_deps_and_independent",
+        "type": "method",
+        "signature": "def test_mixed_deps_and_independent()",
+        "jsdoc": "Mix of independent and dependent tasks.\n        T1: no deps, T2: no deps, T3: depends on T1, T4: depends on T1, T5: depends on T3+T4\n        Wave 1: [T1, T2], Wave 2: [T3, T4], Wave 3: [T5]"
+      },
+      {
+        "name": "test_wide_fan_out",
+        "type": "method",
+        "signature": "def test_wide_fan_out()",
+        "jsdoc": "One root task with 10 dependents → 2 waves."
+      },
+      {
+        "name": "TestMockedWorkflowInvocation",
+        "type": "class",
+        "signature": "class TestMockedWorkflowInvocation"
+      },
+      {
+        "name": "test_failing_agent_stops_workflow",
+        "type": "method",
+        "signature": "async def test_failing_agent_stops_workflow(engine, tmp_workspace)",
+        "jsdoc": "Workflow mode: failing agent stops the workflow."
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
+  },
+  "tests/test_model_routing.py": {
+    "file": "tests/test_model_routing.py",
+    "purpose": "test_model_routing module",
+    "exports": [
+      "TestRoleCategoryMapping",
+      "test_all_roles_have_category",
+      "test_debate_roles_separate",
+      "TestModeDefinitions",
+      "test_all_modes_cover_all_categories",
+      "test_overkill_all_opus",
+      "test_superhaiku_all_haiku_base",
+      "test_supersonnet_all_sonnet_base",
+      "TestApplyRoutingMode",
+      "test_overkill_sets_all_opus",
+      "test_fast_planning_is_sonnet",
+      "test_fast_coding_is_haiku",
+      "test_fast_verification_is_haiku",
+      "test_fast_lightweight_is_haiku",
+      "test_balanced_planning_is_opus",
+      "test_balanced_coding_is_sonnet_with_opus_escalation",
+      "test_balanced_lightweight_is_haiku",
+      "test_debate_config_updated",
+      "test_debate_config_fast",
+      "test_routing_mode_stored",
+      "test_unknown_agent_falls_back_to_coding",
+      "test_superhaiku_all_haiku",
+      "test_supersonnet_all_sonnet"
+    ],
+    "dependencies": [
+      "__future__",
+      "pytest",
+      "orchestrator.model_routing",
+      "orchestrator.models",
+      "orchestrator.roles"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "c2912b05d5315c9194205b65ffe7344fafa177c80ab108739e3256d48788b3ae",
+    "detailedPurpose": "Every AgentRole should be mapped to a category. Exports: TestRoleCategoryMapping, test_all_roles_have_category, test_debate_roles_separate, TestModeDefinitions, test_all_modes_cover_all_categories and 18 more.",
+    "publicAPI": [
+      {
+        "name": "TestRoleCategoryMapping",
+        "type": "class",
+        "signature": "class TestRoleCategoryMapping",
+        "jsdoc": "Every AgentRole should be mapped to a category."
+      },
+      {
+        "name": "test_all_roles_have_category",
+        "type": "method",
+        "signature": "def test_all_roles_have_category()"
+      },
+      {
+        "name": "test_debate_roles_separate",
+        "type": "method",
+        "signature": "def test_debate_roles_separate()"
+      },
+      {
+        "name": "TestModeDefinitions",
+        "type": "class",
+        "signature": "class TestModeDefinitions",
+        "jsdoc": "Each mode should define all categories."
+      },
+      {
+        "name": "test_all_modes_cover_all_categories",
+        "type": "method",
+        "signature": "def test_all_modes_cover_all_categories()"
+      },
+      {
+        "name": "test_overkill_all_opus",
+        "type": "method",
+        "signature": "def test_overkill_all_opus()"
+      },
+      {
+        "name": "test_superhaiku_all_haiku_base",
+        "type": "method",
+        "signature": "def test_superhaiku_all_haiku_base()"
+      },
+      {
+        "name": "test_supersonnet_all_sonnet_base",
+        "type": "method",
+        "signature": "def test_supersonnet_all_sonnet_base()"
+      },
+      {
+        "name": "TestApplyRoutingMode",
+        "type": "class",
+        "signature": "class TestApplyRoutingMode",
+        "jsdoc": "Test apply_routing_mode mutates config correctly."
+      },
+      {
+        "name": "test_overkill_sets_all_opus",
+        "type": "method",
+        "signature": "def test_overkill_sets_all_opus()"
+      },
+      {
+        "name": "test_fast_planning_is_sonnet",
+        "type": "method",
+        "signature": "def test_fast_planning_is_sonnet()"
+      },
+      {
+        "name": "test_fast_coding_is_haiku",
+        "type": "method",
+        "signature": "def test_fast_coding_is_haiku()"
+      },
+      {
+        "name": "test_fast_verification_is_haiku",
+        "type": "method",
+        "signature": "def test_fast_verification_is_haiku()"
+      },
+      {
+        "name": "test_fast_lightweight_is_haiku",
+        "type": "method",
+        "signature": "def test_fast_lightweight_is_haiku()"
+      },
+      {
+        "name": "test_balanced_planning_is_opus",
+        "type": "method",
+        "signature": "def test_balanced_planning_is_opus()"
+      },
+      {
+        "name": "test_balanced_coding_is_sonnet_with_opus_escalation",
+        "type": "method",
+        "signature": "def test_balanced_coding_is_sonnet_with_opus_escalation()"
+      },
+      {
+        "name": "test_balanced_lightweight_is_haiku",
+        "type": "method",
+        "signature": "def test_balanced_lightweight_is_haiku()"
+      },
+      {
+        "name": "test_debate_config_updated",
+        "type": "method",
+        "signature": "def test_debate_config_updated()"
+      },
+      {
+        "name": "test_debate_config_fast",
+        "type": "method",
+        "signature": "def test_debate_config_fast()"
+      },
+      {
+        "name": "test_routing_mode_stored",
+        "type": "method",
+        "signature": "def test_routing_mode_stored()"
+      },
+      {
+        "name": "test_unknown_agent_falls_back_to_coding",
+        "type": "method",
+        "signature": "def test_unknown_agent_falls_back_to_coding()",
+        "jsdoc": "Agents not in role mapping should get CODING category tier."
+      },
+      {
+        "name": "test_superhaiku_all_haiku",
+        "type": "method",
+        "signature": "def test_superhaiku_all_haiku()"
+      },
+      {
+        "name": "test_supersonnet_all_sonnet",
+        "type": "method",
+        "signature": "def test_supersonnet_all_sonnet()"
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
   },
   "tests/test_models.py": {
     "file": "tests/test_models.py",
@@ -1112,8 +3901,189 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.142Z",
-    "contentHash": "c1448930ee6550ec853ca830ab7774038830014f04027e5e784263c99d9c6c6b"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "2fbfc75bc54889b4ebeaba9f0cd2fd53e4b183f7161a22716abca721db9c2762",
+    "detailedPurpose": "Provides 35 exported symbols: TestRequirement, test_valid, test_invalid_id_pattern, test_invalid_priority, TestPRD and 30 more.",
+    "publicAPI": [
+      {
+        "name": "TestRequirement",
+        "type": "class",
+        "signature": "class TestRequirement"
+      },
+      {
+        "name": "test_valid",
+        "type": "method",
+        "signature": "def test_valid()"
+      },
+      {
+        "name": "test_invalid_id_pattern",
+        "type": "method",
+        "signature": "def test_invalid_id_pattern()"
+      },
+      {
+        "name": "test_invalid_priority",
+        "type": "method",
+        "signature": "def test_invalid_priority()"
+      },
+      {
+        "name": "TestPRD",
+        "type": "class",
+        "signature": "class TestPRD"
+      },
+      {
+        "name": "test_valid",
+        "type": "method",
+        "signature": "def test_valid(valid_prd_data)"
+      },
+      {
+        "name": "test_short_overview_fails",
+        "type": "method",
+        "signature": "def test_short_overview_fails(valid_prd_data)"
+      },
+      {
+        "name": "test_empty_goals_fails",
+        "type": "method",
+        "signature": "def test_empty_goals_fails(valid_prd_data)"
+      },
+      {
+        "name": "test_model_dump_round_trip",
+        "type": "method",
+        "signature": "def test_model_dump_round_trip(valid_prd_data)"
+      },
+      {
+        "name": "TestTask",
+        "type": "class",
+        "signature": "class TestTask"
+      },
+      {
+        "name": "test_valid",
+        "type": "method",
+        "signature": "def test_valid(valid_tasks_data)"
+      },
+      {
+        "name": "test_invalid_assigned_role",
+        "type": "method",
+        "signature": "def test_invalid_assigned_role(valid_tasks_data)"
+      },
+      {
+        "name": "test_backend_engineer_role_accepted",
+        "type": "method",
+        "signature": "def test_backend_engineer_role_accepted(valid_tasks_data)"
+      },
+      {
+        "name": "test_frontend_engineer_role_accepted",
+        "type": "method",
+        "signature": "def test_frontend_engineer_role_accepted(valid_tasks_data)"
+      },
+      {
+        "name": "TestRunState",
+        "type": "class",
+        "signature": "class TestRunState"
+      },
+      {
+        "name": "test_zero_cost_defaults",
+        "type": "method",
+        "signature": "def test_zero_cost_defaults()"
+      },
+      {
+        "name": "test_model_dump_shape",
+        "type": "method",
+        "signature": "def test_model_dump_shape()"
+      },
+      {
+        "name": "test_default_workflow_type",
+        "type": "method",
+        "signature": "def test_default_workflow_type()"
+      },
+      {
+        "name": "test_completed_steps_tracking",
+        "type": "method",
+        "signature": "def test_completed_steps_tracking()"
+      },
+      {
+        "name": "TestEnums",
+        "type": "class",
+        "signature": "class TestEnums"
+      },
+      {
+        "name": "test_phase_status_failed_value",
+        "type": "method",
+        "signature": "def test_phase_status_failed_value()"
+      },
+      {
+        "name": "test_phase_status_completed_value",
+        "type": "method",
+        "signature": "def test_phase_status_completed_value()"
+      },
+      {
+        "name": "test_task_status_new_states",
+        "type": "method",
+        "signature": "def test_task_status_new_states()"
+      },
+      {
+        "name": "test_workflow_types",
+        "type": "method",
+        "signature": "def test_workflow_types()"
+      },
+      {
+        "name": "test_agent_roles",
+        "type": "method",
+        "signature": "def test_agent_roles()"
+      },
+      {
+        "name": "TestWorkflowModels",
+        "type": "class",
+        "signature": "class TestWorkflowModels"
+      },
+      {
+        "name": "test_workflow_step_definition",
+        "type": "method",
+        "signature": "def test_workflow_step_definition()"
+      },
+      {
+        "name": "test_workflow_definition",
+        "type": "method",
+        "signature": "def test_workflow_definition()"
+      },
+      {
+        "name": "test_workflow_definition_requires_steps",
+        "type": "method",
+        "signature": "def test_workflow_definition_requires_steps()"
+      },
+      {
+        "name": "TestWorkflowTaskState",
+        "type": "class",
+        "signature": "class TestWorkflowTaskState"
+      },
+      {
+        "name": "test_defaults",
+        "type": "method",
+        "signature": "def test_defaults()"
+      },
+      {
+        "name": "TestNewArtifactModels",
+        "type": "class",
+        "signature": "class TestNewArtifactModels"
+      },
+      {
+        "name": "test_engineering_plan",
+        "type": "method",
+        "signature": "def test_engineering_plan()"
+      },
+      {
+        "name": "test_threat_model",
+        "type": "method",
+        "signature": "def test_threat_model()"
+      },
+      {
+        "name": "test_benchmark_report",
+        "type": "method",
+        "signature": "def test_benchmark_report()"
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
   },
   "tests/test_phases.py": {
     "file": "tests/test_phases.py",
@@ -1155,8 +4125,139 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.309Z",
-    "contentHash": "9238aa6dcabf0e5af62689c1fd18758f8fb4b9db9ce45fa1da4f108b99131bf9"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "1953426b0e0e0cb88ce3c971bfa216d31afb04dfef4ba03d94dcc340faa6ca02",
+    "detailedPurpose": "Provides 25 exported symbols: config, TestBuildPmPrompt, test_includes_feature_request, test_references_prd_json, TestBuildEngineerPrompt and 20 more.",
+    "publicAPI": [
+      {
+        "name": "config",
+        "type": "function",
+        "signature": "@pytest.fixture def config() -> OrchestratorConfig"
+      },
+      {
+        "name": "TestBuildPmPrompt",
+        "type": "class",
+        "signature": "class TestBuildPmPrompt"
+      },
+      {
+        "name": "test_includes_feature_request",
+        "type": "method",
+        "signature": "def test_includes_feature_request(tmp_workspace, config)"
+      },
+      {
+        "name": "test_references_prd_json",
+        "type": "method",
+        "signature": "def test_references_prd_json(tmp_workspace, config)"
+      },
+      {
+        "name": "TestBuildEngineerPrompt",
+        "type": "class",
+        "signature": "class TestBuildEngineerPrompt"
+      },
+      {
+        "name": "test_with_task_data_embeds_task_id",
+        "type": "method",
+        "signature": "def test_with_task_data_embeds_task_id(tmp_workspace, config, valid_tasks_data)"
+      },
+      {
+        "name": "test_without_task_data_references_tasks_json",
+        "type": "method",
+        "signature": "def test_without_task_data_references_tasks_json(tmp_workspace, config)"
+      },
+      {
+        "name": "TestBuildReviewerPrompt",
+        "type": "class",
+        "signature": "class TestBuildReviewerPrompt"
+      },
+      {
+        "name": "test_cycle1_no_previous_review",
+        "type": "method",
+        "signature": "def test_cycle1_no_previous_review(tmp_workspace, config)"
+      },
+      {
+        "name": "test_cycle2_with_prior_review_includes_it",
+        "type": "method",
+        "signature": "def test_cycle2_with_prior_review_includes_it(tmp_workspace, config)"
+      },
+      {
+        "name": "TestNewPromptBuilders",
+        "type": "class",
+        "signature": "class TestNewPromptBuilders"
+      },
+      {
+        "name": "test_principal_engineer_prompt",
+        "type": "method",
+        "signature": "def test_principal_engineer_prompt(tmp_workspace, config)"
+      },
+      {
+        "name": "test_frontend_engineer_prompt",
+        "type": "method",
+        "signature": "def test_frontend_engineer_prompt(tmp_workspace, config)"
+      },
+      {
+        "name": "test_backend_engineer_prompt",
+        "type": "method",
+        "signature": "def test_backend_engineer_prompt(tmp_workspace, config)"
+      },
+      {
+        "name": "test_security_engineer_prompt",
+        "type": "method",
+        "signature": "def test_security_engineer_prompt(tmp_workspace, config)"
+      },
+      {
+        "name": "TestPromptBuilderRegistry",
+        "type": "class",
+        "signature": "class TestPromptBuilderRegistry"
+      },
+      {
+        "name": "test_all_non_debate_roles_have_builders",
+        "type": "method",
+        "signature": "def test_all_non_debate_roles_have_builders()"
+      },
+      {
+        "name": "test_builders_are_callable",
+        "type": "method",
+        "signature": "def test_builders_are_callable()"
+      },
+      {
+        "name": "TestGetEngineerTasks",
+        "type": "class",
+        "signature": "class TestGetEngineerTasks"
+      },
+      {
+        "name": "test_empty_without_tasks_json",
+        "type": "method",
+        "signature": "def test_empty_without_tasks_json(tmp_workspace)"
+      },
+      {
+        "name": "test_filters_to_engineer_role",
+        "type": "method",
+        "signature": "def test_filters_to_engineer_role(tmp_workspace, valid_tasks_data)"
+      },
+      {
+        "name": "test_includes_expanded_roles",
+        "type": "method",
+        "signature": "def test_includes_expanded_roles(tmp_workspace)"
+      },
+      {
+        "name": "TestPhaseDefinitions",
+        "type": "class",
+        "signature": "class TestPhaseDefinitions"
+      },
+      {
+        "name": "test_all_five_phases_present",
+        "type": "method",
+        "signature": "def test_all_five_phases_present()"
+      },
+      {
+        "name": "test_all_phases_have_nonempty_agent_name",
+        "type": "method",
+        "signature": "def test_all_phases_have_nonempty_agent_name()"
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
   },
   "tests/test_roles.py": {
     "file": "tests/test_roles.py",
@@ -1187,8 +4288,94 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.143Z",
-    "contentHash": "4d079d5a75e4fe21c4d542e3bc3f1b2e550352876c2b54df4a06f9778a18968e"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "271bbae7868ebddd322ffad3304668b727143fc8d2d683be32b1a8ba6c88b84a",
+    "detailedPurpose": "Provides 16 exported symbols: TestRoleRegistry, test_all_roles_registered, test_all_agent_roles_have_entry, test_pm_is_read_only, test_backend_engineer_is_read_write and 11 more.",
+    "publicAPI": [
+      {
+        "name": "TestRoleRegistry",
+        "type": "class",
+        "signature": "class TestRoleRegistry"
+      },
+      {
+        "name": "test_all_roles_registered",
+        "type": "method",
+        "signature": "def test_all_roles_registered()"
+      },
+      {
+        "name": "test_all_agent_roles_have_entry",
+        "type": "method",
+        "signature": "def test_all_agent_roles_have_entry()"
+      },
+      {
+        "name": "test_pm_is_read_only",
+        "type": "method",
+        "signature": "def test_pm_is_read_only()"
+      },
+      {
+        "name": "test_backend_engineer_is_read_write",
+        "type": "method",
+        "signature": "def test_backend_engineer_is_read_write()"
+      },
+      {
+        "name": "test_security_engineer_is_read_only",
+        "type": "method",
+        "signature": "def test_security_engineer_is_read_only()"
+      },
+      {
+        "name": "TestValidateRoleAccess",
+        "type": "class",
+        "signature": "class TestValidateRoleAccess"
+      },
+      {
+        "name": "test_read_only_blocks_write",
+        "type": "method",
+        "signature": "def test_read_only_blocks_write()"
+      },
+      {
+        "name": "test_read_only_allows_read",
+        "type": "method",
+        "signature": "def test_read_only_allows_read()"
+      },
+      {
+        "name": "test_read_write_allows_both",
+        "type": "method",
+        "signature": "def test_read_write_allows_both()"
+      },
+      {
+        "name": "TestRoleToLegacyAgentName",
+        "type": "class",
+        "signature": "class TestRoleToLegacyAgentName"
+      },
+      {
+        "name": "test_pm_mapping",
+        "type": "method",
+        "signature": "def test_pm_mapping()"
+      },
+      {
+        "name": "test_architect_mapping",
+        "type": "method",
+        "signature": "def test_architect_mapping()"
+      },
+      {
+        "name": "test_frontend_engineer_mapping",
+        "type": "method",
+        "signature": "def test_frontend_engineer_mapping()"
+      },
+      {
+        "name": "TestGetRolesForWorkflow",
+        "type": "class",
+        "signature": "class TestGetRolesForWorkflow"
+      },
+      {
+        "name": "test_feature_development_roles",
+        "type": "method",
+        "signature": "def test_feature_development_roles()"
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
   },
   "tests/test_validation.py": {
     "file": "tests/test_validation.py",
@@ -1213,8 +4400,59 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.309Z",
-    "contentHash": "353638601f3fbf21bb9a3ebaeafb6f86c7f2d1e8b7ce4f5cb1c07ebe914510b5"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "551fd5267d86c6618f0940d61ae5ac7e2b50c76662c26329839b66f1914a574f",
+    "detailedPurpose": "Provides 9 exported symbols: TestValidateArtifactFile, test_missing_file, test_invalid_json, test_valid_prd, test_missing_required_field and 4 more.",
+    "publicAPI": [
+      {
+        "name": "TestValidateArtifactFile",
+        "type": "class",
+        "signature": "class TestValidateArtifactFile"
+      },
+      {
+        "name": "test_missing_file",
+        "type": "method",
+        "signature": "def test_missing_file(tmp_workspace)"
+      },
+      {
+        "name": "test_invalid_json",
+        "type": "method",
+        "signature": "def test_invalid_json(tmp_workspace)"
+      },
+      {
+        "name": "test_valid_prd",
+        "type": "method",
+        "signature": "def test_valid_prd(tmp_workspace, valid_prd_data)"
+      },
+      {
+        "name": "test_missing_required_field",
+        "type": "method",
+        "signature": "def test_missing_required_field(tmp_workspace, valid_prd_data)"
+      },
+      {
+        "name": "test_short_overview_pydantic_fails",
+        "type": "method",
+        "signature": "def test_short_overview_pydantic_fails(tmp_workspace, valid_prd_data)"
+      },
+      {
+        "name": "test_unknown_artifact_name",
+        "type": "method",
+        "signature": "def test_unknown_artifact_name(tmp_workspace)"
+      },
+      {
+        "name": "TestValidateAllArtifacts",
+        "type": "class",
+        "signature": "class TestValidateAllArtifacts"
+      },
+      {
+        "name": "test_partial_artifacts",
+        "type": "method",
+        "signature": "def test_partial_artifacts(tmp_workspace, valid_prd_data)"
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
   },
   "tests/test_workflows.py": {
     "file": "tests/test_workflows.py",
@@ -1248,121 +4486,109 @@
     ],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-16T12:47:17.143Z",
-    "contentHash": "606f78645bc70a934d113e9a9a44aa4c14775f9183b0c85b139a6267395d2b83"
-  },
-  "src/orchestrator/generate_schemas.py": {
-    "file": "src/orchestrator/generate_schemas.py",
-    "purpose": "generate_schemas module",
-    "exports": [
-      "generate_missing_schemas"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "b4eb16216c8e60d228cebd63329fc53ab5987bdd34a8c299582951f71136df6a",
+    "detailedPurpose": "Provides 19 exported symbols: TestBuiltinWorkflows, test_all_five_workflows_registered, test_feature_development_has_8_steps, test_feature_development_starts_with_prd, test_feature_development_implementation_is_parallel and 14 more.",
+    "publicAPI": [
+      {
+        "name": "TestBuiltinWorkflows",
+        "type": "class",
+        "signature": "class TestBuiltinWorkflows"
+      },
+      {
+        "name": "test_all_five_workflows_registered",
+        "type": "method",
+        "signature": "def test_all_five_workflows_registered()"
+      },
+      {
+        "name": "test_feature_development_has_8_steps",
+        "type": "method",
+        "signature": "def test_feature_development_has_8_steps()"
+      },
+      {
+        "name": "test_feature_development_starts_with_prd",
+        "type": "method",
+        "signature": "def test_feature_development_starts_with_prd()"
+      },
+      {
+        "name": "test_feature_development_implementation_is_parallel",
+        "type": "method",
+        "signature": "def test_feature_development_implementation_is_parallel()"
+      },
+      {
+        "name": "test_feature_development_release_has_approval_gate",
+        "type": "method",
+        "signature": "def test_feature_development_release_has_approval_gate()"
+      },
+      {
+        "name": "test_bugfix_workflow_steps",
+        "type": "method",
+        "signature": "def test_bugfix_workflow_steps()"
+      },
+      {
+        "name": "test_security_audit_uses_security_engineer",
+        "type": "method",
+        "signature": "def test_security_audit_uses_security_engineer()"
+      },
+      {
+        "name": "test_all_workflows_have_valid_step_names",
+        "type": "method",
+        "signature": "def test_all_workflows_have_valid_step_names()"
+      },
+      {
+        "name": "TestSelectWorkflow",
+        "type": "class",
+        "signature": "class TestSelectWorkflow"
+      },
+      {
+        "name": "test_select_feature_development",
+        "type": "method",
+        "signature": "def test_select_feature_development()"
+      },
+      {
+        "name": "test_select_bugfix",
+        "type": "method",
+        "signature": "def test_select_bugfix()"
+      },
+      {
+        "name": "test_custom_raises_error",
+        "type": "method",
+        "signature": "def test_custom_raises_error()"
+      },
+      {
+        "name": "TestParseCustomWorkflow",
+        "type": "class",
+        "signature": "class TestParseCustomWorkflow"
+      },
+      {
+        "name": "test_parse_simple_workflow",
+        "type": "method",
+        "signature": "def test_parse_simple_workflow()"
+      },
+      {
+        "name": "test_parse_with_gate",
+        "type": "function",
+        "signature": "def test_parse_with_gate(self)"
+      },
+      {
+        "name": "test_parse_with_on_fail",
+        "type": "function",
+        "signature": "def test_parse_with_on_fail(self)"
+      },
+      {
+        "name": "test_empty_definition_raises",
+        "type": "function",
+        "signature": "def test_empty_definition_raises(self)"
+      },
+      {
+        "name": "test_unknown_role_raises",
+        "type": "function",
+        "signature": "def test_unknown_role_raises(self)"
+      }
     ],
-    "dependencies": [
-      "__future__",
-      "json",
-      "pathlib",
-      "orchestrator.models"
-    ],
-    "sideEffects": [],
-    "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.463Z",
-    "contentHash": "2128abf4f55462139202161ccfa9bf2439d8971b8b4ef6f2a07e0d11babae0ba"
-  },
-  "src/orchestrator/knowledge_watcher.py": {
-    "file": "src/orchestrator/knowledge_watcher.py",
-    "purpose": "knowledge_watcher module",
-    "exports": [
-      "KnowledgeWatcher",
-      "__init__",
-      "rebuild_count",
-      "start",
-      "stop"
-    ],
-    "dependencies": [
-      "__future__",
-      "asyncio",
-      "logging",
-      "time",
-      "pathlib",
-      "typing",
-      "orchestrator.knowledge"
-    ],
-    "sideEffects": [],
-    "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "82e32a4f48ce64a3fdc6a25dcbdae4f2639661d0e089de225d0b238da94c7bf6"
-  },
-  "src/orchestrator/persistence.py": {
-    "file": "src/orchestrator/persistence.py",
-    "purpose": "persistence module",
-    "exports": [
-      "atomic_write",
-      "save_run_state"
-    ],
-    "dependencies": [
-      "__future__",
-      "json",
-      "os",
-      "tempfile",
-      "threading",
-      "pathlib",
-      "orchestrator.models"
-    ],
-    "sideEffects": [],
-    "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "d37fd26f4ed46d590d45e68da743ba996a289682558d113877dee8ae2d37e124"
-  },
-  "src/orchestrator/tech_stack.py": {
-    "file": "src/orchestrator/tech_stack.py",
-    "purpose": "tech_stack module",
-    "exports": [
-      "confirm_tech_stack"
-    ],
-    "dependencies": [
-      "__future__",
-      "json",
-      "logging",
-      "pathlib",
-      "rich.console",
-      "rich.panel",
-      "rich.table"
-    ],
-    "sideEffects": [],
-    "throws": [],
-    "lastUpdated": "2026-03-16T14:29:52.464Z",
-    "contentHash": "0cf1b93a9287a02a98e0a4859b12207f35cfd4609cae2033980c757c0b6f830e"
-  },
-  "src/orchestrator/dashboard/runner.py": {
-    "file": "src/orchestrator/dashboard/runner.py",
-    "purpose": "runner module",
-    "exports": [
-      "RunRequest",
-      "RunTracker",
-      "__init__",
-      "start_run",
-      "cancel_run",
-      "is_active",
-      "active_run_ids",
-      "get_error"
-    ],
-    "dependencies": [
-      "__future__",
-      "asyncio",
-      "logging",
-      "time",
-      "uuid",
-      "pathlib",
-      "typing",
-      "pydantic",
-      "orchestrator.config",
-      "orchestrator.main",
-      "orchestrator.models"
-    ],
-    "sideEffects": [],
-    "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.308Z",
-    "contentHash": "6d8adc03aa713cb9ab2b27c2a3ff2f1e1b3eaf87ee2381c9623d6d2a8894108c"
+    "internalPatterns": [
+      "test"
+    ]
   },
   "src/orchestrator/dashboard/static/app.js": {
     "file": "src/orchestrator/dashboard/static/app.js",
@@ -1371,7 +4597,948 @@
     "dependencies": [],
     "sideEffects": [],
     "throws": [],
-    "lastUpdated": "2026-03-17T01:40:42.309Z",
-    "contentHash": "06adfbe02ec74560ba4495fb1726dcacfc76d89f172586ed18910d070926e43a"
+    "lastUpdated": "2026-03-17T06:05:22.422Z",
+    "contentHash": "fbf9dc8455447f093ddb4e7d244e827f635dae1d64570ca74098e11d0b9e6a78",
+    "detailedPurpose": "Internal module with 10 private symbol(s).",
+    "publicAPI": [],
+    "internalPatterns": [],
+    "complexityScore": 41
+  },
+  "tests/test_config.py": {
+    "file": "tests/test_config.py",
+    "purpose": "test_config module",
+    "exports": [
+      "TestConfigurationError",
+      "test_is_orchestrator_error",
+      "test_error_code",
+      "test_message_preserved",
+      "TestFormatValidationError",
+      "test_includes_section_and_field",
+      "test_starts_with_invalid_configuration",
+      "test_strips_pydantic_value_error_prefix",
+      "test_multiple_errors_joined",
+      "TestOrchestratorConfigValidators",
+      "test_valid_config_passes",
+      "test_budget_negative_rejected",
+      "test_budget_zero_rejected",
+      "test_budget_positive_accepted",
+      "test_review_cycles_zero_rejected",
+      "test_review_cycles_negative_rejected",
+      "test_review_cycles_one_accepted",
+      "test_concurrent_agents_negative_rejected",
+      "test_concurrent_agents_zero_accepted",
+      "test_concurrent_agents_positive_accepted",
+      "test_error_message_identifies_field_and_range_budget",
+      "test_error_message_identifies_field_and_range_cycles",
+      "TestLoadConfigRaisesConfigurationError",
+      "test_valid_minimal_yaml_loads",
+      "test_default_config_loads",
+      "test_negative_budget_raises_configuration_error",
+      "test_negative_budget_error_not_raw_validation_error",
+      "test_error_message_names_offending_field",
+      "test_zero_review_cycles_raises_configuration_error",
+      "test_negative_concurrent_agents_raises_configuration_error",
+      "test_invalid_phase_config_raises_configuration_error",
+      "test_invalid_agent_config_raises_configuration_error",
+      "test_invalid_spawn_config_raises_configuration_error",
+      "test_error_identifies_expected_range_in_message",
+      "test_configuration_error_has_correct_error_code",
+      "test_file_not_found_raises_file_not_found_error"
+    ],
+    "dependencies": [
+      "__future__",
+      "textwrap",
+      "pathlib",
+      "pytest",
+      "pydantic",
+      "orchestrator.config",
+      "orchestrator.models",
+      "orchestrator.monitoring.errors"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T08:37:43.112Z",
+    "contentHash": "95a005e65a35ba44920794dfa8f2edfba2acea3f6149036fb4bdd3bcc8f7467f",
+    "detailedPurpose": "Pydantic v2 prepends 'Value error, ' — the helper should strip that. Exports: TestConfigurationError, test_is_orchestrator_error, test_error_code, test_message_preserved, TestFormatValidationError and 31 more.",
+    "publicAPI": [
+      {
+        "name": "TestConfigurationError",
+        "type": "class",
+        "signature": "class TestConfigurationError"
+      },
+      {
+        "name": "test_is_orchestrator_error",
+        "type": "method",
+        "signature": "def test_is_orchestrator_error()"
+      },
+      {
+        "name": "test_error_code",
+        "type": "method",
+        "signature": "def test_error_code()"
+      },
+      {
+        "name": "test_message_preserved",
+        "type": "method",
+        "signature": "def test_message_preserved()"
+      },
+      {
+        "name": "TestFormatValidationError",
+        "type": "class",
+        "signature": "class TestFormatValidationError"
+      },
+      {
+        "name": "test_includes_section_and_field",
+        "type": "method",
+        "signature": "def test_includes_section_and_field()"
+      },
+      {
+        "name": "test_starts_with_invalid_configuration",
+        "type": "method",
+        "signature": "def test_starts_with_invalid_configuration()"
+      },
+      {
+        "name": "test_strips_pydantic_value_error_prefix",
+        "type": "method",
+        "signature": "def test_strips_pydantic_value_error_prefix()",
+        "jsdoc": "Pydantic v2 prepends 'Value error, ' — the helper should strip that."
+      },
+      {
+        "name": "test_multiple_errors_joined",
+        "type": "method",
+        "signature": "def test_multiple_errors_joined()"
+      },
+      {
+        "name": "TestOrchestratorConfigValidators",
+        "type": "class",
+        "signature": "class TestOrchestratorConfigValidators"
+      },
+      {
+        "name": "test_valid_config_passes",
+        "type": "method",
+        "signature": "def test_valid_config_passes()"
+      },
+      {
+        "name": "test_budget_negative_rejected",
+        "type": "method",
+        "signature": "def test_budget_negative_rejected()"
+      },
+      {
+        "name": "test_budget_zero_rejected",
+        "type": "method",
+        "signature": "def test_budget_zero_rejected()"
+      },
+      {
+        "name": "test_budget_positive_accepted",
+        "type": "method",
+        "signature": "def test_budget_positive_accepted()"
+      },
+      {
+        "name": "test_review_cycles_zero_rejected",
+        "type": "method",
+        "signature": "def test_review_cycles_zero_rejected()"
+      },
+      {
+        "name": "test_review_cycles_negative_rejected",
+        "type": "method",
+        "signature": "def test_review_cycles_negative_rejected()"
+      },
+      {
+        "name": "test_review_cycles_one_accepted",
+        "type": "method",
+        "signature": "def test_review_cycles_one_accepted()"
+      },
+      {
+        "name": "test_concurrent_agents_negative_rejected",
+        "type": "method",
+        "signature": "def test_concurrent_agents_negative_rejected()"
+      },
+      {
+        "name": "test_concurrent_agents_zero_accepted",
+        "type": "method",
+        "signature": "def test_concurrent_agents_zero_accepted()",
+        "jsdoc": "0 means unlimited — must be accepted."
+      },
+      {
+        "name": "test_concurrent_agents_positive_accepted",
+        "type": "method",
+        "signature": "def test_concurrent_agents_positive_accepted()"
+      },
+      {
+        "name": "test_error_message_identifies_field_and_range_budget",
+        "type": "method",
+        "signature": "def test_error_message_identifies_field_and_range_budget()"
+      },
+      {
+        "name": "test_error_message_identifies_field_and_range_cycles",
+        "type": "method",
+        "signature": "def test_error_message_identifies_field_and_range_cycles()"
+      },
+      {
+        "name": "TestLoadConfigRaisesConfigurationError",
+        "type": "class",
+        "signature": "class TestLoadConfigRaisesConfigurationError"
+      },
+      {
+        "name": "test_valid_minimal_yaml_loads",
+        "type": "method",
+        "signature": "def test_valid_minimal_yaml_loads(tmp_path: Path)"
+      },
+      {
+        "name": "test_default_config_loads",
+        "type": "method",
+        "signature": "def test_default_config_loads()",
+        "jsdoc": "The shipped default.yaml must load cleanly."
+      },
+      {
+        "name": "test_negative_budget_raises_configuration_error",
+        "type": "method",
+        "signature": "def test_negative_budget_raises_configuration_error(tmp_path: Path)"
+      },
+      {
+        "name": "test_negative_budget_error_not_raw_validation_error",
+        "type": "method",
+        "signature": "def test_negative_budget_error_not_raw_validation_error(tmp_path: Path)"
+      },
+      {
+        "name": "test_error_message_names_offending_field",
+        "type": "method",
+        "signature": "def test_error_message_names_offending_field(tmp_path: Path)"
+      },
+      {
+        "name": "test_zero_review_cycles_raises_configuration_error",
+        "type": "method",
+        "signature": "def test_zero_review_cycles_raises_configuration_error(tmp_path: Path)"
+      },
+      {
+        "name": "test_negative_concurrent_agents_raises_configuration_error",
+        "type": "method",
+        "signature": "def test_negative_concurrent_agents_raises_configuration_error(tmp_path: Path)"
+      },
+      {
+        "name": "test_invalid_phase_config_raises_configuration_error",
+        "type": "method",
+        "signature": "def test_invalid_phase_config_raises_configuration_error(tmp_path: Path)",
+        "jsdoc": "Invalid phase sub-section → ConfigurationError naming the phase."
+      },
+      {
+        "name": "test_invalid_agent_config_raises_configuration_error",
+        "type": "method",
+        "signature": "def test_invalid_agent_config_raises_configuration_error(tmp_path: Path)",
+        "jsdoc": "Invalid agent sub-section → ConfigurationError naming the agent."
+      },
+      {
+        "name": "test_invalid_spawn_config_raises_configuration_error",
+        "type": "method",
+        "signature": "def test_invalid_spawn_config_raises_configuration_error(tmp_path: Path)",
+        "jsdoc": "spawn.max_spawn_rounds outside [1,5] → ConfigurationError."
+      },
+      {
+        "name": "test_error_identifies_expected_range_in_message",
+        "type": "method",
+        "signature": "def test_error_identifies_expected_range_in_message(tmp_path: Path)",
+        "jsdoc": "The ConfigurationError message should hint at the valid range."
+      },
+      {
+        "name": "test_configuration_error_has_correct_error_code",
+        "type": "method",
+        "signature": "def test_configuration_error_has_correct_error_code(tmp_path: Path)"
+      },
+      {
+        "name": "test_file_not_found_raises_file_not_found_error",
+        "type": "method",
+        "signature": "def test_file_not_found_raises_file_not_found_error(tmp_path: Path)"
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
+  },
+  "tests/test_monitoring_metrics.py": {
+    "file": "tests/test_monitoring_metrics.py",
+    "purpose": "test_monitoring_metrics module",
+    "exports": [
+      "TestMetricsManagerShutdownUnit",
+      "test_shutdown_calls_httpd_shutdown_and_server_close",
+      "test_shutdown_clears_http_server_reference",
+      "test_shutdown_idempotent",
+      "test_shutdown_noop_when_disabled",
+      "test_shutdown_noop_when_server_not_started",
+      "test_shutdown_handles_httpd_exception_gracefully",
+      "test_http_server_set_when_start_returns_tuple",
+      "test_http_server_none_when_start_returns_none",
+      "TestMetricsManagerPortReuseIntegration",
+      "test_port_released_after_shutdown",
+      "test_second_instance_succeeds_after_first_shutdown",
+      "TestMonitoringStackShutdownDelegation",
+      "test_shutdown_calls_metrics_shutdown_when_present",
+      "test_shutdown_continues_when_metrics_shutdown_raises",
+      "test_shutdown_skips_metrics_when_none",
+      "test_shutdown_order_metrics_before_alerting",
+      "test_shutdown_order_metrics_before_tracing"
+    ],
+    "dependencies": [
+      "__future__",
+      "socket",
+      "time",
+      "pathlib",
+      "unittest.mock",
+      "pytest"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T08:46:57.230Z",
+    "contentHash": "423ea06689722aa28755909eea53b856921240e45145d07f76185922ba8661c0",
+    "detailedPurpose": "Unit tests that patch start_http_server so no real HTTP server is spawned. Exports: TestMetricsManagerShutdownUnit, test_shutdown_calls_httpd_shutdown_and_server_close, test_shutdown_clears_http_server_reference, test_shutdown_idempotent, test_shutdown_noop_when_disabled and 13 more.",
+    "publicAPI": [
+      {
+        "name": "TestMetricsManagerShutdownUnit",
+        "type": "class",
+        "signature": "class TestMetricsManagerShutdownUnit",
+        "jsdoc": "Unit tests that patch start_http_server so no real HTTP server is spawned."
+      },
+      {
+        "name": "test_shutdown_calls_httpd_shutdown_and_server_close",
+        "type": "method",
+        "signature": "def test_shutdown_calls_httpd_shutdown_and_server_close()",
+        "jsdoc": "shutdown() must call httpd.shutdown() then httpd.server_close()."
+      },
+      {
+        "name": "test_shutdown_clears_http_server_reference",
+        "type": "method",
+        "signature": "def test_shutdown_clears_http_server_reference()",
+        "jsdoc": "After shutdown(), _http_server must be None."
+      },
+      {
+        "name": "test_shutdown_idempotent",
+        "type": "method",
+        "signature": "def test_shutdown_idempotent()",
+        "jsdoc": "Calling shutdown() twice must not raise; httpd.shutdown() is only called once."
+      },
+      {
+        "name": "test_shutdown_noop_when_disabled",
+        "type": "method",
+        "signature": "def test_shutdown_noop_when_disabled()",
+        "jsdoc": "When prometheus_client is not available (enabled=False), shutdown() is a no-op."
+      },
+      {
+        "name": "test_shutdown_noop_when_server_not_started",
+        "type": "method",
+        "signature": "def test_shutdown_noop_when_server_not_started()",
+        "jsdoc": "If start_http_server raised OSError, _http_server stays None and shutdown() is a no-op."
+      },
+      {
+        "name": "test_shutdown_handles_httpd_exception_gracefully",
+        "type": "method",
+        "signature": "def test_shutdown_handles_httpd_exception_gracefully()",
+        "jsdoc": "If httpd.shutdown() raises, MetricsManager.shutdown() must not propagate."
+      },
+      {
+        "name": "test_http_server_set_when_start_returns_tuple",
+        "type": "method",
+        "signature": "def test_http_server_set_when_start_returns_tuple()",
+        "jsdoc": "_http_server is set to result[0] when start_http_server returns (server, thread)."
+      },
+      {
+        "name": "test_http_server_none_when_start_returns_none",
+        "type": "method",
+        "signature": "def test_http_server_none_when_start_returns_none()",
+        "jsdoc": "_http_server stays None when start_http_server returns None (old prometheus_client)."
+      },
+      {
+        "name": "TestMetricsManagerPortReuseIntegration",
+        "type": "class",
+        "signature": "class TestMetricsManagerPortReuseIntegration",
+        "jsdoc": "Integration tests that start a real server and verify port lifecycle."
+      },
+      {
+        "name": "test_port_released_after_shutdown",
+        "type": "method",
+        "signature": "def test_port_released_after_shutdown()",
+        "jsdoc": "After shutdown(), the port must no longer be bound."
+      },
+      {
+        "name": "test_second_instance_succeeds_after_first_shutdown",
+        "type": "method",
+        "signature": "def test_second_instance_succeeds_after_first_shutdown()",
+        "jsdoc": "Creating a second MetricsManager on the same port must NOT raise OSError."
+      },
+      {
+        "name": "TestMonitoringStackShutdownDelegation",
+        "type": "class",
+        "signature": "class TestMonitoringStackShutdownDelegation",
+        "jsdoc": "Verify MonitoringStack.shutdown() calls metrics.shutdown() with error isolation."
+      },
+      {
+        "name": "test_shutdown_calls_metrics_shutdown_when_present",
+        "type": "method",
+        "signature": "def test_shutdown_calls_metrics_shutdown_when_present()",
+        "jsdoc": "MonitoringStack.shutdown() must call self._metrics.shutdown()."
+      },
+      {
+        "name": "test_shutdown_continues_when_metrics_shutdown_raises",
+        "type": "method",
+        "signature": "def test_shutdown_continues_when_metrics_shutdown_raises()",
+        "jsdoc": "MonitoringStack.shutdown() must NOT propagate exceptions from metrics.shutdown()."
+      },
+      {
+        "name": "test_shutdown_skips_metrics_when_none",
+        "type": "method",
+        "signature": "def test_shutdown_skips_metrics_when_none()",
+        "jsdoc": "When _metrics is None, shutdown() must not fail."
+      },
+      {
+        "name": "test_shutdown_order_metrics_before_alerting",
+        "type": "method",
+        "signature": "def test_shutdown_order_metrics_before_alerting()",
+        "jsdoc": "Metrics must be shut down before alerting (dependency order)."
+      },
+      {
+        "name": "test_shutdown_order_metrics_before_tracing",
+        "type": "method",
+        "signature": "def test_shutdown_order_metrics_before_tracing()",
+        "jsdoc": "Metrics must be shut down before tracing."
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
+  },
+  "tests/test_monitoring_tracing.py": {
+    "file": "tests/test_monitoring_tracing.py",
+    "purpose": "test_monitoring_tracing module",
+    "exports": [
+      "TestSpanContextHappyPath",
+      "test_span_end_called_on_success",
+      "test_span_started_with_correct_name_and_attrs",
+      "test_span_context_empty_attributes_defaults_to_empty_dict",
+      "TestSpanContextExceptionPath",
+      "test_span_end_called_when_exception_raised",
+      "test_exception_propagates_after_span_end",
+      "test_span_end_called_exactly_once_on_exception",
+      "TestSpanContextDisabled",
+      "test_yields_none_when_disabled",
+      "test_no_exception_when_disabled_and_exception_raised_in_body",
+      "TestNoGlobalTracerProvider",
+      "test_set_tracer_provider_never_called",
+      "test_tracer_obtained_from_provider_not_global",
+      "TestCleanupOrphanedSpans",
+      "test_all_open_spans_ended",
+      "test_span_references_cleared_after_cleanup",
+      "test_no_error_when_all_spans_none",
+      "test_cleanup_continues_if_one_span_end_raises",
+      "test_only_open_spans_have_end_called",
+      "TestShutdown",
+      "test_shutdown_calls_cleanup_before_provider_shutdown",
+      "test_shutdown_noop_when_disabled",
+      "test_shutdown_clears_orphaned_run_span",
+      "test_shutdown_clears_orphaned_step_span",
+      "TestBackwardCompatibleAPI",
+      "test_start_end_run_span",
+      "test_start_end_step_span",
+      "test_start_end_agent_span",
+      "test_end_run_span_noop_when_no_active_span",
+      "test_end_step_span_noop_when_no_active_span",
+      "test_all_methods_noop_when_disabled",
+      "test_record_escalation_adds_event_to_step_span",
+      "test_end_agent_span_sets_error_code_when_provided",
+      "test_end_agent_span_skips_error_code_when_none",
+      "TestMonitoringStackTracingShutdown",
+      "test_shutdown_calls_tracing_shutdown_when_present",
+      "test_shutdown_does_not_propagate_tracing_exception",
+      "test_shutdown_skips_tracing_when_none",
+      "test_shutdown_isolates_metrics_and_tracing_failures_independently"
+    ],
+    "dependencies": [
+      "__future__",
+      "contextlib",
+      "pathlib",
+      "unittest.mock",
+      "pytest"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T08:53:39.508Z",
+    "contentHash": "76d6f6390abec9c3de14f7b6c6b6229e8cf411eea28f8380a3ab4d799941077c",
+    "detailedPurpose": "span_context() must end the span even on the success path. Exports: TestSpanContextHappyPath, test_span_end_called_on_success, test_span_started_with_correct_name_and_attrs, test_span_context_empty_attributes_defaults_to_empty_dict, TestSpanContextExceptionPath and 35 more.",
+    "publicAPI": [
+      {
+        "name": "TestSpanContextHappyPath",
+        "type": "class",
+        "signature": "class TestSpanContextHappyPath",
+        "jsdoc": "span_context() must end the span even on the success path."
+      },
+      {
+        "name": "test_span_end_called_on_success",
+        "type": "method",
+        "signature": "def test_span_end_called_on_success()"
+      },
+      {
+        "name": "test_span_started_with_correct_name_and_attrs",
+        "type": "method",
+        "signature": "def test_span_started_with_correct_name_and_attrs()"
+      },
+      {
+        "name": "test_span_context_empty_attributes_defaults_to_empty_dict",
+        "type": "method",
+        "signature": "def test_span_context_empty_attributes_defaults_to_empty_dict()"
+      },
+      {
+        "name": "TestSpanContextExceptionPath",
+        "type": "class",
+        "signature": "class TestSpanContextExceptionPath",
+        "jsdoc": "span_context() must end the span even when an exception is raised."
+      },
+      {
+        "name": "test_span_end_called_when_exception_raised",
+        "type": "method",
+        "signature": "def test_span_end_called_when_exception_raised()"
+      },
+      {
+        "name": "test_exception_propagates_after_span_end",
+        "type": "method",
+        "signature": "def test_exception_propagates_after_span_end()"
+      },
+      {
+        "name": "test_span_end_called_exactly_once_on_exception",
+        "type": "function",
+        "signature": "def test_span_end_called_exactly_once_on_exception(self)",
+        "jsdoc": "span.end() must be called exactly once regardless of exception type."
+      },
+      {
+        "name": "TestSpanContextDisabled",
+        "type": "class",
+        "signature": "class TestSpanContextDisabled",
+        "jsdoc": "When tracing is disabled, span_context() must yield None without error."
+      },
+      {
+        "name": "test_yields_none_when_disabled",
+        "type": "method",
+        "signature": "def test_yields_none_when_disabled()"
+      },
+      {
+        "name": "test_no_exception_when_disabled_and_exception_raised_in_body",
+        "type": "method",
+        "signature": "def test_no_exception_when_disabled_and_exception_raised_in_body()"
+      },
+      {
+        "name": "TestNoGlobalTracerProvider",
+        "type": "class",
+        "signature": "class TestNoGlobalTracerProvider",
+        "jsdoc": "TracingManager must NOT call trace.set_tracer_provider()."
+      },
+      {
+        "name": "test_set_tracer_provider_never_called",
+        "type": "method",
+        "signature": "def test_set_tracer_provider_never_called()"
+      },
+      {
+        "name": "test_tracer_obtained_from_provider_not_global",
+        "type": "method",
+        "signature": "def test_tracer_obtained_from_provider_not_global()",
+        "jsdoc": "get_tracer() must be called on the provider instance, not on trace module."
+      },
+      {
+        "name": "TestCleanupOrphanedSpans",
+        "type": "class",
+        "signature": "class TestCleanupOrphanedSpans",
+        "jsdoc": "_cleanup_orphaned_spans() must end all open instance-level spans."
+      },
+      {
+        "name": "test_all_open_spans_ended",
+        "type": "method",
+        "signature": "def test_all_open_spans_ended()"
+      },
+      {
+        "name": "test_span_references_cleared_after_cleanup",
+        "type": "method",
+        "signature": "def test_span_references_cleared_after_cleanup()"
+      },
+      {
+        "name": "test_no_error_when_all_spans_none",
+        "type": "method",
+        "signature": "def test_no_error_when_all_spans_none()"
+      },
+      {
+        "name": "test_cleanup_continues_if_one_span_end_raises",
+        "type": "method",
+        "signature": "def test_cleanup_continues_if_one_span_end_raises()",
+        "jsdoc": "If one span.end() raises, the other spans must still be cleaned up."
+      },
+      {
+        "name": "test_only_open_spans_have_end_called",
+        "type": "method",
+        "signature": "def test_only_open_spans_have_end_called()",
+        "jsdoc": "Only non-None spans must have end() called."
+      },
+      {
+        "name": "TestShutdown",
+        "type": "class",
+        "signature": "class TestShutdown",
+        "jsdoc": "shutdown() must clean up orphaned spans before calling provider.shutdown()."
+      },
+      {
+        "name": "test_shutdown_calls_cleanup_before_provider_shutdown",
+        "type": "method",
+        "signature": "def test_shutdown_calls_cleanup_before_provider_shutdown()"
+      },
+      {
+        "name": "test_shutdown_noop_when_disabled",
+        "type": "method",
+        "signature": "def test_shutdown_noop_when_disabled()"
+      },
+      {
+        "name": "test_shutdown_clears_orphaned_run_span",
+        "type": "method",
+        "signature": "def test_shutdown_clears_orphaned_run_span()",
+        "jsdoc": "Integration: shutdown() with an open _run_span must end it."
+      },
+      {
+        "name": "test_shutdown_clears_orphaned_step_span",
+        "type": "method",
+        "signature": "def test_shutdown_clears_orphaned_step_span()",
+        "jsdoc": "Integration: shutdown() with an open _step_span must end it."
+      },
+      {
+        "name": "TestBackwardCompatibleAPI",
+        "type": "class",
+        "signature": "class TestBackwardCompatibleAPI",
+        "jsdoc": "The legacy start_*/end_* methods must remain functional."
+      },
+      {
+        "name": "test_start_end_run_span",
+        "type": "method",
+        "signature": "def test_start_end_run_span()"
+      },
+      {
+        "name": "test_start_end_step_span",
+        "type": "method",
+        "signature": "def test_start_end_step_span()"
+      },
+      {
+        "name": "test_start_end_agent_span",
+        "type": "method",
+        "signature": "def test_start_end_agent_span()"
+      },
+      {
+        "name": "test_end_run_span_noop_when_no_active_span",
+        "type": "method",
+        "signature": "def test_end_run_span_noop_when_no_active_span()"
+      },
+      {
+        "name": "test_end_step_span_noop_when_no_active_span",
+        "type": "method",
+        "signature": "def test_end_step_span_noop_when_no_active_span()"
+      },
+      {
+        "name": "test_all_methods_noop_when_disabled",
+        "type": "method",
+        "signature": "def test_all_methods_noop_when_disabled()"
+      },
+      {
+        "name": "test_record_escalation_adds_event_to_step_span",
+        "type": "method",
+        "signature": "def test_record_escalation_adds_event_to_step_span()"
+      },
+      {
+        "name": "test_end_agent_span_sets_error_code_when_provided",
+        "type": "method",
+        "signature": "def test_end_agent_span_sets_error_code_when_provided()"
+      },
+      {
+        "name": "test_end_agent_span_skips_error_code_when_none",
+        "type": "method",
+        "signature": "def test_end_agent_span_skips_error_code_when_none()"
+      },
+      {
+        "name": "TestMonitoringStackTracingShutdown",
+        "type": "class",
+        "signature": "class TestMonitoringStackTracingShutdown",
+        "jsdoc": "MonitoringStack.shutdown() must call tracing.shutdown() with error isolation."
+      },
+      {
+        "name": "test_shutdown_calls_tracing_shutdown_when_present",
+        "type": "method",
+        "signature": "def test_shutdown_calls_tracing_shutdown_when_present()",
+        "jsdoc": "MonitoringStack.shutdown() must call self._tracing.shutdown()."
+      },
+      {
+        "name": "test_shutdown_does_not_propagate_tracing_exception",
+        "type": "method",
+        "signature": "def test_shutdown_does_not_propagate_tracing_exception()",
+        "jsdoc": "If tracing.shutdown() raises, MonitoringStack.shutdown() must NOT propagate it."
+      },
+      {
+        "name": "test_shutdown_skips_tracing_when_none",
+        "type": "method",
+        "signature": "def test_shutdown_skips_tracing_when_none()",
+        "jsdoc": "If tracing is not configured, shutdown() must not fail."
+      },
+      {
+        "name": "test_shutdown_isolates_metrics_and_tracing_failures_independently",
+        "type": "method",
+        "signature": "def test_shutdown_isolates_metrics_and_tracing_failures_independently()",
+        "jsdoc": "Both metrics and tracing shutdown failures must be swallowed independently."
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
+  },
+  "tests/test_agent_invocation.py": {
+    "file": "tests/test_agent_invocation.py",
+    "purpose": "test_agent_invocation module",
+    "exports": [
+      "TestAgentInvocationIsBaseModel",
+      "test_is_pydantic_basemodel",
+      "test_extra_fields_forbidden",
+      "test_agent_result_remains_dataclass",
+      "TestAgentNameValidation",
+      "test_valid_simple_name",
+      "test_valid_underscore_name",
+      "test_valid_hyphen_name",
+      "test_valid_mixed_case_with_digits",
+      "test_empty_agent_name_raises",
+      "test_path_traversal_dotdot_slash_raises",
+      "test_path_traversal_dotdot_backslash_raises",
+      "test_slash_in_name_raises",
+      "test_dot_in_name_raises",
+      "test_space_in_name_raises",
+      "test_null_byte_raises",
+      "TestPromptValidation",
+      "test_valid_prompt",
+      "test_empty_prompt_raises",
+      "TestMaxTurnsValidation",
+      "test_default_is_40",
+      "test_valid_max_turns_1",
+      "test_valid_max_turns_200",
+      "test_zero_max_turns_raises",
+      "test_negative_max_turns_raises",
+      "test_large_max_turns_raises",
+      "TestOptionalFields",
+      "test_defaults",
+      "test_all_fields",
+      "test_display_name_allows_colons_and_parens",
+      "test_mutation_is_allowed",
+      "TestKnownGoodAgentNames",
+      "test_known_name_valid",
+      "TestInvokeAgentDefenseInDepth",
+      "test_path_within_agents_dir_succeeds",
+      "test_defense_in_depth_detects_traversal"
+    ],
+    "dependencies": [
+      "__future__",
+      "dataclasses",
+      "pathlib",
+      "unittest.mock",
+      "pytest",
+      "pydantic",
+      "orchestrator.agents",
+      "orchestrator.models"
+    ],
+    "sideEffects": [],
+    "throws": [],
+    "lastUpdated": "2026-03-17T09:04:04.008Z",
+    "contentHash": "8130b6508548b9afa0e8136bec97f4b0ec2c4cc320d52918fb6e79f0dbb0b8a9",
+    "detailedPurpose": "model_config = ConfigDict(extra='forbid') must reject unknown fields. Exports: TestAgentInvocationIsBaseModel, test_is_pydantic_basemodel, test_extra_fields_forbidden, test_agent_result_remains_dataclass, TestAgentNameValidation and 31 more.",
+    "publicAPI": [
+      {
+        "name": "TestAgentInvocationIsBaseModel",
+        "type": "class",
+        "signature": "class TestAgentInvocationIsBaseModel"
+      },
+      {
+        "name": "test_is_pydantic_basemodel",
+        "type": "method",
+        "signature": "def test_is_pydantic_basemodel()"
+      },
+      {
+        "name": "test_extra_fields_forbidden",
+        "type": "method",
+        "signature": "def test_extra_fields_forbidden()",
+        "jsdoc": "model_config = ConfigDict(extra='forbid') must reject unknown fields."
+      },
+      {
+        "name": "test_agent_result_remains_dataclass",
+        "type": "method",
+        "signature": "def test_agent_result_remains_dataclass()",
+        "jsdoc": "AgentResult must stay a plain dataclass (return-only)."
+      },
+      {
+        "name": "TestAgentNameValidation",
+        "type": "class",
+        "signature": "class TestAgentNameValidation"
+      },
+      {
+        "name": "test_valid_simple_name",
+        "type": "method",
+        "signature": "def test_valid_simple_name()"
+      },
+      {
+        "name": "test_valid_underscore_name",
+        "type": "method",
+        "signature": "def test_valid_underscore_name()"
+      },
+      {
+        "name": "test_valid_hyphen_name",
+        "type": "method",
+        "signature": "def test_valid_hyphen_name()"
+      },
+      {
+        "name": "test_valid_mixed_case_with_digits",
+        "type": "method",
+        "signature": "def test_valid_mixed_case_with_digits()"
+      },
+      {
+        "name": "test_empty_agent_name_raises",
+        "type": "method",
+        "signature": "def test_empty_agent_name_raises()",
+        "jsdoc": "Empty agent_name must raise ValidationError at construction time."
+      },
+      {
+        "name": "test_path_traversal_dotdot_slash_raises",
+        "type": "method",
+        "signature": "def test_path_traversal_dotdot_slash_raises()",
+        "jsdoc": "'../secret' contains path traversal chars — must raise ValidationError."
+      },
+      {
+        "name": "test_path_traversal_dotdot_backslash_raises",
+        "type": "method",
+        "signature": "def test_path_traversal_dotdot_backslash_raises()"
+      },
+      {
+        "name": "test_slash_in_name_raises",
+        "type": "method",
+        "signature": "def test_slash_in_name_raises()"
+      },
+      {
+        "name": "test_dot_in_name_raises",
+        "type": "method",
+        "signature": "def test_dot_in_name_raises()",
+        "jsdoc": "A name like 'agent.name' contains a dot — must raise ValidationError."
+      },
+      {
+        "name": "test_space_in_name_raises",
+        "type": "method",
+        "signature": "def test_space_in_name_raises()"
+      },
+      {
+        "name": "test_null_byte_raises",
+        "type": "method",
+        "signature": "def test_null_byte_raises()"
+      },
+      {
+        "name": "TestPromptValidation",
+        "type": "class",
+        "signature": "class TestPromptValidation"
+      },
+      {
+        "name": "test_valid_prompt",
+        "type": "method",
+        "signature": "def test_valid_prompt()"
+      },
+      {
+        "name": "test_empty_prompt_raises",
+        "type": "method",
+        "signature": "def test_empty_prompt_raises()",
+        "jsdoc": "Empty prompt must raise ValidationError at construction time."
+      },
+      {
+        "name": "TestMaxTurnsValidation",
+        "type": "class",
+        "signature": "class TestMaxTurnsValidation"
+      },
+      {
+        "name": "test_default_is_40",
+        "type": "method",
+        "signature": "def test_default_is_40()"
+      },
+      {
+        "name": "test_valid_max_turns_1",
+        "type": "method",
+        "signature": "def test_valid_max_turns_1()"
+      },
+      {
+        "name": "test_valid_max_turns_200",
+        "type": "method",
+        "signature": "def test_valid_max_turns_200()"
+      },
+      {
+        "name": "test_zero_max_turns_raises",
+        "type": "method",
+        "signature": "def test_zero_max_turns_raises()",
+        "jsdoc": "max_turns=0 must raise ValidationError."
+      },
+      {
+        "name": "test_negative_max_turns_raises",
+        "type": "method",
+        "signature": "def test_negative_max_turns_raises()",
+        "jsdoc": "max_turns=-1 must raise ValidationError."
+      },
+      {
+        "name": "test_large_max_turns_raises",
+        "type": "method",
+        "signature": "def test_large_max_turns_raises()",
+        "jsdoc": "max_turns=201 exceeds the cap and must raise ValidationError."
+      },
+      {
+        "name": "TestOptionalFields",
+        "type": "class",
+        "signature": "class TestOptionalFields"
+      },
+      {
+        "name": "test_defaults",
+        "type": "method",
+        "signature": "def test_defaults()"
+      },
+      {
+        "name": "test_all_fields",
+        "type": "method",
+        "signature": "def test_all_fields()"
+      },
+      {
+        "name": "test_display_name_allows_colons_and_parens",
+        "type": "method",
+        "signature": "def test_display_name_allows_colons_and_parens()",
+        "jsdoc": "display_name is free-form — not subject to agent_name pattern."
+      },
+      {
+        "name": "test_mutation_is_allowed",
+        "type": "method",
+        "signature": "def test_mutation_is_allowed()",
+        "jsdoc": "Pydantic model (not frozen) must allow attribute mutation (needed by invoke_agent worktree)."
+      },
+      {
+        "name": "TestKnownGoodAgentNames",
+        "type": "class",
+        "signature": "class TestKnownGoodAgentNames",
+        "jsdoc": "Verify that all agent_name values currently used across the codebase\n    remain valid after the Pydantic conversion."
+      },
+      {
+        "name": "test_known_name_valid",
+        "type": "method",
+        "signature": "@pytest.mark.parametrize def test_known_name_valid(name: str)"
+      },
+      {
+        "name": "TestInvokeAgentDefenseInDepth",
+        "type": "class",
+        "signature": "class TestInvokeAgentDefenseInDepth",
+        "jsdoc": "The agent_file path check in invoke_agent() is a defense-in-depth guard.\n\n    Since agent_name is Pydantic-validated, we test the ValueError directly\n    by bypassing validation via model_construct (which skips validation)."
+      },
+      {
+        "name": "test_path_within_agents_dir_succeeds",
+        "type": "method",
+        "signature": "async def test_path_within_agents_dir_succeeds(tmp_path)",
+        "jsdoc": "A well-formed invocation with an agent that resolves inside AGENTS_DIR\n        should proceed to the SDK/CLI call (not raise a path-traversal error)."
+      },
+      {
+        "name": "test_defense_in_depth_detects_traversal",
+        "type": "method",
+        "signature": "async def test_defense_in_depth_detects_traversal()",
+        "jsdoc": "Bypass Pydantic validation via model_construct() and verify that\n        invoke_agent() still raises ValueError for out-of-AGENTS_DIR paths."
+      }
+    ],
+    "internalPatterns": [
+      "test"
+    ]
   }
 }

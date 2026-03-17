@@ -14,6 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from pydantic import BaseModel, ConfigDict, Field
+
 from orchestrator.models import ModelTier
 
 logger = logging.getLogger(__name__)
@@ -46,14 +48,31 @@ class AgentResult:
     written_files: list[str] = field(default_factory=list)
 
 
-@dataclass
-class AgentInvocation:
-    """Parameters for invoking a sub-agent."""
+class AgentInvocation(BaseModel):
+    """Parameters for invoking a sub-agent.
 
-    agent_name: str
-    prompt: str
+    Validated at construction time to prevent silent failures:
+    - agent_name must be non-empty and contain only word chars and hyphens
+      (prevents path traversal like '../secret' and empty name bugs)
+    - prompt must be non-empty (prevents silent no-op invocations)
+    - max_turns must be 1..200 (prevents SDK rejection for 0/-1 and runaway agents)
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_name: str = Field(
+        min_length=1,
+        pattern=r"^[\w-]+$",
+        description="Agent file stem in .claude/agents/. Must contain only word chars and hyphens.",
+    )
+    prompt: str = Field(min_length=1, description="Task prompt for the sub-agent.")
     model: ModelTier = ModelTier.SONNET
-    max_turns: int = 40
+    max_turns: int = Field(
+        default=40,
+        ge=1,
+        le=200,
+        description="Maximum turns for the agent. Must be between 1 and 200.",
+    )
     workspace_dir: str | None = None
     project_root: str | None = None  # cwd for agent — project root so it can explore the codebase
     isolation: str | None = None  # "worktree" for parallel engineers
@@ -101,6 +120,19 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
     When enhanced_perception is enabled, enriches the prompt via a lightweight
     Haiku pre-processing call before the main agent invocation.
     """
+    # Defense-in-depth: even though AgentInvocation.agent_name is validated by
+    # Pydantic to match ^[\w-]+$, verify the resolved path stays within AGENTS_DIR.
+    # This catches any edge case where the pattern validation is bypassed or
+    # symlinks/unusual filesystem behaviour could redirect the path.
+    agent_file = AGENTS_DIR / f"{invocation.agent_name}.md"
+    resolved_agent_file = agent_file.resolve()
+    resolved_agents_dir = AGENTS_DIR.resolve()
+    if not resolved_agent_file.is_relative_to(resolved_agents_dir):
+        raise ValueError(
+            f"Security violation: agent path '{resolved_agent_file}' is outside "
+            f"AGENTS_DIR '{resolved_agents_dir}'. Refusing to invoke agent."
+        )
+
     perception_cost = 0.0
     if invocation.enhanced_perception:
         from orchestrator.perception import enhance_prompt

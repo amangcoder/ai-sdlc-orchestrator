@@ -15,6 +15,7 @@ class ErrorCode(str, Enum):
     WORKFLOW_STEP_FAILED = "WORKFLOW_STEP_FAILED"
     CIRCULAR_DEPENDENCY = "CIRCULAR_DEPENDENCY"
     FILE_CONFLICT = "FILE_CONFLICT"
+    CONFIGURATION_INVALID = "CONFIGURATION_INVALID"
     UNKNOWN = "UNKNOWN"
 
 
@@ -59,3 +60,14 @@ class MissingInputArtifactError(OrchestratorError):
 class WorkflowStepFailedError(OrchestratorError):
     def __init__(self, message: str) -> None:
         super().__init__(message, ErrorCode.WORKFLOW_STEP_FAILED)
+
+
+class ConfigurationError(OrchestratorError):
+    """Raised when the orchestrator YAML configuration is invalid.
+
+    The message always identifies the offending field(s) and expected range so
+    users can fix their config without reading a raw Pydantic stack-trace.
+    """
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, ErrorCode.CONFIGURATION_INVALID)

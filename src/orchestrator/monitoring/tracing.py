@@ -36,6 +36,11 @@ class TracingManager:
             return
 
         self._enabled = True
+        # Use a dedicated TracerProvider instance rather than overwriting the
+        # global OTel provider.  Calling trace.set_tracer_provider() is a
+        # process-wide side effect that breaks any other library (or test) that
+        # relies on the global provider.  Getting the tracer directly from our
+        # own provider instance is both safer and easier to reason about.
         self._provider = TracerProvider()
 
         # OTLP exporter
@@ -48,11 +53,11 @@ class TracingManager:
         if console_export:
             self._provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 
-        trace.set_tracer_provider(self._provider)
+        # Obtain tracer directly from our dedicated provider — no global side effect.
         from orchestrator import __version__
-        self._tracer = trace.get_tracer("orchestrator", __version__)
+        self._tracer = self._provider.get_tracer("orchestrator", __version__)
 
-        # Active span references for nesting
+        # Active span references for nesting (used by the legacy start_*/end_* API)
         self._run_span: Any = None
         self._step_span: Any = None
         self._task_span: Any = None
@@ -60,6 +65,60 @@ class TracingManager:
     @property
     def enabled(self) -> bool:
         return self._enabled
+
+    @contextmanager
+    def span_context(
+        self,
+        name: str,
+        attributes: dict | None = None,
+    ) -> Generator[Any, None, None]:
+        """Context manager that guarantees ``span.end()`` on both success and
+        exception paths.
+
+        This prevents open spans from accumulating in the OTel
+        ``BatchSpanProcessor`` queue when an exception escapes mid-pipeline.
+
+        Usage::
+
+            with tracing.span_context("my.operation", {"key": "value"}) as span:
+                do_work()
+                span.set_attribute("result", "ok")
+
+        When tracing is disabled the context manager yields ``None`` and is
+        otherwise a no-op.
+        """
+        if not self._enabled:
+            yield None
+            return
+
+        parent = self._step_span or self._run_span
+        ctx = trace.set_span_in_context(parent) if parent else None
+        span = self._tracer.start_span(
+            name,
+            context=ctx,
+            attributes=attributes or {},
+        )
+        try:
+            yield span
+        finally:
+            span.end()
+
+    def _cleanup_orphaned_spans(self) -> None:
+        """End any spans that were started but never explicitly ended.
+
+        Should be called from ``shutdown()`` to drain the
+        ``BatchSpanProcessor`` queue and prevent memory / resource leaks when
+        an exception escaped between a ``start_*_span()`` / ``end_*_span()``
+        pair.
+        """
+        for attr in ("_task_span", "_step_span", "_run_span"):
+            span = getattr(self, attr, None)
+            if span is not None:
+                try:
+                    span.end()
+                except Exception as exc:  # noqa: BLE001
+                    logger.debug("Error ending orphaned span %s: %s", attr, exc)
+                setattr(self, attr, None)
 
     def start_run_span(self, run_id: str, workflow_type: str, feature_request: str) -> None:
         if not self._enabled:
@@ -152,4 +211,5 @@ class TracingManager:
 
     def shutdown(self) -> None:
         if self._enabled:
+            self._cleanup_orphaned_spans()
             self._provider.shutdown()

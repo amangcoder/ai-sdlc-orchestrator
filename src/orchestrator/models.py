@@ -919,6 +919,33 @@ class OrchestratorConfig(BaseModel):
     monitoring: dict[str, Any] = Field(default_factory=dict)
     routing_mode: str | None = None
 
+    @field_validator("max_budget_usd")
+    @classmethod
+    def validate_max_budget_usd(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError(
+                f"max_budget_usd must be > 0 (a positive dollar amount); got {v}"
+            )
+        return v
+
+    @field_validator("max_review_cycles")
+    @classmethod
+    def validate_max_review_cycles(cls, v: int) -> int:
+        if v < 1:
+            raise ValueError(
+                f"max_review_cycles must be >= 1 (at least one review pass is required); got {v}"
+            )
+        return v
+
+    @field_validator("max_concurrent_agents")
+    @classmethod
+    def validate_max_concurrent_agents(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError(
+                f"max_concurrent_agents must be >= 0 (0 means unlimited); got {v}"
+            )
+        return v
+
 
 # --- Market Research Artifact ---
 

@@ -28,6 +28,7 @@ class MetricsManager:
         if not HAS_PROMETHEUS:
             logger.warning("prometheus_client not installed — metrics disabled")
             self._enabled = False
+            self._http_server: Any = None
             return
 
         self._enabled = True
@@ -110,8 +111,12 @@ class MetricsManager:
         )
 
         # Start background HTTP server
+        self._http_server: Any = None
         try:
-            start_http_server(port, registry=self._registry)
+            result = start_http_server(port, registry=self._registry)
+            # prometheus_client >= 0.8 returns (HTTPServer, thread); older returns None
+            if result is not None:
+                self._http_server = result[0]
             logger.info(f"Prometheus metrics server started on :{port}")
         except OSError as e:
             logger.warning(f"Could not start metrics server on :{port}: {e}")
@@ -182,3 +187,21 @@ class MetricsManager:
         if not self._enabled:
             return
         self.active_agents.dec()
+
+    def shutdown(self) -> None:
+        """Stop the Prometheus HTTP server and release the port.
+
+        Safe to call multiple times. When *enabled* is ``False`` or the server
+        was never started (e.g. the port was already in use at startup) this is
+        a no-op.
+        """
+        if not self._enabled or self._http_server is None:
+            return
+        try:
+            self._http_server.shutdown()
+            self._http_server.server_close()
+            logger.info("Prometheus metrics server stopped")
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning(f"Error stopping Prometheus metrics server: {exc}")
+        finally:
+            self._http_server = None

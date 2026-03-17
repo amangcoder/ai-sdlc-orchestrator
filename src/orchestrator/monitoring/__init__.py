@@ -284,7 +284,15 @@ class MonitoringStack:
             self._metrics.record_error(agent, error_code)
 
     def shutdown(self) -> None:
+        if self._metrics:
+            try:
+                self._metrics.shutdown()
+            except Exception as exc:
+                logger.warning(f"Error during metrics shutdown: {exc}")
         if self._alerting:
             self._alerting.shutdown()
         if self._tracing:
-            self._tracing.shutdown()
+            try:
+                self._tracing.shutdown()
+            except Exception as exc:
+                logger.warning(f"Error during tracing shutdown: {exc}")
