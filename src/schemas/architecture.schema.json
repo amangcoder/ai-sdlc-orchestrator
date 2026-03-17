@@ -27,9 +27,29 @@
       }
     },
     "data_flow": {
-      "type": "string",
-      "minLength": 20,
-      "description": "Description of how data flows through the system"
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 20,
+          "description": "Description of how data flows through the system"
+        },
+        {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["from", "to", "data"],
+            "properties": {
+              "from": { "type": "string", "minLength": 1 },
+              "to": { "type": "string", "minLength": 1 },
+              "data": { "type": "string", "minLength": 1 },
+              "trigger": { "type": "string" }
+            },
+            "additionalProperties": false
+          },
+          "description": "Structured data flow entries"
+        }
+      ]
     },
     "tech_decisions": {
       "type": "array",
@@ -53,7 +73,14 @@
       "items": { "type": "string" }
     },
     "directory_structure": {
-      "$ref": "#/$defs/dir_node"
+      "oneOf": [
+        { "$ref": "#/$defs/dir_node" },
+        {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Flat list of file paths"
+        }
+      ]
     }
   },
   "$defs": {

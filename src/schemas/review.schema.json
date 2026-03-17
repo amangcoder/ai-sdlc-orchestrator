@@ -7,13 +7,13 @@
   "properties": {
     "verdict": {
       "type": "string",
-      "enum": ["approve", "reject", "request_changes"]
+      "enum": ["approve", "reject", "request_changes", "pass", "fail", "pass_with_warnings"]
     },
     "issues": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["severity", "file", "description"],
+        "required": ["severity", "description"],
         "properties": {
           "severity": { "type": "string", "enum": ["critical", "major", "minor", "nit"] },
           "file": { "type": "string", "minLength": 1 },

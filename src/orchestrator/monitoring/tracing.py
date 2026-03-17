@@ -20,6 +20,11 @@ try:
     HAS_OTEL = True
 except ImportError:
     HAS_OTEL = False
+    trace = None  # type: ignore[assignment]
+    TracerProvider = None  # type: ignore[misc, assignment]
+    BatchSpanProcessor = None  # type: ignore[misc, assignment]
+    ConsoleSpanExporter = None  # type: ignore[misc, assignment]
+    OTLPSpanExporter = None  # type: ignore[misc, assignment]
 
 
 class TracingManager:

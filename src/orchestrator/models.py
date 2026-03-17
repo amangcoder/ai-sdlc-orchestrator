@@ -39,6 +39,23 @@ class ReviewVerdict(str, Enum):
     APPROVE = "approve"
     REJECT = "reject"
     REQUEST_CHANGES = "request_changes"
+    # AICoder-compatible aliases
+    PASS = "pass"
+    FAIL = "fail"
+    PASS_WITH_WARNINGS = "pass_with_warnings"
+
+
+# Maps AICoder verdict values to Orchestrator equivalents
+_VERDICT_NORMALIZE: dict[str, str] = {
+    "pass": "approve",
+    "fail": "reject",
+    "pass_with_warnings": "request_changes",
+}
+
+
+def normalize_verdict(verdict: str) -> str:
+    """Normalize AICoder verdict values to Orchestrator equivalents."""
+    return _VERDICT_NORMALIZE.get(verdict, verdict)
 
 
 class PhaseStatus(str, Enum):
@@ -143,13 +160,18 @@ class Requirement(BaseModel):
     priority: Priority
 
 
+class AcceptanceCriterion(BaseModel):
+    id: str = Field(pattern=r"^AC-\d+$")
+    criteria: str = Field(min_length=1)
+
+
 class PRD(BaseModel):
     title: str = Field(min_length=1)
     overview: str = Field(min_length=50)
     goals: list[str] = Field(min_length=1)
     requirements: list[Requirement] = Field(min_length=1)
     constraints: list[str] = Field(default_factory=list)
-    acceptance_criteria: list[str] = Field(min_length=1)
+    acceptance_criteria: list[str | AcceptanceCriterion] = Field(min_length=1)
 
 
 # --- Architecture Artifact ---
@@ -167,12 +189,28 @@ class TechDecision(BaseModel):
     alternatives_considered: list[str] = Field(default_factory=list)
 
 
+class DataFlowEntry(BaseModel):
+    from_component: str = Field(alias="from", min_length=1)
+    to: str = Field(min_length=1)
+    data: str = Field(min_length=1)
+    trigger: str | None = None
+
+    model_config = {"populate_by_name": True}
+
+
 class Architecture(BaseModel):
     components: list[Component] = Field(min_length=1)
-    data_flow: str = Field(min_length=20)
+    data_flow: str | list[DataFlowEntry | dict[str, Any]] = Field(min_length=20)
     tech_decisions: list[TechDecision] = Field(min_length=1)
     constraints: list[str] = Field(default_factory=list)
-    directory_structure: dict[str, Any] | None = None
+    directory_structure: dict[str, Any] | list[str] | None = None
+
+    @field_validator("data_flow", mode="before")
+    @classmethod
+    def _validate_data_flow(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            return v  # skip min_length check for list format
+        return v
 
 
 # --- Tasks Artifact ---
@@ -205,11 +243,38 @@ class TaskList(BaseModel):
 
 # --- Engineering Plan Artifact ---
 
+class ImplementationPhase(BaseModel):
+    phase: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    tasks: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+
+
+class RiskArea(BaseModel):
+    area: str = Field(min_length=1)
+    risk: str = Field(min_length=1)
+    mitigation: str = Field(min_length=1)
+
+
+class TestingStrategy(BaseModel):
+    unit: str = ""
+    integration: str = ""
+    e2e: str = ""
+    manual: str = ""
+
+
 class EngineeringPlan(BaseModel):
     strategy: str = Field(min_length=20)
-    implementation_order: list[str] = Field(min_length=1)
-    risk_areas: list[str] = Field(default_factory=list)
-    testing_strategy: str = Field(min_length=10)
+    implementation_order: list[str | ImplementationPhase] = Field(min_length=1)
+    risk_areas: list[str | RiskArea] = Field(default_factory=list)
+    testing_strategy: str | TestingStrategy
+
+    @field_validator("testing_strategy", mode="before")
+    @classmethod
+    def _validate_testing_strategy(cls, v: Any) -> Any:
+        if isinstance(v, str) and len(v) < 10:
+            raise ValueError("testing_strategy string must be >= 10 chars")
+        return v
 
 
 # --- Threat Model Artifact ---
@@ -271,7 +336,7 @@ class QAReport(BaseModel):
 
 class ReviewIssue(BaseModel):
     severity: IssueSeverity
-    file: str = Field(min_length=1)
+    file: str | None = Field(default=None, min_length=1)
     line: int | None = Field(default=None, ge=1)
     description: str = Field(min_length=1)
     suggestion: str | None = None

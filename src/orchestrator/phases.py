@@ -1069,7 +1069,7 @@ Review the backend implementation for quality, correctness, and architecture adh
 **CRITICAL: Use the Write tool** to save your review as valid JSON to: {artifacts_dir}/review.json
 
 The review must include:
-- "verdict": "approve" | "reject" | "request_changes"
+- "verdict": "pass" | "fail" | "pass_with_warnings"
 - "issues": array of {{"severity": "critical|major|minor|nit", "file": "...", "description": "...", "suggestion": "..."}}
 - "summary": Overall assessment (at least 20 characters)
 
@@ -1118,7 +1118,7 @@ Review the frontend implementation for UI correctness, accessibility, and compon
 **CRITICAL: Use the Write tool** to save your review as valid JSON to: {artifacts_dir}/review.json
 
 The review must include:
-- "verdict": "approve" | "reject" | "request_changes"
+- "verdict": "pass" | "fail" | "pass_with_warnings"
 - "issues": array of {{"severity": "critical|major|minor|nit", "file": "...", "description": "...", "suggestion": "..."}}
 - "summary": Overall assessment (at least 20 characters)
 

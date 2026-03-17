@@ -26,6 +26,22 @@ _ORCHESTRATOR_ROOT = Path(__file__).resolve().parents[2]
 
 MCP_SERVER_KEY = "ai-code-knowledge"
 
+# Maps Orchestrator phase names to AICoder phase names for MCP tool calls
+ORCHESTRATOR_TO_AICODER_PHASE: dict[str, str] = {
+    "pm": "prd",
+    "architect": "architecture",
+    "principal_engineer": "engineering_plan",
+    "tpm": "task_breakdown",
+    "engineer": "implementation",
+    "qa": "implementation",
+    "reviewer": "implementation",
+}
+
+
+def map_phase_for_mcp(orchestrator_phase: str) -> str:
+    """Translate Orchestrator phase name to AICoder phase name for MCP tool calls."""
+    return ORCHESTRATOR_TO_AICODER_PHASE.get(orchestrator_phase, orchestrator_phase)
+
 
 @dataclass
 class KnowledgeResult:
@@ -551,9 +567,19 @@ def _digest_engineering_plan(data: dict) -> str:
         f"**Implementation Order:** {len(order)} steps",
     ]
     for step in order[:5]:
-        lines.append(f"  - {step[:80]}")
+        if isinstance(step, dict):
+            label = f"{step.get('phase', '?')}: {step.get('description', '')}"
+            lines.append(f"  - {label[:80]}")
+        else:
+            lines.append(f"  - {str(step)[:80]}")
     if risks:
-        lines.append(f"**Risks:** {', '.join(r[:60] for r in risks[:3])}")
+        risk_strs = []
+        for r in risks[:3]:
+            if isinstance(r, dict):
+                risk_strs.append(str(r.get("description", r.get("risk", str(r))))[:60])
+            else:
+                risk_strs.append(str(r)[:60])
+        lines.append(f"**Risks:** {', '.join(risk_strs)}")
     return "\n".join(lines)
 
 

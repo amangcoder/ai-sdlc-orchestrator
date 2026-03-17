@@ -45,7 +45,20 @@
     "acceptance_criteria": {
       "type": "array",
       "minItems": 1,
-      "items": { "type": "string", "minLength": 1 },
+      "items": {
+        "oneOf": [
+          { "type": "string", "minLength": 1 },
+          {
+            "type": "object",
+            "required": ["id", "criteria"],
+            "properties": {
+              "id": { "type": "string", "pattern": "^AC-\\d+$" },
+              "criteria": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        ]
+      },
       "description": "Conditions that must be true for the feature to be considered complete"
     }
   },

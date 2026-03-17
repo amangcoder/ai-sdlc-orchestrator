@@ -19,6 +19,11 @@ try:
     HAS_PROMETHEUS = True
 except ImportError:
     HAS_PROMETHEUS = False
+    CollectorRegistry = None  # type: ignore[misc, assignment]
+    Counter = None  # type: ignore[misc, assignment]
+    Gauge = None  # type: ignore[misc, assignment]
+    Histogram = None  # type: ignore[misc, assignment]
+    start_http_server = None  # type: ignore[assignment]
 
 
 class MetricsManager:

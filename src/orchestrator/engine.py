@@ -31,6 +31,7 @@ from orchestrator.models import (
     SpawnRecord,
     TaskStatus,
     WorkflowType,
+    normalize_verdict,
 )
 from orchestrator.observability import RunLogger
 from orchestrator.phases import (
@@ -815,7 +816,7 @@ class OrchestratorEngine:
             with open(review_path) as f:
                 review_data = json.load(f)
 
-            verdict = review_data.get("verdict", "approve")
+            verdict = normalize_verdict(review_data.get("verdict", "approve"))
             if verdict == ReviewVerdict.APPROVE.value:
                 logger.info("Review approved!")
                 break
