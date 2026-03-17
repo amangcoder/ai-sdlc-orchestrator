@@ -205,10 +205,24 @@ class TaskList(BaseModel):
 
 # --- Engineering Plan Artifact ---
 
+
+class ImplementationPhase(BaseModel):
+    phase: str = Field(min_length=1)
+    description: str = ""
+    tasks: list[str] = Field(default_factory=list)
+    dependencies: list[str] = Field(default_factory=list)
+
+
+class RiskAreaDetail(BaseModel):
+    area: str = Field(min_length=1)
+    risk: str = Field(min_length=1)
+    mitigation: str = ""
+
+
 class EngineeringPlan(BaseModel):
     strategy: str = Field(min_length=20)
-    implementation_order: list[str] = Field(min_length=1)
-    risk_areas: list[str] = Field(default_factory=list)
+    implementation_order: list[str | ImplementationPhase] = Field(min_length=1)
+    risk_areas: list[str | RiskAreaDetail] = Field(default_factory=list)
     testing_strategy: str = Field(min_length=10)
 
 

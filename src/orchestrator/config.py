@@ -17,7 +17,7 @@ from orchestrator.models import (
     WorkflowType,
 )
 
-DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "default.yaml"
+DEFAULT_CONFIG_PATH = Path(__file__).resolve().parent / "default_config.yaml"
 
 
 def load_config(config_path: Path | None = None) -> OrchestratorConfig:

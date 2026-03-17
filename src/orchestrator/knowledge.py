@@ -498,7 +498,18 @@ def _digest_prd(data: dict) -> str:
 
 def _digest_architecture(data: dict) -> str:
     components = data.get("components", [])
-    data_flow = data.get("data_flow", "")[:200]
+    raw_flow = data.get("data_flow", "")
+    if isinstance(raw_flow, list):
+        parts = []
+        for entry in raw_flow:
+            if isinstance(entry, dict):
+                parts.append(f"{entry.get('from', '?')} -> {entry.get('to', '?')}: {entry.get('data', '')}")
+            else:
+                parts.append(str(entry))
+        data_flow = "; ".join(parts)
+    else:
+        data_flow = str(raw_flow)
+    data_flow = data_flow[:200]
     decisions = data.get("tech_decisions", [])
 
     lines = [
@@ -506,13 +517,18 @@ def _digest_architecture(data: dict) -> str:
         f"**Components:** {len(components)}",
     ]
     for c in components[:8]:
-        deps = ", ".join(c.get("dependencies", [])) or "none"
-        lines.append(f"  - **{c.get('name', '?')}**: {c.get('responsibility', '')[:80]} (deps: {deps})")
+        raw_deps = c.get("dependencies", [])
+        deps = ", ".join(str(d) for d in raw_deps) if isinstance(raw_deps, list) else str(raw_deps)
+        deps = deps or "none"
+        name = c.get("name", "?") if isinstance(c, dict) else str(c)
+        resp = str(c.get("responsibility", ""))[:80] if isinstance(c, dict) else ""
+        lines.append(f"  - **{name}**: {resp} (deps: {deps})")
     lines.append(f"**Data Flow:** {data_flow}")
     if decisions:
         lines.append(f"**Tech Decisions:** {len(decisions)}")
         for d in decisions[:3]:
-            lines.append(f"  - {d.get('decision', '')[:80]}")
+            dec = str(d.get("decision", ""))[:80] if isinstance(d, dict) else str(d)[:80]
+            lines.append(f"  - {dec}")
     return "\n".join(lines)
 
 
@@ -541,7 +557,8 @@ def _digest_tasks(data: dict) -> str:
 
 
 def _digest_engineering_plan(data: dict) -> str:
-    strategy = data.get("strategy", "")[:200]
+    raw_strategy = data.get("strategy", "")
+    strategy = str(raw_strategy)[:200] if isinstance(raw_strategy, str) else str(raw_strategy)[:200]
     order = data.get("implementation_order", [])
     risks = data.get("risk_areas", [])
 
@@ -551,9 +568,19 @@ def _digest_engineering_plan(data: dict) -> str:
         f"**Implementation Order:** {len(order)} steps",
     ]
     for step in order[:5]:
-        lines.append(f"  - {step[:80]}")
+        if isinstance(step, dict):
+            label = step.get("phase", step.get("description", "?"))
+            lines.append(f"  - {str(label)[:80]}")
+        else:
+            lines.append(f"  - {str(step)[:80]}")
     if risks:
-        lines.append(f"**Risks:** {', '.join(r[:60] for r in risks[:3])}")
+        risk_strs = []
+        for r in risks[:3]:
+            if isinstance(r, dict):
+                risk_strs.append(f"{r.get('area', '?')}: {r.get('risk', '')}"[:60])
+            else:
+                risk_strs.append(str(r)[:60])
+        lines.append(f"**Risks:** {', '.join(risk_strs)}")
     return "\n".join(lines)
 
 

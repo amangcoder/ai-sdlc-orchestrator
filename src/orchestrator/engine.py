@@ -152,6 +152,17 @@ class OrchestratorEngine:
                 workflow_type=wf_type,
             )
 
+        # Persist custom workflow definition on state immediately so it
+        # survives checkpoints and is available on resume.
+        if custom_workflow:
+            state.custom_workflow_definition = custom_workflow
+        elif state.workflow_type == WorkflowType.CUSTOM and not state.custom_workflow_definition:
+            logger.warning(
+                "Workflow type is 'custom' but no custom workflow definition is available. "
+                "Falling back to feature_development."
+            )
+            state.workflow_type = WorkflowType.FEATURE_DEVELOPMENT
+
         # Detect config changes between runs
         current_hash = hashlib.md5(
             json.dumps(self.config.model_dump(), sort_keys=True, default=str).encode()
@@ -264,10 +275,8 @@ class OrchestratorEngine:
                     state, workspace, feature_request,
                 )
 
-        # Persist custom workflow definition in state for resume
-        if custom_workflow:
-            state.custom_workflow_definition = custom_workflow
-        elif state.workflow_type == WorkflowType.CUSTOM and state.custom_workflow_definition:
+        # Resolve custom workflow from state (already persisted in run())
+        if not custom_workflow and state.custom_workflow_definition:
             custom_workflow = state.custom_workflow_definition
 
         # Decide execution mode

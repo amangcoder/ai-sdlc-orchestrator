@@ -53,6 +53,123 @@ def normalize_artifact_keys(data: Any) -> Any:
     return data
 
 
+# ---------------------------------------------------------------------------
+# Coercion: convert rich LLM output to schema-expected types
+# ---------------------------------------------------------------------------
+
+def _coerce_data_flow(value: Any) -> Any:
+    """Coerce a list-of-objects data_flow into a prose string."""
+    if not isinstance(value, list):
+        return value
+    parts: list[str] = []
+    for entry in value:
+        if isinstance(entry, dict):
+            src = entry.get("from", "?")
+            dst = entry.get("to", "?")
+            data = entry.get("data", "")
+            trigger = entry.get("trigger", "")
+            line = f"{src} → {dst}: {data}"
+            if trigger:
+                line += f" (trigger: {trigger})"
+            parts.append(line)
+        else:
+            parts.append(str(entry))
+    return "\n".join(parts)
+
+
+def _coerce_directory_structure(value: Any) -> Any:
+    """Coerce a flat list of path strings into a nested dir_node dict."""
+    if not isinstance(value, list):
+        return value
+    tree: dict[str, Any] = {}
+    for path in value:
+        if not isinstance(path, str):
+            continue
+        segments = [s for s in path.split("/") if s]
+        node = tree
+        for i, seg in enumerate(segments):
+            if i == len(segments) - 1:
+                node.setdefault(seg, "")
+            else:
+                if seg not in node or not isinstance(node.get(seg), dict):
+                    node[seg] = {}
+                node = node[seg]
+    return tree
+
+
+def _coerce_testing_strategy(value: Any) -> Any:
+    """Coerce a dict testing_strategy into a labeled prose string."""
+    if not isinstance(value, dict):
+        return value
+    parts: list[str] = []
+    for key, desc in value.items():
+        label = key.replace("_", " ").title()
+        if isinstance(desc, str):
+            parts.append(f"{label}: {desc}")
+        else:
+            parts.append(f"{label}: {json.dumps(desc)}")
+    return "\n".join(parts)
+
+
+# Registry of artifact-specific field coercers
+_COERCION_RULES: dict[str, dict[str, Any]] = {
+    "architecture": {
+        "data_flow": _coerce_data_flow,
+        "directory_structure": _coerce_directory_structure,
+    },
+    "engineering_plan": {
+        "testing_strategy": _coerce_testing_strategy,
+    },
+}
+
+
+def _get_schema_string_fields(artifact_name: str) -> set[str]:
+    """Return top-level property names where the schema declares type=string."""
+    schema_path = SCHEMAS_DIR / f"{artifact_name}.schema.json"
+    if not schema_path.exists():
+        return set()
+    try:
+        with open(schema_path) as f:
+            schema = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return set()
+    result: set[str] = set()
+    for prop_name, prop_def in schema.get("properties", {}).items():
+        if prop_def.get("type") == "string":
+            result.add(prop_name)
+    return result
+
+
+def coerce_artifact_data(data: dict, artifact_name: str) -> dict:
+    """Coerce rich LLM output to match schema-expected types.
+
+    Two mechanisms:
+    1. Artifact-specific coercers for known problematic fields.
+    2. Generic fallback: if schema declares a field as string but the
+       value is a dict or list, JSON-serialize it.
+    """
+    if not isinstance(data, dict):
+        return data
+
+    data = dict(data)  # shallow copy to avoid mutating caller's data
+
+    # Apply artifact-specific coercers
+    rules = _COERCION_RULES.get(artifact_name, {})
+    for field_name, coercer in rules.items():
+        if field_name in data:
+            data[field_name] = coercer(data[field_name])
+
+    # Generic fallback: JSON-serialize any dict/list in a string-typed field
+    string_fields = _get_schema_string_fields(artifact_name)
+    for field_name in string_fields:
+        if field_name in data and isinstance(data[field_name], (dict, list)):
+            # Only apply if no specific coercer already handled it
+            if field_name not in rules:
+                data[field_name] = json.dumps(data[field_name], indent=2)
+
+    return data
+
+
 def validate_artifact_file(
     artifact_path: Path, artifact_name: str, *, auto_normalize: bool = True,
 ) -> ValidationResult:
@@ -100,6 +217,16 @@ def validate_artifact_file(
                 artifact_path.write_text(json.dumps(data, indent=2))
             except OSError:
                 pass
+
+    # Coerce rich LLM output to match schema-expected types
+    coerced = coerce_artifact_data(data, artifact_name)
+    if coerced != data:
+        logger.info("Coerced fields in %s to match schema types", artifact_path.name)
+        data = coerced
+        try:
+            artifact_path.write_text(json.dumps(data, indent=2))
+        except OSError:
+            pass
 
     # Layer 1: JSON Schema validation
     schema_errs, schema_warnings = _validate_json_schema(data, artifact_name)
