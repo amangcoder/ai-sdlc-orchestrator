@@ -134,6 +134,20 @@ class AgentRole(str, Enum):
     LLM_SPECIALIST = "llm_specialist"
     AGENTIC_AI_SPECIALIST = "agentic_ai_specialist"
     ML_SPECIALIST = "ml_specialist"
+    # --- MCP & integration specialists ---
+    MCP_TOOL_DESIGNER = "mcp_tool_designer"
+    MCP_SERVER_ENGINEER = "mcp_server_engineer"
+    MCP_PROTOCOL_REVIEWER = "mcp_protocol_reviewer"
+    MCP_INTEGRATION_TEST_ENGINEER = "mcp_integration_test_engineer"
+    CHATBOT_ENGINEER = "chatbot_engineer"
+    SOCIAL_MEDIA_INTEGRATION_ENGINEER = "social_media_integration_engineer"
+    # --- Impact analysis & operations ---
+    CHANGE_IMPACT_ANALYZER = "change_impact_analyzer"
+    DATA_ENGINEER = "data_engineer"
+    RESILIENCE_TESTER = "resilience_tester"
+    FINOPS_ESTIMATOR = "finops_estimator"
+    RUNBOOK_AUTHOR = "runbook_author"
+    REFACTORING_PLANNER = "refactoring_planner"
     # --- Research & strategy ---
     MARKET_RESEARCHER = "market_researcher"
     COMPETITOR_RESEARCHER = "competitor_researcher"
@@ -910,6 +924,8 @@ class KnowledgeConfig(BaseModel):
     brief_max_files: int = 30
     brief_max_symbols: int = 15
     cleanup_mcp_config: bool = True
+    skip_vectors: bool = False
+    skip_features: bool = False
     watcher_enabled: bool = True
     watcher_debounce_seconds: float = 5.0
 
@@ -1062,6 +1078,221 @@ class FieldSpecialistReview(BaseModel):
     summary: str = Field(min_length=20)
 
 
+# --- Change Impact Analysis Artifact ---
+
+class ChangeSurface(BaseModel):
+    module: str = Field(min_length=1)
+    change_type: str = Field(pattern=r"^(breaking_api|schema_migration|interface_change|behavioral_change|additive|config_change)$")
+    description: str = Field(min_length=1)
+
+
+class DownstreamImpact(BaseModel):
+    id: str = Field(pattern=r"^IMPACT-\d+$")
+    affected_module: str = Field(min_length=1)
+    risk_level: str = Field(pattern=r"^(high|medium|low)$")
+    impact_type: str = Field(pattern=r"^(compile_error|runtime_error|behavioral_change|performance|data_integrity)$")
+    description: str = Field(min_length=10)
+    requires_update: bool = True
+    migration_steps: list[str] = Field(default_factory=list)
+
+
+class APIConsumerImpact(BaseModel):
+    consumer: str = Field(min_length=1)
+    endpoint: str = Field(min_length=1)
+    breaking: bool = False
+    mitigation: str = Field(min_length=1)
+
+
+class ChangeImpactAnalysis(BaseModel):
+    summary: str = Field(min_length=50)
+    overall_risk: str = Field(pattern=r"^(high|medium|low)$")
+    change_surface: list[ChangeSurface] = Field(min_length=1)
+    downstream_impacts: list[DownstreamImpact] = Field(default_factory=list)
+    api_consumers_affected: list[APIConsumerImpact] = Field(default_factory=list)
+    deployment_constraints: dict[str, Any] = Field(default_factory=dict)
+    coordination_needed: list[dict[str, Any]] = Field(default_factory=list)
+    recommendations: list[str] = Field(min_length=1)
+
+
+# --- Data Pipeline Design Artifact ---
+
+class PipelineTransformation(BaseModel):
+    step: int = Field(ge=1)
+    operation: str = Field(pattern=r"^(validate|filter|map|join|aggregate|enrich|deduplicate)$")
+    description: str = Field(min_length=1)
+    input_schema: str = ""
+    output_schema: str = ""
+
+
+class DataPipeline(BaseModel):
+    id: str = Field(pattern=r"^PIPE-\d+$")
+    name: str = Field(min_length=1)
+    type: str = Field(pattern=r"^(streaming|batch|hybrid)$")
+    source: dict[str, Any] = Field(default_factory=dict)
+    transformations: list[PipelineTransformation] = Field(default_factory=list)
+    destination: dict[str, Any] = Field(default_factory=dict)
+    freshness_requirement: str = Field(pattern=r"^(real_time|near_real_time|hourly|daily)$")
+    volume_estimate: str = ""
+    error_handling: dict[str, Any] = Field(default_factory=dict)
+
+
+class DataQualityRule(BaseModel):
+    id: str = Field(pattern=r"^DQ-\d+$")
+    pipeline: str = Field(min_length=1)
+    rule: str = Field(min_length=1)
+    enforcement: str = Field(pattern=r"^(block|warn|log)$")
+    threshold: str = ""
+
+
+class DataPipelineDesign(BaseModel):
+    summary: str = Field(min_length=50)
+    pipelines: list[DataPipeline] = Field(min_length=1)
+    data_quality_rules: list[DataQualityRule] = Field(default_factory=list)
+    infrastructure: dict[str, Any] = Field(default_factory=dict)
+    data_lineage: list[dict[str, Any]] = Field(default_factory=list)
+    recommendations: list[str] = Field(min_length=1)
+
+
+# --- Resilience Test Plan Artifact ---
+
+class FailureDomain(BaseModel):
+    domain: str = Field(min_length=1)
+    type: str = Field(pattern=r"^(database|cache|queue|api|network|disk|compute)$")
+    single_point_of_failure: bool = False
+    current_protections: list[str] = Field(default_factory=list)
+    gaps: list[str] = Field(default_factory=list)
+
+
+class ChaosTestScenario(BaseModel):
+    id: str = Field(pattern=r"^CHAOS-\d+$")
+    name: str = Field(min_length=1)
+    category: str = Field(pattern=r"^(dependency_down|slow_dependency|partial_failure|resource_exhaustion|data_corruption|cascading_failure|network_partition|clock_skew)$")
+    failure_injected: str = Field(min_length=10)
+    affected_components: list[str] = Field(min_length=1)
+    expected_behavior: str = Field(min_length=10)
+    actual_behavior: str = ""
+    severity_if_unhandled: IssueSeverity = IssueSeverity.MAJOR
+    blast_radius: str = ""
+    remediation: str = Field(min_length=1)
+
+
+class ResilienceTestPlan(BaseModel):
+    summary: str = Field(min_length=50)
+    overall_resilience: str = Field(pattern=r"^(robust|adequate|fragile|untested)$")
+    failure_domains: list[FailureDomain] = Field(min_length=1)
+    test_scenarios: list[ChaosTestScenario] = Field(min_length=1)
+    missing_patterns: list[dict[str, Any]] = Field(default_factory=list)
+    recovery_tests: list[dict[str, Any]] = Field(default_factory=list)
+    recommendations: list[str] = Field(min_length=1)
+
+
+# --- Cost Estimate Artifact ---
+
+class CostLineItem(BaseModel):
+    category: str = Field(pattern=r"^(compute|storage|network|api|managed_service|third_party)$")
+    service: str = Field(min_length=1)
+    usage: str = Field(min_length=1)
+    unit_cost: str = ""
+    monthly_cost: float = Field(ge=0)
+    notes: str = ""
+
+
+class CostTier(BaseModel):
+    tier: str = Field(pattern=r"^(launch|growth|scale)$")
+    monthly_users: int = Field(ge=0)
+    monthly_requests: int = Field(ge=0)
+    estimated_monthly_cost: float = Field(ge=0)
+    breakdown: list[CostLineItem] = Field(min_length=1)
+
+
+class CostRisk(BaseModel):
+    id: str = Field(pattern=r"^RISK-\d+$")
+    component: str = Field(min_length=1)
+    risk: str = Field(min_length=10)
+    worst_case_monthly: float = Field(ge=0)
+    mitigation: str = Field(min_length=1)
+
+
+class CostEstimate(BaseModel):
+    summary: str = Field(min_length=50)
+    currency: str = "USD"
+    cost_tiers: list[CostTier] = Field(min_length=1)
+    cost_risks: list[CostRisk] = Field(default_factory=list)
+    cost_optimizations: list[dict[str, Any]] = Field(default_factory=list)
+    free_tier_dependencies: list[dict[str, Any]] = Field(default_factory=list)
+    recommendations: list[str] = Field(min_length=1)
+
+
+# --- Runbook Artifact ---
+
+class DeploymentStep(BaseModel):
+    step: int = Field(ge=1)
+    action: str = Field(min_length=1)
+    command: str = ""
+    verification: str = Field(min_length=1)
+
+
+class RollbackStep(BaseModel):
+    step: int = Field(ge=1)
+    action: str = Field(min_length=1)
+    command: str = ""
+
+
+class IncidentProcedure(BaseModel):
+    id: str = Field(pattern=r"^INC-\d+$")
+    alert_name: str = Field(min_length=1)
+    severity: IssueSeverity
+    diagnosis: list[dict[str, Any]] = Field(min_length=1)
+    resolution: list[dict[str, Any]] = Field(min_length=1)
+    escalation: str = Field(min_length=1)
+
+
+class Runbook(BaseModel):
+    summary: str = Field(min_length=50)
+    system_name: str = Field(min_length=1)
+    deployment: dict[str, Any] = Field(default_factory=dict)
+    incident_procedures: list[IncidentProcedure] = Field(min_length=1)
+    maintenance_tasks: list[dict[str, Any]] = Field(default_factory=list)
+    key_contacts: dict[str, Any] = Field(default_factory=dict)
+    dashboards_and_logs: dict[str, Any] = Field(default_factory=dict)
+
+
+# --- Refactoring Plan Artifact ---
+
+class RefactoringStep(BaseModel):
+    id: str = Field(pattern=r"^REFACTOR-\d+$")
+    title: str = Field(min_length=1)
+    addresses_debt: list[str] = Field(min_length=1)
+    sequence_order: int = Field(ge=1)
+    parallelizable_with: list[str] = Field(default_factory=list)
+    files_to_modify: list[str] = Field(min_length=1)
+    preconditions: list[str] = Field(min_length=1)
+    changes: str = Field(min_length=10)
+    postconditions: list[str] = Field(min_length=1)
+    verification: list[str] = Field(min_length=1)
+    rollback: str = Field(min_length=1)
+    risk: str = Field(pattern=r"^(low|medium|high)$")
+    effort: str = Field(pattern=r"^(hours|days|week)$")
+
+
+class SafeStoppingPoint(BaseModel):
+    after_step: str = Field(min_length=1)
+    system_state: str = Field(min_length=1)
+    value_delivered: str = Field(min_length=1)
+
+
+class RefactoringPlan(BaseModel):
+    summary: str = Field(min_length=50)
+    source_debt_items: list[str] = Field(min_length=1)
+    total_steps: int = Field(ge=1)
+    estimated_effort: str = Field(min_length=1)
+    refactoring_steps: list[RefactoringStep] = Field(min_length=1)
+    dependency_graph: dict[str, list[str]] = Field(default_factory=dict)
+    safe_stopping_points: list[SafeStoppingPoint] = Field(min_length=1)
+    risks: list[dict[str, Any]] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+
+
 # --- QA Plan Artifact ---
 
 class TestCase(BaseModel):
@@ -1079,6 +1310,81 @@ class QAPlan(BaseModel):
     coverage_targets: dict[str, Any] = Field(default_factory=dict)
     risk_areas: list[str] = Field(default_factory=list)
     summary: str = Field(min_length=20)
+
+
+# --- MCP Tool Spec Artifact ---
+
+class MCPToolParam(BaseModel):
+    name: str = Field(min_length=1)
+    type: str = Field(min_length=1)
+    description: str = Field(min_length=1)
+    required: bool = True
+
+
+class MCPToolDef(BaseModel):
+    id: str = Field(pattern=r"^TOOL-\d+$")
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=10)
+    parameters: list[MCPToolParam] = Field(default_factory=list)
+    returns: str = Field(min_length=1)
+    side_effects: str = Field(pattern=r"^(none|read|write|external)$")
+    requires_auth: bool = False
+    rate_limit: str | None = None
+
+
+class MCPResourceDef(BaseModel):
+    id: str = Field(pattern=r"^RES-\d+$")
+    uri_template: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=10)
+    mime_type: str = Field(min_length=1)
+
+
+class MCPPromptDef(BaseModel):
+    id: str = Field(pattern=r"^PROMPT-\d+$")
+    name: str = Field(min_length=1)
+    description: str = Field(min_length=10)
+    arguments: list[MCPToolParam] = Field(default_factory=list)
+
+
+class MCPTransportConfig(BaseModel):
+    type: str = Field(pattern=r"^(stdio|sse|streamable_http)$")
+    auth_method: str = Field(pattern=r"^(none|bearer|oauth2|api_key)$")
+    port: int | None = None
+
+
+class MCPToolSpec(BaseModel):
+    server_name: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    description: str = Field(min_length=20)
+    sdk: str = Field(pattern=r"^(typescript|python)$")
+    transport: MCPTransportConfig
+    tools: list[MCPToolDef] = Field(default_factory=list)
+    resources: list[MCPResourceDef] = Field(default_factory=list)
+    prompts: list[MCPPromptDef] = Field(default_factory=list)
+    capabilities: list[str] = Field(min_length=1)
+    error_handling: dict[str, Any] = Field(default_factory=dict)
+
+
+# --- MCP Test Report Artifact ---
+
+class MCPTestCase(BaseModel):
+    id: str = Field(pattern=r"^MCP-TC-\d+$")
+    category: str = Field(pattern=r"^(tool_call|resource_read|prompt_get|transport|auth|capability_negotiation|error_handling|concurrency)$")
+    description: str = Field(min_length=10)
+    result: str = Field(pattern=r"^(pass|fail|skip)$")
+    details: str = Field(default="")
+
+
+class MCPTestReport(BaseModel):
+    server_name: str = Field(min_length=1)
+    transport_tested: str = Field(min_length=1)
+    test_cases: list[MCPTestCase] = Field(min_length=1)
+    tools_tested: int = Field(ge=0)
+    resources_tested: int = Field(ge=0)
+    protocol_compliance: str = Field(pattern=r"^(full|partial|non_compliant)$")
+    findings: list[str] = Field(default_factory=list)
+    verdict: QAVerdict
 
 
 # Maps artifact names to their Pydantic models for validation
@@ -1116,4 +1422,14 @@ ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     # Debate artifacts
     "debate_position": DebatePosition,
     "debate_conclusion": DebateConclusion,
+    # MCP artifacts
+    "mcp_tool_spec": MCPToolSpec,
+    "mcp_test_report": MCPTestReport,
+    # Impact analysis & operations artifacts
+    "change_impact_analysis": ChangeImpactAnalysis,
+    "data_pipeline_design": DataPipelineDesign,
+    "resilience_test_plan": ResilienceTestPlan,
+    "cost_estimate": CostEstimate,
+    "runbook": Runbook,
+    "refactoring_plan": RefactoringPlan,
 }

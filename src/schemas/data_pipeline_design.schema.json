@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Data Pipeline Design",
+  "description": "ETL pipeline architecture — data flows, transformations, quality rules, infrastructure",
+  "type": "object",
+  "required": ["summary", "pipelines", "data_quality_rules", "infrastructure", "recommendations"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 50
+    },
+    "pipelines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "type", "source", "transformations", "destination", "freshness_requirement"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^PIPE-\\d+$" },
+          "name": { "type": "string", "minLength": 1 },
+          "type": { "type": "string", "enum": ["streaming", "batch", "hybrid"] },
+          "source": {
+            "type": "object",
+            "required": ["system", "format"],
+            "properties": {
+              "system": { "type": "string", "minLength": 1 },
+              "format": { "type": "string", "minLength": 1 },
+              "connection": { "type": "string" }
+            }
+          },
+          "transformations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["step", "operation", "description"],
+              "properties": {
+                "step": { "type": "integer", "minimum": 1 },
+                "operation": {
+                  "type": "string",
+                  "enum": ["validate", "filter", "map", "join", "aggregate", "enrich", "deduplicate"]
+                },
+                "description": { "type": "string", "minLength": 1 },
+                "input_schema": { "type": "string" },
+                "output_schema": { "type": "string" }
+              }
+            }
+          },
+          "destination": {
+            "type": "object",
+            "required": ["system", "format", "write_mode"],
+            "properties": {
+              "system": { "type": "string", "minLength": 1 },
+              "format": { "type": "string", "minLength": 1 },
+              "write_mode": { "type": "string", "enum": ["append", "upsert", "overwrite"] }
+            }
+          },
+          "freshness_requirement": {
+            "type": "string",
+            "enum": ["real_time", "near_real_time", "hourly", "daily"]
+          },
+          "volume_estimate": { "type": "string" },
+          "error_handling": {
+            "type": "object",
+            "properties": {
+              "dead_letter_queue": { "type": "boolean" },
+              "retry_policy": { "type": "string" },
+              "alerting": { "type": "string" }
+            }
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "data_quality_rules": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "pipeline", "rule", "enforcement"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^DQ-\\d+$" },
+          "pipeline": { "type": "string", "minLength": 1 },
+          "rule": { "type": "string", "minLength": 1 },
+          "enforcement": { "type": "string", "enum": ["block", "warn", "log"] },
+          "threshold": { "type": "string" }
+        }
+      }
+    },
+    "infrastructure": {
+      "type": "object",
+      "properties": {
+        "orchestrator": { "type": "string", "minLength": 1 },
+        "compute": { "type": "string" },
+        "storage": { "type": "string" },
+        "monitoring": { "type": "string" }
+      }
+    },
+    "data_lineage": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "via"],
+        "properties": {
+          "from": { "type": "string", "minLength": 1 },
+          "to": { "type": "string", "minLength": 1 },
+          "via": { "type": "string", "minLength": 1 },
+          "transformations_applied": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  }
+}

@@ -1,0 +1,109 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Refactoring Plan",
+  "description": "Safe refactoring sequence with dependency ordering, pre/post-conditions, rollback plans, and stopping points",
+  "type": "object",
+  "required": ["summary", "source_debt_items", "total_steps", "estimated_effort", "refactoring_steps", "dependency_graph", "safe_stopping_points"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 50
+    },
+    "source_debt_items": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^DEBT-\\d+$" },
+      "minItems": 1
+    },
+    "total_steps": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "estimated_effort": {
+      "type": "string",
+      "minLength": 1
+    },
+    "refactoring_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "addresses_debt", "sequence_order", "files_to_modify", "preconditions", "changes", "postconditions", "verification", "rollback", "risk", "effort"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^REFACTOR-\\d+$" },
+          "title": { "type": "string", "minLength": 1 },
+          "addresses_debt": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "sequence_order": { "type": "integer", "minimum": 1 },
+          "parallelizable_with": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "files_to_modify": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "preconditions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "changes": { "type": "string", "minLength": 10 },
+          "postconditions": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "verification": {
+            "type": "array",
+            "items": { "type": "string" },
+            "minItems": 1
+          },
+          "rollback": { "type": "string", "minLength": 1 },
+          "risk": { "type": "string", "enum": ["low", "medium", "high"] },
+          "effort": { "type": "string", "enum": ["hours", "days", "week"] }
+        }
+      },
+      "minItems": 1
+    },
+    "dependency_graph": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": { "type": "string" }
+      }
+    },
+    "safe_stopping_points": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["after_step", "system_state", "value_delivered"],
+        "properties": {
+          "after_step": { "type": "string", "minLength": 1 },
+          "system_state": { "type": "string", "minLength": 1 },
+          "value_delivered": { "type": "string", "minLength": 1 }
+        }
+      },
+      "minItems": 1
+    },
+    "risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["risk", "severity", "mitigation", "affected_steps"],
+        "properties": {
+          "risk": { "type": "string", "minLength": 1 },
+          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
+          "mitigation": { "type": "string", "minLength": 1 },
+          "affected_steps": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}

@@ -152,6 +152,8 @@ async def build_knowledge(
     timeout_seconds: int = 60,
     skip_if_fresh_minutes: int = 5,
     richness: str = "rich",
+    skip_vectors: bool = False,
+    skip_features: bool = False,
 ) -> KnowledgeResult:
     """Build AICoder knowledge base for the target project.
 
@@ -196,6 +198,10 @@ async def build_knowledge(
         "--root", str(project_root),
         "--richness", richness,
     ]
+    if skip_vectors:
+        cmd.append("--skip-vectors")
+    if skip_features:
+        cmd.append("--skip-features")
 
     start = time.monotonic()
     try:
@@ -338,6 +344,21 @@ def synthesize_brief(
             if len(arch_content) > 500:
                 arch_content = arch_content[:497] + "..."
             sections.append("### Architecture Notes\n" + arch_content)
+
+    # 6. Feature groups (if available)
+    features = _read_json(knowledge_root / "features" / "index.json")
+    if features and isinstance(features, list):
+        feature_lines = []
+        for fg in features[:10]:
+            name = fg.get("name", "?")
+            desc = fg.get("description", "")
+            file_count = len(fg.get("files", []))
+            line = f"  - **{name}** ({file_count} files)"
+            if desc:
+                line += f" — {desc}"
+            feature_lines.append(line)
+        if feature_lines:
+            sections.append("### Feature Groups\n" + "\n".join(feature_lines))
 
     if not sections:
         return ""

@@ -53,6 +53,9 @@ _IMPLEMENTATION_ROLES = frozenset({
     "gcp_specialist", "runpod_specialist",
     # Security implementation
     "security_engineer",
+    # MCP & integration specialists
+    "mcp_server_engineer", "mcp_integration_test_engineer",
+    "chatbot_engineer", "social_media_integration_engineer",
 })
 
 # Maps assigned_role strings from tasks.json to AgentRole enums
@@ -1297,6 +1300,8 @@ class WorkflowEngine:
             inject_brief=self.config.knowledge.inject_brief,
             knowledge_context=self.config.knowledge_context,
             richness=self.config.knowledge.richness,
+            skip_vectors=self.config.knowledge.skip_vectors,
+            skip_features=self.config.knowledge.skip_features,
         )
         await self._knowledge_watcher.start()
 
@@ -1333,6 +1338,8 @@ class WorkflowEngine:
             timeout_seconds=self.config.knowledge.build_timeout_seconds,
             skip_if_fresh_minutes=0,  # Force rebuild — code just changed
             richness=self.config.knowledge.richness,
+            skip_vectors=self.config.knowledge.skip_vectors,
+            skip_features=self.config.knowledge.skip_features,
         )
         if result.success:
             if self.config.knowledge.inject_brief:

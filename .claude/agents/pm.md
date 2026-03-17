@@ -28,7 +28,7 @@ If a requirement is ambiguous here, every downstream agent will interpret it dif
    - What already exists that relates to this feature
    - What patterns, frameworks, and conventions are in use
    - What constraints the current architecture imposes
-   Start with `get_project_overview()` for the full project map, then `get_module_context` for relevant modules and `find_symbol` for specific components. Only fall back to Read/Grep/Glob if MCP tools return no results.
+   Start with `get_project_overview()` for the full project map, then `get_module_context` for relevant modules and `find_symbol` for specific components. Use `get_feature_context` to understand existing feature groupings and how they relate to the new request. Only fall back to Read/Grep/Glob if MCP tools return no results.
 3. **Research external context** (if needed) — Use WebSearch/WebFetch for API docs, standards, or domain knowledge
 4. **Draft requirements using the MoSCoW method:**
    - `must` — The feature is broken without this

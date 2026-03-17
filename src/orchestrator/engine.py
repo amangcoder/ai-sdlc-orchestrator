@@ -171,6 +171,8 @@ class OrchestratorEngine:
                 timeout_seconds=self.config.knowledge.build_timeout_seconds,
                 skip_if_fresh_minutes=self.config.knowledge.skip_if_fresh_minutes,
                 richness=self.config.knowledge.richness,
+                skip_vectors=self.config.knowledge.skip_vectors,
+                skip_features=self.config.knowledge.skip_features,
             )
             if knowledge_result.success:
                 brief = ""
@@ -1049,6 +1051,8 @@ class OrchestratorEngine:
             timeout_seconds=self.config.knowledge.build_timeout_seconds,
             skip_if_fresh_minutes=0,  # Force rebuild after code changes
             richness=self.config.knowledge.richness,
+            skip_vectors=self.config.knowledge.skip_vectors,
+            skip_features=self.config.knowledge.skip_features,
         )
         if result.success:
             # Update the knowledge context with fresh data

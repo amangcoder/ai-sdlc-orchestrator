@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Resilience Test Plan",
+  "description": "Chaos/resilience testing plan — failure domains, test scenarios, missing patterns, recovery tests",
+  "type": "object",
+  "required": ["summary", "overall_resilience", "failure_domains", "test_scenarios", "recommendations"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 50
+    },
+    "overall_resilience": {
+      "type": "string",
+      "enum": ["robust", "adequate", "fragile", "untested"]
+    },
+    "failure_domains": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["domain", "type", "single_point_of_failure"],
+        "properties": {
+          "domain": { "type": "string", "minLength": 1 },
+          "type": {
+            "type": "string",
+            "enum": ["database", "cache", "queue", "api", "network", "disk", "compute"]
+          },
+          "single_point_of_failure": { "type": "boolean" },
+          "current_protections": { "type": "array", "items": { "type": "string" } },
+          "gaps": { "type": "array", "items": { "type": "string" } }
+        }
+      },
+      "minItems": 1
+    },
+    "test_scenarios": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "category", "failure_injected", "affected_components", "expected_behavior", "severity_if_unhandled"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^CHAOS-\\d+$" },
+          "name": { "type": "string", "minLength": 1 },
+          "category": {
+            "type": "string",
+            "enum": ["dependency_down", "slow_dependency", "partial_failure", "resource_exhaustion", "data_corruption", "cascading_failure", "network_partition", "clock_skew"]
+          },
+          "failure_injected": { "type": "string", "minLength": 10 },
+          "affected_components": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "expected_behavior": { "type": "string", "minLength": 10 },
+          "actual_behavior": { "type": "string" },
+          "severity_if_unhandled": { "type": "string", "enum": ["critical", "major", "minor"] },
+          "blast_radius": { "type": "string" },
+          "remediation": { "type": "string", "minLength": 1 }
+        }
+      },
+      "minItems": 1
+    },
+    "missing_patterns": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pattern", "location", "risk", "recommendation"],
+        "properties": {
+          "pattern": {
+            "type": "string",
+            "enum": ["circuit_breaker", "retry", "timeout", "bulkhead", "fallback", "health_check", "graceful_shutdown", "rate_limit", "backpressure"]
+          },
+          "location": { "type": "string", "minLength": 1 },
+          "risk": { "type": "string", "minLength": 1 },
+          "recommendation": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "recovery_tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["scenario", "expected_recovery", "verification"],
+        "properties": {
+          "scenario": { "type": "string", "minLength": 1 },
+          "expected_recovery": { "type": "string", "minLength": 1 },
+          "verification": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  }
+}

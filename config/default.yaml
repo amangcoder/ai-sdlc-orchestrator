@@ -53,6 +53,8 @@ knowledge:
   brief_max_files: 30                # max files to include in brief summaries
   brief_max_symbols: 15              # max top symbols to include
   cleanup_mcp_config: true           # remove MCP config from target project after pipeline completes
+  skip_vectors: false                # skip embedding generation (Phase 7) — saves time when semantic search isn't needed
+  skip_features: false               # skip feature discovery (Phase 9) — saves time when feature clustering isn't needed
   watcher_enabled: true              # watch for file changes during implementation and rebuild .knowledge
   watcher_debounce_seconds: 5.0      # debounce delay before triggering rebuild after file changes
 
@@ -358,6 +360,50 @@ agents:
     input_artifacts: [prd, ux_spec]
     output_artifacts: [behavioral_review]
 
+  # --- Impact analysis & operations ---
+  change_impact_analyzer:
+    name: Change Impact Analyzer
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: [change_impact_analysis]
+  data_engineer:
+    name: Data Engineer
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: [prd, architecture]
+    output_artifacts: [data_pipeline_design]
+  resilience_tester:
+    name: Chaos/Resilience Tester
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: [prd, architecture, engineering_plan]
+    output_artifacts: [resilience_test_plan]
+  finops_estimator:
+    name: FinOps / Cost Estimator
+    model: haiku
+    max_turns: 20
+    escalation_model: sonnet
+    input_artifacts: [prd, architecture]
+    output_artifacts: [cost_estimate]
+  runbook_author:
+    name: Runbook Author
+    model: haiku
+    max_turns: 20
+    escalation_model: sonnet
+    input_artifacts: [architecture, prd]
+    output_artifacts: [runbook]
+  refactoring_planner:
+    name: Refactoring Planner
+    model: sonnet
+    max_turns: 30
+    escalation_model: opus
+    input_artifacts: [tech_debt_inventory, architecture]
+    output_artifacts: [refactoring_plan]
+
   # --- Cloud & infrastructure specialists (implementation → sonnet) ---
   cicd_specialist:
     name: CI/CD Pipeline Specialist
@@ -393,6 +439,50 @@ agents:
     max_turns: 40
     escalation_model: opus
     input_artifacts: [architecture, tasks]
+    output_artifacts: []
+
+  # --- MCP & integration specialists (implementation → sonnet) ---
+  mcp_tool_designer:
+    name: MCP Tool Designer
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    input_artifacts: [prd, architecture]
+    output_artifacts: [mcp_tool_spec]
+  mcp_server_engineer:
+    name: MCP Server Engineer
+    model: sonnet
+    max_turns: 50
+    escalation_model: opus
+    input_artifacts: [prd, architecture, tasks, mcp_tool_spec]
+    output_artifacts: []
+  mcp_protocol_reviewer:
+    name: MCP Protocol Reviewer
+    model: opus
+    max_turns: 30
+    escalation_model: null
+    input_artifacts: [prd, architecture, mcp_tool_spec, tasks]
+    output_artifacts: [review]
+  mcp_integration_test_engineer:
+    name: MCP Integration Test Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [prd, architecture, mcp_tool_spec, tasks]
+    output_artifacts: [mcp_test_report]
+  chatbot_engineer:
+    name: Chatbot Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [prd, architecture, tasks]
+    output_artifacts: []
+  social_media_integration_engineer:
+    name: Social Media Integration Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [prd, architecture, tasks, api_contract]
     output_artifacts: []
 
   # --- AI/ML specialists (analysis → sonnet, escalate to opus) ---

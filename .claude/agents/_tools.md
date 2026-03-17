@@ -28,8 +28,13 @@ Start with `get_project_overview()` for a full project map, then drill down:
 16. `validate_artifact_draft` — pre-validates artifact JSON against expected schema before submission. Params: `artifact_type`, `json_content`
 17. `get_cumulative_context` — digest of all artifact types produced by prior phases. Param: `phase`
 
+### Search & discovery tools
+18. `semantic_search` — hybrid BM25 + vector search with Reciprocal Rank Fusion. Params: `query`, `scope` (files|symbols|features|all), `topK` (max 50)
+19. `explore_graph` — BFS traversal of the knowledge graph from a start node. Params: `startNode`, `edgeTypes` (contains|calls|imports|depends_on|implements|similar_to), `depth` (max 5), `direction` (outgoing|incoming|both)
+20. `get_feature_context` — find semantic feature clusters relevant to a query. Params: `query`, `topK`
+
 ### Data tools
-18. `get_static_data_schema` — structure of static data files: keys, exports, relationships (no params)
+21. `get_static_data_schema` — structure of static data files: keys, exports, relationships (no params)
 
 Only fall back to Read/Grep/Glob if MCP tools are unavailable or return no results.
 Do NOT use Bash find/ls, Agent Explore, or broad Glob scanning when MCP tools are available.

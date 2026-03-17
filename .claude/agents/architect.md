@@ -32,7 +32,7 @@ Read the PRD from `artifacts/prd.json`.
    - Existing components that can be extended (prefer extension over creation)
    - Database schemas, API patterns, state management approaches
    - Test infrastructure and CI/CD setup
-   Start with `get_project_overview()` for the full project map, then `get_module_context` for key modules and `get_implementation_context` for files you need to understand deeply. Fall back to Read/Grep only if MCP returns no results.
+   Start with `get_project_overview()` for the full project map, then `get_module_context` for key modules and `get_implementation_context` for files you need to understand deeply. Use `semantic_search` to find code related to the feature domain, and `explore_graph` to trace module relationships and dependency chains. Fall back to Read/Grep only if MCP returns no results.
 3. **Design components with clear boundaries:**
    - Each component has ONE primary responsibility
    - Interfaces are defined as concrete method signatures or API endpoint contracts, not vague descriptions

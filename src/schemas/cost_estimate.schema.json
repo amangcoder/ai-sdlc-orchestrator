@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Cost Estimate",
+  "description": "Runtime cost estimation for the built system — cloud, APIs, storage, third-party services across scale tiers",
+  "type": "object",
+  "required": ["summary", "currency", "cost_tiers", "recommendations"],
+  "properties": {
+    "summary": {
+      "type": "string",
+      "minLength": 50
+    },
+    "currency": {
+      "type": "string",
+      "default": "USD"
+    },
+    "cost_tiers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["tier", "monthly_users", "monthly_requests", "estimated_monthly_cost", "breakdown"],
+        "properties": {
+          "tier": { "type": "string", "enum": ["launch", "growth", "scale"] },
+          "monthly_users": { "type": "integer", "minimum": 0 },
+          "monthly_requests": { "type": "integer", "minimum": 0 },
+          "estimated_monthly_cost": { "type": "number", "minimum": 0 },
+          "breakdown": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["category", "service", "usage", "monthly_cost"],
+              "properties": {
+                "category": {
+                  "type": "string",
+                  "enum": ["compute", "storage", "network", "api", "managed_service", "third_party"]
+                },
+                "service": { "type": "string", "minLength": 1 },
+                "usage": { "type": "string", "minLength": 1 },
+                "unit_cost": { "type": "string" },
+                "monthly_cost": { "type": "number", "minimum": 0 },
+                "notes": { "type": "string" }
+              }
+            },
+            "minItems": 1
+          }
+        }
+      },
+      "minItems": 1
+    },
+    "cost_risks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "component", "risk", "worst_case_monthly", "mitigation"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^RISK-\\d+$" },
+          "component": { "type": "string", "minLength": 1 },
+          "risk": { "type": "string", "minLength": 10 },
+          "worst_case_monthly": { "type": "number", "minimum": 0 },
+          "mitigation": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "cost_optimizations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "current_approach", "recommended_approach", "estimated_savings_pct", "effort"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^OPT-\\d+$" },
+          "current_approach": { "type": "string", "minLength": 1 },
+          "recommended_approach": { "type": "string", "minLength": 1 },
+          "estimated_savings_pct": { "type": "integer", "minimum": 0, "maximum": 100 },
+          "effort": { "type": "string", "enum": ["low", "medium", "high"] },
+          "tradeoff": { "type": "string" }
+        }
+      }
+    },
+    "free_tier_dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["service", "free_limit", "current_usage_tier", "cliff_cost"],
+        "properties": {
+          "service": { "type": "string", "minLength": 1 },
+          "free_limit": { "type": "string", "minLength": 1 },
+          "current_usage_tier": { "type": "string" },
+          "cliff_cost": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "recommendations": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1
+    }
+  }
+}

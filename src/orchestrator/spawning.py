@@ -81,6 +81,7 @@ DEFAULT_SPAWN_PERMISSIONS: dict[str, set[str]] = {
         "market_researcher", "competitor_researcher", "field_specialist",
         "end_user_simulator", "legal_advisor", "user_behavior_psychologist",
         "deep_researcher", "brainstormer",
+        "finops_estimator",
     },
     # Architect can spawn technical specialists
     "software_architect": {
@@ -89,6 +90,7 @@ DEFAULT_SPAWN_PERMISSIONS: dict[str, set[str]] = {
         "azure_specialist", "gcp_specialist", "runpod_specialist",
         "tech_debt_assessor", "field_specialist", "api_contract_designer",
         "compliance_auditor", "deep_researcher",
+        "change_impact_analyzer", "data_engineer", "finops_estimator",
     },
     # Principal engineer can spawn deep technical specialists
     "principal_engineer": {
@@ -96,16 +98,19 @@ DEFAULT_SPAWN_PERMISSIONS: dict[str, set[str]] = {
         "ml_specialist", "database_engineer", "load_test_engineer",
         "tech_debt_assessor", "deep_researcher", "field_specialist",
         "dependency_auditor",
+        "change_impact_analyzer", "data_engineer", "resilience_tester",
+        "refactoring_planner",
     },
     # TPM can spawn analysis roles
     "technical_project_manager": {
         "tech_debt_assessor", "deep_researcher", "field_specialist",
         "dependency_auditor",
+        "change_impact_analyzer", "finops_estimator", "refactoring_planner",
     },
     # QA planner can spawn specialized test planners
     "qa_planner": {
         "security_engineer", "load_test_engineer", "accessibility_auditor",
-        "integration_test_engineer",
+        "integration_test_engineer", "resilience_tester",
     },
     # --- Implementation roles: engineers can spawn specialists for guidance ---
     "engineer": {
@@ -123,6 +128,7 @@ DEFAULT_SPAWN_PERMISSIONS: dict[str, set[str]] = {
         "security_engineer", "database_engineer", "api_contract_designer",
         "caching_performance_engineer", "load_test_engineer",
         "deep_researcher", "llm_specialist", "dependency_auditor",
+        "data_engineer", "change_impact_analyzer",
     },
     "database_engineer": {
         "security_engineer", "caching_performance_engineer",
@@ -136,6 +142,7 @@ DEFAULT_SPAWN_PERMISSIONS: dict[str, set[str]] = {
         "security_engineer", "aws_specialist", "azure_specialist",
         "gcp_specialist", "runpod_specialist", "cicd_specialist",
         "observability_engineer", "deep_researcher",
+        "runbook_author", "resilience_tester", "finops_estimator",
     },
     "caching_performance_engineer": {
         "load_test_engineer", "database_engineer", "deep_researcher",
@@ -149,11 +156,13 @@ DEFAULT_SPAWN_PERMISSIONS: dict[str, set[str]] = {
     "qa_executor": {
         "security_engineer", "load_test_engineer", "accessibility_auditor",
         "integration_test_engineer", "deep_researcher",
+        "resilience_tester",
     },
     # --- Reviewers: can spawn specialists for deep analysis ---
     "backend_code_reviewer": {
         "security_engineer", "load_test_engineer", "database_engineer",
         "deep_researcher", "compliance_auditor", "dependency_auditor",
+        "change_impact_analyzer", "resilience_tester",
     },
     "frontend_code_reviewer": {
         "security_engineer", "accessibility_auditor", "ux_specifier",
