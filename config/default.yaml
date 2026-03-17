@@ -236,7 +236,7 @@ agents:
     max_turns: 25
     escalation_model: opus
     input_artifacts: [prd, architecture, tasks]
-    output_artifacts: [prd]
+    output_artifacts: [qa_plan]
   qa_executor:
     name: QA Executor
     model: sonnet

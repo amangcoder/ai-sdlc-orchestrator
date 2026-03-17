@@ -49,7 +49,8 @@ class TracingManager:
             self._provider.add_span_processor(BatchSpanProcessor(ConsoleSpanExporter()))
 
         trace.set_tracer_provider(self._provider)
-        self._tracer = trace.get_tracer("orchestrator", "0.1.0")
+        from orchestrator import __version__
+        self._tracer = trace.get_tracer("orchestrator", __version__)
 
         # Active span references for nesting
         self._run_span: Any = None

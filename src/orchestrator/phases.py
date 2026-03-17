@@ -1163,7 +1163,7 @@ Design a comprehensive test strategy:
 6. Identify areas needing security testing
 7. Define coverage targets
 
-**CRITICAL: Use the Write tool** to save your output as valid JSON to: {artifacts_dir}/prd.json (update with test criteria)
+**CRITICAL: Use the Write tool** to save your output as valid JSON to: {artifacts_dir}/qa_plan.json
 
 Also produce bug analysis output for bugfix workflows if applicable.
 

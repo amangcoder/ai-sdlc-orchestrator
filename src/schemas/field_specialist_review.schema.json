@@ -1,0 +1,83 @@
+{
+  "$defs": {
+    "DomainFinding": {
+      "properties": {
+        "area": {
+          "minLength": 1,
+          "title": "Area",
+          "type": "string"
+        },
+        "assessment": {
+          "minLength": 10,
+          "title": "Assessment",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/IssueSeverity"
+        },
+        "recommendation": {
+          "minLength": 10,
+          "title": "Recommendation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "area",
+        "assessment",
+        "severity",
+        "recommendation"
+      ],
+      "title": "DomainFinding",
+      "type": "object"
+    },
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "domain": {
+      "minLength": 1,
+      "title": "Domain",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/DomainFinding"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "compliance_notes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Compliance Notes",
+      "type": "array"
+    },
+    "risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "domain",
+    "summary"
+  ],
+  "title": "FieldSpecialistReview",
+  "type": "object"
+}

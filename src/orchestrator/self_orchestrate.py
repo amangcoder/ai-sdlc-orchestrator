@@ -275,6 +275,7 @@ async def clarify(
     feature_request: str,
     conversation: list[tuple[str, str]],
     project_root: Path | None = None,
+    model_override: ModelTier | None = None,
 ) -> ClarificationResult:
     """Run one round of clarification on a feature request.
 
@@ -313,7 +314,7 @@ async def clarify(
     invocation = AgentInvocation(
         agent_name="pm",  # PM agent for requirements-style thinking
         prompt=prompt,
-        model=ModelTier.SONNET,
+        model=model_override or ModelTier.SONNET,
         max_turns=2,
         project_root=str(project_root) if project_root else None,
     )
@@ -635,6 +636,7 @@ async def revise_plan(
     current_plan: OrchestrationPlan,
     user_feedback: str,
     project_root: Path | None = None,
+    model_override: ModelTier | None = None,
 ) -> OrchestrationPlan:
     """Revise an orchestration plan based on user feedback."""
     from orchestrator.agents import AgentInvocation, _invoke_via_cli, _invoke_via_sdk
@@ -663,7 +665,7 @@ async def revise_plan(
     invocation = AgentInvocation(
         agent_name="architect",
         prompt=prompt,
-        model=ModelTier.SONNET,
+        model=model_override or ModelTier.SONNET,
         max_turns=2,
         project_root=str(project_root) if project_root else None,
     )
@@ -696,6 +698,7 @@ async def revise_plan(
 async def self_orchestrate(
     feature_request: str,
     project_root: Path | None = None,
+    model_override: ModelTier | None = None,
 ) -> OrchestrationPlan:
     """Analyze a feature request and generate the optimal orchestration plan.
 
@@ -722,7 +725,7 @@ async def self_orchestrate(
     invocation = AgentInvocation(
         agent_name="architect",
         prompt=prompt,
-        model=ModelTier.SONNET,
+        model=model_override or ModelTier.SONNET,
         max_turns=2,
         project_root=str(project_root) if project_root else None,
     )

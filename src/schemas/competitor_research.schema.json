@@ -1,0 +1,74 @@
+{
+  "$defs": {
+    "CompetitorEntry": {
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "strengths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Strengths",
+          "type": "array"
+        },
+        "weaknesses": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Weaknesses",
+          "type": "array"
+        },
+        "differentiators": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Differentiators",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "CompetitorEntry",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "competitors": {
+      "items": {
+        "$ref": "#/$defs/CompetitorEntry"
+      },
+      "minItems": 1,
+      "title": "Competitors",
+      "type": "array"
+    },
+    "competitive_advantages": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Competitive Advantages",
+      "type": "array"
+    },
+    "market_gaps": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Market Gaps",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "competitors",
+    "summary"
+  ],
+  "title": "CompetitorResearch",
+  "type": "object"
+}

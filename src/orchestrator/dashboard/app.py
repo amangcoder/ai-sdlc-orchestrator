@@ -32,7 +32,8 @@ _active_sse_connections = 0
 
 
 def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
-    app = FastAPI(title="Orchestrator Dashboard", version="0.1.0")
+    from orchestrator import __version__
+    app = FastAPI(title="Orchestrator Dashboard", version=__version__)
     reader = RunDataReader(workspace_dir)
     runner = RunTracker(workspace_dir, config_path)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))

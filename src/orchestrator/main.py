@@ -195,10 +195,14 @@ def _configure_structlog(json_logs: bool) -> None:
 
 
 def _build_parser() -> argparse.ArgumentParser:
+    from orchestrator import __version__
+
     parser = argparse.ArgumentParser(
         prog="orchestrate",
         description="AI SDLC Orchestrator — coordinate AI agents through the full SDLC pipeline",
     )
+    parser.add_argument("-V", "--version", action="version",
+                        version=f"%(prog)s {__version__}")
     parser.add_argument("feature_request", nargs="?", default=None,
                         help="Feature request to implement, or 'validate <dir>' to validate artifacts")
     parser.add_argument("validate_dir", nargs="?", default=None, type=Path,
@@ -247,10 +251,33 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-checklist-verify", dest="checklist_verify",
                         action="store_false", default=None,
                         help="Skip post-write quality checklist verification in planning agents")
+    parser.add_argument("--mode",
+                        choices=["fast", "superhaiku", "supersonnet", "balanced", "overkill"],
+                        default=None, metavar="MODE",
+                        help="Model routing mode: fast (haiku-heavy), superhaiku, supersonnet, balanced, overkill (opus everywhere)")
     return parser
 
 
+def _format_duration(seconds: float) -> str:
+    """Format seconds into human-readable duration."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    secs = seconds % 60
+    if minutes < 60:
+        return f"{minutes}m {secs:.0f}s"
+    hours = minutes // 60
+    mins = minutes % 60
+    return f"{hours}h {mins}m"
+
+
 def _print_summary(state, console: Console) -> None:
+    from collections import Counter
+    from rich.panel import Panel
+
+    log = structlog.get_logger("orchestrator.summary")
+
+    # --- 1. Pipeline Steps Table ---
     table = Table(title=f"Run {state.run_id} — {state.feature_request[:60]}")
     table.add_column("Phase / Step", style="bold")
     table.add_column("Status")
@@ -273,13 +300,150 @@ def _print_summary(state, console: Console) -> None:
         table.add_row(phase_name, status_str, cost_str, error_str)
 
     console.print(table)
+
+    # --- 2. Agents Used Table ---
+    from orchestrator.roles import ROLE_REGISTRY
+
+    # Collect unique roles from workflow tasks and spawn history
+    role_counter: Counter[str] = Counter()
+    role_costs: dict[str, float] = {}
+
+    for task in state.workflow_tasks:
+        role_val = task.assigned_role.value if hasattr(task.assigned_role, "value") else str(task.assigned_role)
+        role_counter[role_val] += 1
+
+    for spawn in state.spawn_history:
+        role_counter[spawn.spawned_role] += 1
+        role_costs[spawn.spawned_role] = role_costs.get(spawn.spawned_role, 0.0) + spawn.cost_usd
+
+    if role_counter:
+        from orchestrator.models import AgentRole
+
+        agent_table = Table(title="Agents Deployed")
+        agent_table.add_column("#", style="dim", width=3)
+        agent_table.add_column("Agent", style="bold")
+        agent_table.add_column("Specialty", style="dim")
+        agent_table.add_column("Invocations", justify="right")
+
+        for idx, (role_val, count) in enumerate(role_counter.most_common(), 1):
+            try:
+                role_enum = AgentRole(role_val)
+                role_def = ROLE_REGISTRY.get(role_enum)
+                title = role_def.title if role_def else role_val.replace("_", " ").title()
+                specialty = role_def.responsibility if role_def else "-"
+            except ValueError:
+                title = role_val.replace("_", " ").title()
+                specialty = "-"
+            agent_table.add_row(str(idx), title, specialty[:70], str(count))
+
+        console.print(agent_table)
+
+    # --- 3. Task Timeline (per-task durations) ---
+    tasks_with_timing = [
+        t for t in state.workflow_tasks
+        if t.started_at and t.completed_at
+    ]
+    if tasks_with_timing:
+        timeline_table = Table(title="Task Timeline")
+        timeline_table.add_column("Task", style="bold")
+        timeline_table.add_column("Agent Role")
+        timeline_table.add_column("Duration", justify="right")
+        timeline_table.add_column("Status")
+
+        for task in tasks_with_timing:
+            duration_secs = (task.completed_at - task.started_at).total_seconds()
+            role_val = task.assigned_role.value if hasattr(task.assigned_role, "value") else str(task.assigned_role)
+            status_str = task.status.value if hasattr(task.status, "value") else str(task.status)
+            color = "green" if status_str == "completed" else "red" if status_str == "failed" else "yellow"
+            timeline_table.add_row(
+                (task.description or task.task_id)[:50],
+                role_val.replace("_", " ").title(),
+                _format_duration(duration_secs),
+                f"[{color}]{status_str}[/{color}]",
+            )
+
+        console.print(timeline_table)
+
+    # --- 4. Spawn History (if any sub-agents were spawned) ---
+    if state.spawn_history:
+        spawn_table = Table(title="Spawned Sub-Agents")
+        spawn_table.add_column("Parent Step", style="bold")
+        spawn_table.add_column("Spawned Role")
+        spawn_table.add_column("Reason", style="dim")
+        spawn_table.add_column("Cost (USD)", justify="right")
+        spawn_table.add_column("Result")
+
+        for spawn in state.spawn_history:
+            result_str = "[green]OK[/green]" if spawn.success else "[red]FAIL[/red]"
+            cost_str = f"${spawn.cost_usd:.4f}" if spawn.cost_usd else "-"
+            spawn_table.add_row(
+                spawn.parent_step,
+                spawn.spawned_role.replace("_", " ").title(),
+                (spawn.reason or "-")[:50],
+                cost_str,
+                result_str,
+            )
+        console.print(spawn_table)
+
+    # --- 5. Overall Summary ---
+    total_agents = len(role_counter)
+    total_invocations = sum(role_counter.values())
+    completed_phases = sum(1 for p in state.phases.values() if p.status == PhaseStatus.COMPLETED)
+    failed_phases = sum(1 for p in state.phases.values() if p.status == PhaseStatus.FAILED)
+    total_phases = len(state.phases)
+
+    # Calculate total wall-clock time from task timestamps
+    all_starts = [t.started_at for t in state.workflow_tasks if t.started_at]
+    all_ends = [t.completed_at for t in state.workflow_tasks if t.completed_at]
+    wall_clock_str = ""
+    wall_clock_secs = 0.0
+    if all_starts and all_ends:
+        wall_clock_secs = (max(all_ends) - min(all_starts)).total_seconds()
+        wall_clock_str = f" | Wall clock: {_format_duration(wall_clock_secs)}"
+
     tokens_str = ""
     total_tokens = state.total_input_tokens + state.total_output_tokens
     if total_tokens > 0:
         tokens_str = f" | Tokens: {total_tokens:,} ({state.total_input_tokens:,} in / {state.total_output_tokens:,} out)"
-    console.print(f"Workflow: {state.workflow_type.value} | Total cost: ${state.total_cost_usd:.4f}{tokens_str} | Review cycles: {state.review_cycles}")
-    console.print(f"Artifacts: {state.workspace_dir}/artifacts/")
-    console.print(f"Log: {state.workspace_dir}/logs/run-{state.run_id}.jsonl")
+
+    routing_str = f" | Mode: {state.routing_mode}" if getattr(state, "routing_mode", None) else ""
+    summary_lines = [
+        f"Workflow: {state.workflow_type.value} | Steps: {completed_phases}/{total_phases} completed"
+        + (f" ({failed_phases} failed)" if failed_phases else "")
+        + routing_str,
+        f"Agents: {total_agents} unique, {total_invocations} total invocations | "
+        f"Total cost: ${state.total_cost_usd:.4f}{tokens_str}{wall_clock_str}",
+        f"Review cycles: {state.review_cycles}",
+        f"Artifacts: {state.workspace_dir}/artifacts/",
+        f"Log: {state.workspace_dir}/logs/run-{state.run_id}.jsonl",
+    ]
+
+    console.print(Panel("\n".join(summary_lines), title="Run Summary", border_style="cyan"))
+
+    # --- 6. Log the summary ---
+    log.info(
+        "orchestration_complete",
+        run_id=state.run_id,
+        workflow_type=state.workflow_type.value,
+        total_agents=total_agents,
+        total_invocations=total_invocations,
+        agents_used=[
+            {
+                "role": role_val,
+                "invocations": count,
+            }
+            for role_val, count in role_counter.most_common()
+        ],
+        completed_phases=completed_phases,
+        failed_phases=failed_phases,
+        total_phases=total_phases,
+        total_cost_usd=round(state.total_cost_usd, 4),
+        total_tokens=total_tokens,
+        input_tokens=state.total_input_tokens,
+        output_tokens=state.total_output_tokens,
+        wall_clock_seconds=round(wall_clock_secs, 2),
+        review_cycles=state.review_cycles,
+    )
 
 
 def _print_orchestration_plan(plan, console: Console) -> None:
@@ -501,6 +665,9 @@ def main() -> None:
         config.max_concurrent_agents = args.max_concurrent_agents
     if args.checklist_verify is not None:
         config.checklist_verify = args.checklist_verify
+    if args.mode:
+        from orchestrator.model_routing import RoutingMode, apply_routing_mode
+        apply_routing_mode(config, RoutingMode(args.mode))
     console = Console()
 
     # Self-orchestrate: let the AI design the pipeline
@@ -513,6 +680,9 @@ def main() -> None:
         feature_request = args.feature_request
         project_root = Path.cwd()
 
+        # Use routing-mode-aware model for self-orchestrate agents
+        _so_model = config.agents["architect"].model if "architect" in config.agents else None
+
         # Phase 1: Clarifying questions loop
         if not args.yes:
             conversation: list[tuple[str, str]] = []
@@ -523,6 +693,7 @@ def main() -> None:
                     feature_request=args.feature_request,
                     conversation=conversation,
                     project_root=project_root,
+                    model_override=_so_model,
                 ))
 
                 if result.ready or not result.questions:
@@ -560,7 +731,7 @@ def main() -> None:
 
         # Phase 2: Pipeline design
         console.print("[bold cyan]Self-Orchestrate:[/bold cyan] Designing the optimal pipeline...\n")
-        plan = asyncio.run(self_orchestrate(feature_request, project_root=project_root))
+        plan = asyncio.run(self_orchestrate(feature_request, project_root=project_root, model_override=_so_model))
 
         # Phase 3: Interactive approval / revision loop
         while True:
@@ -592,6 +763,7 @@ def main() -> None:
                 current_plan=plan,
                 user_feedback=answer,
                 project_root=project_root,
+                model_override=_so_model,
             ))
 
         workflow_type = plan.workflow_type

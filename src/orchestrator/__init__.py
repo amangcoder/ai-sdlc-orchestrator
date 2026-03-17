@@ -1,3 +1,7 @@
 """AI SDLC Orchestrator — coordinates AI agents through a complete Software Development Life Cycle."""
 
-__version__ = "0.1.0"
+try:
+    from orchestrator._version import __version__
+except ModuleNotFoundError:
+    # Editable install or running from source without build — fall back
+    __version__ = "0.0.0.dev0"

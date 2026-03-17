@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "Priority": {
+      "enum": [
+        "must",
+        "should",
+        "could"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "TestCase": {
+      "properties": {
+        "id": {
+          "pattern": "^TC-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "category": {
+          "pattern": "^(unit|integration|e2e|security|performance|accessibility)$",
+          "title": "Category",
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority"
+        },
+        "steps": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        },
+        "expected_result": {
+          "minLength": 1,
+          "title": "Expected Result",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "category",
+        "priority",
+        "steps",
+        "expected_result"
+      ],
+      "title": "TestCase",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "test_strategy": {
+      "minLength": 20,
+      "title": "Test Strategy",
+      "type": "string"
+    },
+    "test_cases": {
+      "items": {
+        "$ref": "#/$defs/TestCase"
+      },
+      "minItems": 1,
+      "title": "Test Cases",
+      "type": "array"
+    },
+    "coverage_targets": {
+      "additionalProperties": true,
+      "title": "Coverage Targets",
+      "type": "object"
+    },
+    "risk_areas": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risk Areas",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "test_strategy",
+    "test_cases",
+    "summary"
+  ],
+  "title": "QAPlan",
+  "type": "object"
+}

@@ -1,10 +1,10 @@
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
 
 [project]
 name = "ai-sdlc-orchestrator"
-version = "0.1.0"
+dynamic = ["version"]
 description = "AI SDLC Orchestrator — coordinates AI agents through a complete Software Development Life Cycle"
 requires-python = ">=3.11"
 dependencies = [
@@ -42,6 +42,15 @@ dev = [
 orchestrate = "orchestrator.main:main"
 orchestrate-watchdog = "orchestrator.watchdog:main"
 orchestrate-dashboard = "orchestrator.dashboard.cli:main"
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+local_scheme = "no-local-version"
+
+[tool.hatch.build.hooks.vcs]
+version-file = "src/orchestrator/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orchestrator"]

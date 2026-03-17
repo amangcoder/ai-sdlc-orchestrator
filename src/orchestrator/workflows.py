@@ -516,22 +516,41 @@ def parse_custom_workflow(definition: str, name: str = "Custom Workflow") -> Wor
         raise ValueError("No workflow steps found in definition")
 
     # Strip schema-validated artifacts from roles that don't own them.
-    # LLMs generating custom workflows often assign "review" as an output
-    # of the Implementation step, but that artifact belongs to a dedicated
-    # Code Review step.  Implementation agents may write a self-review
-    # file that doesn't conform to the review schema, causing validation
-    # failures.
+    # LLMs generating custom workflows often mis-assign artifacts to the
+    # wrong step (e.g. benchmark_report on a QA step, review on an
+    # Implementation step).  This causes the step to fail when the agent
+    # can't produce an artifact it doesn't own.
     # Map: artifact name → set of roles that legitimately produce it.
     # Any other role that claims to produce these artifacts gets stripped.
     _ARTIFACT_OWNERS: dict[str, frozenset[AgentRole]] = {
-        "review": frozenset({
-            AgentRole.BACKEND_CODE_REVIEWER,
-            AgentRole.FRONTEND_CODE_REVIEWER,
-        }),
-        "qa_report": frozenset({
-            AgentRole.QA_PLANNER,
-            AgentRole.QA_EXECUTOR,
-        }),
+        "prd": frozenset({AgentRole.PRODUCT_MANAGER}),
+        "architecture": frozenset({AgentRole.SOFTWARE_ARCHITECT}),
+        "engineering_plan": frozenset({AgentRole.PRINCIPAL_ENGINEER}),
+        "tasks": frozenset({AgentRole.PRINCIPAL_ENGINEER, AgentRole.TECHNICAL_PROJECT_MANAGER}),
+        "review": frozenset({AgentRole.BACKEND_CODE_REVIEWER, AgentRole.FRONTEND_CODE_REVIEWER}),
+        "qa_report": frozenset({AgentRole.QA_PLANNER, AgentRole.QA_EXECUTOR}),
+        "qa_plan": frozenset({AgentRole.QA_PLANNER}),
+        "benchmark_report": frozenset({AgentRole.CACHING_PERFORMANCE_ENGINEER}),
+        "threat_model": frozenset({AgentRole.SECURITY_ENGINEER}),
+        "vulnerability_report": frozenset({AgentRole.SECURITY_ENGINEER}),
+        "api_contract": frozenset({AgentRole.API_CONTRACT_DESIGNER}),
+        "migration_plan": frozenset({AgentRole.MIGRATION_ENGINEER}),
+        "ux_spec": frozenset({AgentRole.UX_SPECIFIER}),
+        "behavioral_review": frozenset({AgentRole.USER_BEHAVIOR_PSYCHOLOGIST}),
+        "market_research": frozenset({AgentRole.MARKET_RESEARCHER}),
+        "competitor_research": frozenset({AgentRole.COMPETITOR_RESEARCHER}),
+        "field_specialist_review": frozenset({AgentRole.FIELD_SPECIALIST}),
+        "accessibility_audit": frozenset({AgentRole.ACCESSIBILITY_AUDITOR}),
+        "release_plan": frozenset({AgentRole.RELEASE_ENGINEER}),
+        "load_test_report": frozenset({AgentRole.LOAD_TEST_ENGINEER}),
+        "compliance_report": frozenset({AgentRole.COMPLIANCE_AUDITOR}),
+        "dependency_audit": frozenset({AgentRole.DEPENDENCY_AUDITOR}),
+        "integration_test_plan": frozenset({AgentRole.INTEGRATION_TEST_ENGINEER}),
+        "legal_review": frozenset({AgentRole.LEGAL_ADVISOR}),
+        "tech_debt_inventory": frozenset({AgentRole.TECH_DEBT_ASSESSOR}),
+        "incident_report": frozenset({AgentRole.INCIDENT_ANALYST}),
+        "debate_position": frozenset({AgentRole.DEEP_RESEARCHER, AgentRole.BRAINSTORMER}),
+        "debate_conclusion": frozenset({AgentRole.MEDIATOR}),
     }
     for step in steps:
         stripped_outputs: list[str] = []

@@ -27,6 +27,8 @@ class ValidationResult:
     errors: list[str]
     warnings: list[str] = field(default_factory=list)
     artifact_name: str = ""
+    schema_errors: list[str] = field(default_factory=list)
+    pydantic_errors: list[str] = field(default_factory=list)
 
 
 def _camel_to_snake(name: str) -> str:
@@ -100,18 +102,20 @@ def validate_artifact_file(
                 pass
 
     # Layer 1: JSON Schema validation
-    schema_errors, schema_warnings = _validate_json_schema(data, artifact_name)
-    errors.extend(schema_errors)
+    schema_errs, schema_warnings = _validate_json_schema(data, artifact_name)
+    errors.extend(schema_errs)
 
     # Layer 2: Pydantic model validation
-    pydantic_errors = _validate_pydantic(data, artifact_name)
-    errors.extend(pydantic_errors)
+    pydantic_errs = _validate_pydantic(data, artifact_name)
+    errors.extend(pydantic_errs)
 
     return ValidationResult(
         valid=len(errors) == 0,
         errors=errors,
         warnings=schema_warnings,
         artifact_name=artifact_name,
+        schema_errors=schema_errs,
+        pydantic_errors=pydantic_errs,
     )
 
 

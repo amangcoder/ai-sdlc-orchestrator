@@ -1,0 +1,78 @@
+{
+  "$defs": {
+    "MarketInsight": {
+      "properties": {
+        "area": {
+          "minLength": 1,
+          "title": "Area",
+          "type": "string"
+        },
+        "finding": {
+          "minLength": 10,
+          "title": "Finding",
+          "type": "string"
+        },
+        "confidence": {
+          "pattern": "^(low|medium|high)$",
+          "title": "Confidence",
+          "type": "string"
+        },
+        "sources": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Sources",
+          "type": "array"
+        }
+      },
+      "required": [
+        "area",
+        "finding",
+        "confidence"
+      ],
+      "title": "MarketInsight",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "market_size": {
+      "minLength": 1,
+      "title": "Market Size",
+      "type": "string"
+    },
+    "target_segments": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Target Segments",
+      "type": "array"
+    },
+    "insights": {
+      "items": {
+        "$ref": "#/$defs/MarketInsight"
+      },
+      "title": "Insights",
+      "type": "array"
+    },
+    "risks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "market_size",
+    "target_segments",
+    "summary"
+  ],
+  "title": "MarketResearch",
+  "type": "object"
+}

@@ -172,6 +172,7 @@ class Architecture(BaseModel):
     data_flow: str = Field(min_length=20)
     tech_decisions: list[TechDecision] = Field(min_length=1)
     constraints: list[str] = Field(default_factory=list)
+    directory_structure: dict[str, Any] | None = None
 
 
 # --- Tasks Artifact ---
@@ -916,6 +917,76 @@ class OrchestratorConfig(BaseModel):
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     knowledge_context: KnowledgeContext | None = None
     monitoring: dict[str, Any] = Field(default_factory=dict)
+    routing_mode: str | None = None
+
+
+# --- Market Research Artifact ---
+
+class MarketInsight(BaseModel):
+    area: str = Field(min_length=1)
+    finding: str = Field(min_length=10)
+    confidence: str = Field(pattern=r"^(low|medium|high)$")
+    sources: list[str] = Field(default_factory=list)
+
+
+class MarketResearch(BaseModel):
+    market_size: str = Field(min_length=1)
+    target_segments: list[str] = Field(min_length=1)
+    insights: list[MarketInsight] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    summary: str = Field(min_length=20)
+
+
+# --- Competitor Research Artifact ---
+
+class CompetitorEntry(BaseModel):
+    name: str = Field(min_length=1)
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    differentiators: list[str] = Field(default_factory=list)
+
+
+class CompetitorResearch(BaseModel):
+    competitors: list[CompetitorEntry] = Field(min_length=1)
+    competitive_advantages: list[str] = Field(default_factory=list)
+    market_gaps: list[str] = Field(default_factory=list)
+    summary: str = Field(min_length=20)
+
+
+# --- Field Specialist Review Artifact ---
+
+class DomainFinding(BaseModel):
+    area: str = Field(min_length=1)
+    assessment: str = Field(min_length=10)
+    severity: IssueSeverity
+    recommendation: str = Field(min_length=10)
+
+
+class FieldSpecialistReview(BaseModel):
+    domain: str = Field(min_length=1)
+    findings: list[DomainFinding] = Field(default_factory=list)
+    compliance_notes: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    summary: str = Field(min_length=20)
+
+
+# --- QA Plan Artifact ---
+
+class TestCase(BaseModel):
+    id: str = Field(pattern=r"^TC-\d+$")
+    title: str = Field(min_length=1)
+    category: str = Field(pattern=r"^(unit|integration|e2e|security|performance|accessibility)$")
+    priority: Priority
+    steps: list[str] = Field(min_length=1)
+    expected_result: str = Field(min_length=1)
+
+
+class QAPlan(BaseModel):
+    test_strategy: str = Field(min_length=20)
+    test_cases: list[TestCase] = Field(min_length=1)
+    coverage_targets: dict[str, Any] = Field(default_factory=dict)
+    risk_areas: list[str] = Field(default_factory=list)
+    summary: str = Field(min_length=20)
 
 
 # Maps artifact names to their Pydantic models for validation
@@ -944,6 +1015,12 @@ ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "behavioral_review": BehavioralReview,
     "integration_test_plan": IntegrationTestPlan,
     "end_user_evaluation": EndUserEvaluation,
+    # Research artifacts
+    "market_research": MarketResearch,
+    "competitor_research": CompetitorResearch,
+    "field_specialist_review": FieldSpecialistReview,
+    # QA planning
+    "qa_plan": QAPlan,
     # Debate artifacts
     "debate_position": DebatePosition,
     "debate_conclusion": DebateConclusion,
