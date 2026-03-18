@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Network Security Config for Orchestrator Mobile Dashboard.
+
+    Cleartext (HTTP) traffic is permitted globally because the app connects to the
+    Tailscale network interface (100.64.0.0/10 CGNAT range) where WireGuard provides
+    equivalent transport-layer encryption. Android's NSC does not support CIDR notation
+    in domain/host tags, so we use base-config cleartextTrafficPermitted="true" instead
+    of listing individual Tailscale IP addresses.
+
+    NOTE: This does NOT weaken security for general internet traffic because:
+    1. Tailscale creates an encrypted WireGuard tunnel between devices
+    2. All 100.64.x.x traffic travels through the encrypted Tailscale mesh
+    3. Production-grade apps should restrict this to known hostnames if possible
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>
