@@ -410,7 +410,7 @@ class _EditableJsonTreeNodeState extends State<EditableJsonTreeNode> {
         if (_expanded)
           for (var i = 0; i < list.length; i++)
             EditableJsonTreeNode(
-              key: ValueKey('edit_${label}_$i_${widget.depth}'),
+              key: ValueKey('edit_${label}_${i}_${widget.depth}'),
               label: '[$i]',
               value: list[i],
               depth: widget.depth + 1,

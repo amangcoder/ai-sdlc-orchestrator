@@ -184,7 +184,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   controller: _apiKeyController,
                   obscureText: _obscureApiKey,
                   decoration: InputDecoration(
-                    labelText: 'API Key',
+                    labelText: 'API Key (optional)',
                     border: const OutlineInputBorder(),
                     prefixIcon: const Icon(Icons.key),
                     suffixIcon: IconButton(
@@ -200,12 +200,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ),
                   autocorrect: false,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'API key is required';
-                    }
-                    return null;
-                  },
+                  validator: (_) => null,
                 ),
                 const SizedBox(height: 24),
 

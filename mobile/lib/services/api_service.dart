@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import '../models/run_summary.dart';
 import '../models/run_detail.dart';
 import '../models/config_model.dart';
+import '../models/directory_entry.dart';
 import '../services/secure_storage_service.dart';
 
 // Typed exceptions
@@ -241,6 +242,22 @@ class ApiService {
       final Response<dynamic> response =
           await _dio.get<dynamic>('/api/v1/config');
       return ConfigModel.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  Future<List<DirectoryEntry>> getDirectories() async {
+    try {
+      final Response<dynamic> response =
+          await _dio.get<dynamic>('/api/v1/directories');
+      final Map<String, dynamic> data =
+          response.data as Map<String, dynamic>;
+      final List<dynamic> list = data['directories'] as List<dynamic>;
+      return list
+          .map((dynamic e) =>
+              DirectoryEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
     } on DioException catch (e) {
       throw _mapError(e);
     }
