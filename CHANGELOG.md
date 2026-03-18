@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-03-18
+
+### Fixed
+
+**MCP Propagation**
+- Propagate `mcp_servers` config into `DebateEngine` so debate-phase agents (advocates, critics, mediator) can access MCP knowledge tools
+- Pass `mcp_servers` from `OrchestratorEngine` into `DebateEngine` constructor
+
+**Knowledge Watcher Robustness**
+- Add `_rebuild_lock` and `_rebuild_pending` flag to serialize rebuilds and coalesce back-to-back requests — prevents concurrent rebuilds from corrupting the index
+- Expose `failed`, `failure_error`, and `alive` properties for health inspection
+- Auto-restart watcher in `WorkflowEngine` if it dies unexpectedly instead of silently losing live-index updates
+- Log full traceback (`exc_info=True`) when the watch loop dies
+
+**Validation Fixes**
+- Fix `Architecture.data_flow` validator: switch from `mode="before"` to `mode="after"` and remove `min_length` constraint from the `Field()` so list-format data flows no longer fail validation
+- Move length check into the validator body (only enforced for string format)
+
+### Added
+
+**Role-Specific MCP Tool Guidance**
+- Add per-role MCP tool guidance (`_MCP_ROLE_GUIDANCE` dict) covering all SDLC roles: PM, architect, principal engineer, TPM, engineers, QA, reviewers, security, and specialized roles
+- Each role gets tailored instructions on which MCP tools to use and in what order
+- Reusable `_ARTIFACT_VALIDATION_BLOCK` template injected into all artifact-producing roles
+
+**Expanded MCP Tool Documentation in Prompts**
+- Document pipeline artifact tools (`get_artifact_schema`, `get_artifact_store_path`, `validate_artifact_draft`, `get_cumulative_context`) in the shared MCP reference block
+- Document directory/pattern/search tools (`get_directory_tree`, `get_code_patterns`, `find_template_file`, `semantic_search`, `explore_graph`, `get_feature_context`, `get_static_data_schema`)
+- Add `semantic_search` and `explore_graph` references to exploration instructions for all depth levels
+
+**Inter-Wave Knowledge Rebuild**
+- Rebuild the knowledge index between implementation waves so later-wave agents discover symbols created by earlier waves
+- Uses fast mode (`skip_vectors=True, skip_features=True`) to minimize rebuild latency
+
+**Agent Tool Discipline**
+- Inject MCP tool priority and Bash restriction guidance into the autonomous agent prefix — agents now prefer MCP tools over Glob/Grep/Bash for exploration
+
+---
+
 ## [0.3.0] - 2026-03-18
 
 ### Added
