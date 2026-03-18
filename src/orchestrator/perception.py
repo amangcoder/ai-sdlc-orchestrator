@@ -223,6 +223,7 @@ async def enhance_prompt(
             workspace_dir=invocation.workspace_dir,
             project_root=invocation.project_root,
             enhanced_perception=False,  # prevent recursion
+            display_name=f"perception:{agent_name}",
         )
 
         try:

@@ -38,6 +38,7 @@ class DebateEngine:
         project_root: Path,
         run_logger: RunLogger | None = None,
         dry_run: bool = False,
+        mcp_servers: dict[str, Any] | None = None,
     ) -> None:
         self.config = config
         self.debate_config = config.debate
@@ -45,6 +46,7 @@ class DebateEngine:
         self.project_root = project_root
         self.run_logger = run_logger
         self.dry_run = dry_run
+        self.mcp_servers = mcp_servers
         self.artifacts_dir = workspace_dir / "artifacts"
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
 
@@ -221,6 +223,7 @@ class DebateEngine:
                 workspace_dir=str(self.workspace_dir),
                 project_root=str(self.project_root),
                 display_name=agent["agent_id"],
+                mcp_servers=self.mcp_servers,
             ))
 
         results = await invoke_agents_parallel(
@@ -328,6 +331,7 @@ class DebateEngine:
                 workspace_dir=str(self.workspace_dir),
                 project_root=str(self.project_root),
                 display_name=agent["agent_id"],
+                mcp_servers=self.mcp_servers,
             ))
 
         results = await invoke_agents_parallel(
@@ -422,6 +426,7 @@ class DebateEngine:
             workspace_dir=str(self.workspace_dir),
             project_root=str(self.project_root),
             display_name="mediator",
+            mcp_servers=self.mcp_servers,
         )
 
         result = await invoke_agent(invocation)

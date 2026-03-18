@@ -100,18 +100,41 @@ class KnowledgeWatcher:
         self._stop_event = asyncio.Event()
         self._rebuild_count = 0
         self._last_rebuild_time: float = 0.0
+        self._rebuild_lock = asyncio.Lock()
+        self._rebuild_pending = False
+        self._failed = False
+        self._failure_error: str | None = None
 
     @property
     def rebuild_count(self) -> int:
         return self._rebuild_count
 
+    @property
+    def failed(self) -> bool:
+        """True if the watch loop died due to an unexpected error."""
+        return self._failed
+
+    @property
+    def failure_error(self) -> str | None:
+        """Error message if the watcher failed, else None."""
+        return self._failure_error
+
+    @property
+    def alive(self) -> bool:
+        """True if the watcher task is still running."""
+        return self._task is not None and not self._task.done()
+
     async def start(self) -> None:
         """Start watching for file changes in the background."""
-        if self._task is not None:
+        if self._task is not None and not self._task.done():
             logger.warning("KnowledgeWatcher already running")
             return
 
+        # Reset state for a fresh start (handles restart after failure)
         self._stop_event.clear()
+        self._failed = False
+        self._failure_error = None
+        self._rebuild_pending = False
         self._task = asyncio.create_task(self._watch_loop())
         logger.info(
             f"Knowledge watcher started (debounce={self.debounce_seconds}s, "
@@ -137,7 +160,7 @@ class KnowledgeWatcher:
     async def _watch_loop(self) -> None:
         """Core watch loop: detect changes, debounce, rebuild."""
         try:
-            from watchfiles import awatch, Change
+            from watchfiles import awatch
         except ImportError:
             logger.warning(
                 "watchfiles not installed — knowledge watcher disabled. "
@@ -145,7 +168,6 @@ class KnowledgeWatcher:
             )
             return
 
-        # Build the watch filter to exclude irrelevant directories
         watch_path = str(self.project_root)
 
         try:
@@ -183,12 +205,37 @@ class KnowledgeWatcher:
                     f"rebuilding ({sample_desc})"
                 )
 
-                await self._rebuild()
+                await self._guarded_rebuild()
 
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            logger.error(f"Knowledge watcher error: {e}")
+            self._failed = True
+            self._failure_error = str(e)
+            logger.error(f"Knowledge watcher died: {e}", exc_info=True)
+
+    async def _guarded_rebuild(self) -> None:
+        """Serialize rebuilds and coalesce back-to-back requests.
+
+        If a rebuild is already in progress, we flag that another one is
+        needed and return immediately.  When the in-flight rebuild finishes
+        it checks the flag and runs one more rebuild to pick up the latest
+        changes — but never more than one queued rebuild at a time.
+        """
+        if self._rebuild_lock.locked():
+            # A rebuild is already running — just mark that we need another
+            self._rebuild_pending = True
+            logger.debug("Knowledge rebuild already in progress, queuing follow-up")
+            return
+
+        async with self._rebuild_lock:
+            await self._rebuild()
+
+            # Drain: if changes arrived while we were rebuilding, do one more pass
+            while self._rebuild_pending:
+                self._rebuild_pending = False
+                logger.info("Knowledge watcher: running queued follow-up rebuild")
+                await self._rebuild()
 
     async def _rebuild(self) -> None:
         """Trigger a knowledge rebuild and update the brief."""
