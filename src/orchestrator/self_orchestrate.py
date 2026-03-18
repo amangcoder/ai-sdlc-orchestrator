@@ -14,7 +14,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from orchestrator.models import ModelTier, WorkflowType
+from orchestrator.models import ModelTier, SpeedMode, WorkflowType
 
 logger = logging.getLogger(__name__)
 
@@ -41,6 +41,7 @@ class OrchestrationPlan:
     enhanced_perception: bool = False
     rationale: str = ""
     cost_usd: float = 0.0
+    speed_mode: SpeedMode = SpeedMode.STANDARD
 
 
 # ---------------------------------------------------------------------------
@@ -197,6 +198,63 @@ def _assess_codebase(project_root: Path | None) -> str:
         parts.append(f"- **Signals**: {', '.join(signals)}")
 
     return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Speed-mode advisory section builder
+# ---------------------------------------------------------------------------
+
+def _build_speed_mode_section(speed_mode: SpeedMode) -> str:
+    """Return a formatted advisory instruction block for the given speed mode.
+
+    STANDARD returns an empty string, guaranteeing zero regression for
+    callers that pass no speed_mode argument.
+    """
+    if speed_mode == SpeedMode.STANDARD:
+        return ""
+
+    if speed_mode == SpeedMode.TURBO:
+        return """\
+## Speed Mode: TURBO
+
+You are operating in TURBO mode. Design minimal, fast pipelines:
+- Prefer built-in workflows over custom workflows
+- Skip QA, code review, TPM, principal_engineer, and debate agents
+- Limit the pipeline to 4 steps or fewer
+- Never add extra verification agents, debate steps, or additional reviewers
+- Choose the simplest workflow that can accomplish the task"""
+
+    if speed_mode == SpeedMode.THOROUGH:
+        return """\
+## Speed Mode: THOROUGH
+
+You are operating in THOROUGH mode. Prefer deeper analysis and extra verification:
+- When the task involves user-facing UI or accessibility concerns, prefer adding \
+an accessibility_auditor step when relevant
+- When the task involves security-sensitive code, APIs, or data handling, prefer \
+adding a security_engineer step when relevant
+- When complex integration points are present, prefer adding an \
+integration_test_engineer step when relevant
+- Prefer deeper analysis and richer pipelines over speed"""
+
+    if speed_mode == SpeedMode.PARANOID:
+        return """\
+## Speed Mode: PARANOID
+
+You are operating in PARANOID mode. Always prefer maximum verification:
+- Always include a debate step when designing custom workflows
+- Prefer adding dual-reviewers: both frontend_reviewer and backend_reviewer \
+when applicable
+- When the task involves performance or load concerns, prefer adding a \
+load_test_engineer when applicable
+- When the task involves compliance, regulatory, or sensitive data requirements, \
+prefer adding a compliance_auditor when applicable
+- When the task has external dependencies or packages, prefer adding a \
+dependency_auditor when applicable
+- Prefer comprehensive pipelines over minimal ones"""
+
+    # AUTO or any unknown value — no advisory (caller should resolve AUTO first)
+    return ""
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +489,8 @@ These are the agents currently installed and available for use in custom workflo
 
 {codebase_profile}
 
+{speed_mode_section}
+
 ## Custom workflow format
 
 ```
@@ -588,6 +648,8 @@ You are a **Pipeline Architect** revising an orchestration plan based on user fe
 
 {user_feedback}
 
+{speed_mode_section}
+
 ---
 
 Produce a revised JSON plan that addresses the user's feedback. Same format:
@@ -637,6 +699,8 @@ async def revise_plan(
     user_feedback: str,
     project_root: Path | None = None,
     model_override: ModelTier | None = None,
+    *,
+    speed_mode: SpeedMode = SpeedMode.STANDARD,
 ) -> OrchestrationPlan:
     """Revise an orchestration plan based on user feedback."""
     from orchestrator.agents import AgentInvocation, _invoke_via_cli, _invoke_via_sdk
@@ -646,6 +710,7 @@ async def revise_plan(
         "custom_workflow": current_plan.custom_workflow,
         "enhanced_perception": current_plan.enhanced_perception,
         "rationale": current_plan.rationale,
+        "speed_mode": current_plan.speed_mode.value,
     }, indent=2)
 
     agent_catalog = _discover_agents()
@@ -657,6 +722,7 @@ async def revise_plan(
         agent_catalog=agent_catalog,
         current_plan_json=current_plan_json,
         user_feedback=user_feedback,
+        speed_mode_section=_build_speed_mode_section(speed_mode),
     )
 
     logger.info(f"[Self-Orchestrate] Revising plan based on feedback: {user_feedback[:80]}...")
@@ -682,7 +748,7 @@ async def revise_plan(
             logger.warning(f"[Self-Orchestrate] Revision failed ({elapsed:.1f}s): {result.error}")
             return current_plan
 
-        plan = _parse_plan(result.output, current_plan.cost_usd + result.cost_usd)
+        plan = _parse_plan(result.output, current_plan.cost_usd + result.cost_usd, speed_mode=speed_mode)
         logger.info(
             f"[Self-Orchestrate] Plan revised ({elapsed:.1f}s, "
             f"${result.cost_usd:.4f}): {plan.workflow_type.value}"
@@ -699,6 +765,8 @@ async def self_orchestrate(
     feature_request: str,
     project_root: Path | None = None,
     model_override: ModelTier | None = None,
+    *,
+    speed_mode: SpeedMode = SpeedMode.STANDARD,
 ) -> OrchestrationPlan:
     """Analyze a feature request and generate the optimal orchestration plan.
 
@@ -717,6 +785,7 @@ async def self_orchestrate(
         feature_request=feature_request,
         agent_catalog=agent_catalog,
         codebase_profile=codebase_profile,
+        speed_mode_section=_build_speed_mode_section(speed_mode),
     )
 
     logger.info("[Self-Orchestrate] Analyzing feature request to design optimal pipeline...")
@@ -747,9 +816,10 @@ async def self_orchestrate(
                 workflow_type=WorkflowType.FEATURE_DEVELOPMENT,
                 rationale="Self-orchestrate failed, using default workflow",
                 cost_usd=result.cost_usd,
+                speed_mode=speed_mode,
             )
 
-        plan = _parse_plan(result.output, result.cost_usd)
+        plan = _parse_plan(result.output, result.cost_usd, speed_mode=speed_mode)
         logger.info(
             f"[Self-Orchestrate] Pipeline designed ({elapsed:.1f}s, "
             f"${result.cost_usd:.4f}): {plan.workflow_type.value}"
@@ -768,6 +838,7 @@ async def self_orchestrate(
         return OrchestrationPlan(
             workflow_type=WorkflowType.FEATURE_DEVELOPMENT,
             rationale=f"Self-orchestrate error: {exc}",
+            speed_mode=speed_mode,
         )
 
 
@@ -775,7 +846,12 @@ async def self_orchestrate(
 # Response parsing
 # ---------------------------------------------------------------------------
 
-def _parse_plan(raw_output: str, cost_usd: float) -> OrchestrationPlan:
+def _parse_plan(
+    raw_output: str,
+    cost_usd: float,
+    *,
+    speed_mode: SpeedMode = SpeedMode.STANDARD,
+) -> OrchestrationPlan:
     """Parse the LLM's JSON response into an OrchestrationPlan."""
     text = raw_output.strip()
     if text.startswith("```"):
@@ -811,4 +887,5 @@ def _parse_plan(raw_output: str, cost_usd: float) -> OrchestrationPlan:
         enhanced_perception=bool(data.get("enhanced_perception", False)),
         rationale=data.get("rationale", ""),
         cost_usd=cost_usd,
+        speed_mode=speed_mode,
     )

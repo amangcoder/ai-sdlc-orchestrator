@@ -2,6 +2,71 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-03-18
+
+### Fixed
+
+**MCP Propagation**
+- Propagate `mcp_servers` config into `DebateEngine` so debate-phase agents (advocates, critics, mediator) can access MCP knowledge tools
+- Pass `mcp_servers` from `OrchestratorEngine` into `DebateEngine` constructor
+
+**Knowledge Watcher Robustness**
+- Add `_rebuild_lock` and `_rebuild_pending` flag to serialize rebuilds and coalesce back-to-back requests — prevents concurrent rebuilds from corrupting the index
+- Expose `failed`, `failure_error`, and `alive` properties for health inspection
+- Auto-restart watcher in `WorkflowEngine` if it dies unexpectedly instead of silently losing live-index updates
+- Log full traceback (`exc_info=True`) when the watch loop dies
+
+**Validation Fixes**
+- Fix `Architecture.data_flow` validator: switch from `mode="before"` to `mode="after"` and remove `min_length` constraint from the `Field()` so list-format data flows no longer fail validation
+- Move length check into the validator body (only enforced for string format)
+
+### Added
+
+**Role-Specific MCP Tool Guidance**
+- Add per-role MCP tool guidance (`_MCP_ROLE_GUIDANCE` dict) covering all SDLC roles: PM, architect, principal engineer, TPM, engineers, QA, reviewers, security, and specialized roles
+- Each role gets tailored instructions on which MCP tools to use and in what order
+- Reusable `_ARTIFACT_VALIDATION_BLOCK` template injected into all artifact-producing roles
+
+**Expanded MCP Tool Documentation in Prompts**
+- Document pipeline artifact tools (`get_artifact_schema`, `get_artifact_store_path`, `validate_artifact_draft`, `get_cumulative_context`) in the shared MCP reference block
+- Document directory/pattern/search tools (`get_directory_tree`, `get_code_patterns`, `find_template_file`, `semantic_search`, `explore_graph`, `get_feature_context`, `get_static_data_schema`)
+- Add `semantic_search` and `explore_graph` references to exploration instructions for all depth levels
+
+**Inter-Wave Knowledge Rebuild**
+- Rebuild the knowledge index between implementation waves so later-wave agents discover symbols created by earlier waves
+- Uses fast mode (`skip_vectors=True, skip_features=True`) to minimize rebuild latency
+
+**Agent Tool Discipline**
+- Inject MCP tool priority and Bash restriction guidance into the autonomous agent prefix — agents now prefer MCP tools over Glob/Grep/Bash for exploration
+
+---
+
+## [0.3.0] - 2026-03-18
+
+### Added
+
+**Speed Modes (`--speed` flag)**
+- Four concrete pipeline-depth modes: `turbo` (4 steps, $0.01–0.03), `standard` (6 steps, $0.05–0.15), `thorough` (8+ steps, $0.20–0.50), `paranoid` (10+ steps, $0.50–2.00)
+- `auto` (default) — single Claude Haiku call classifies the feature request into a complexity tier and maps it to a concrete speed mode in ~1–2 seconds at ~$0.001/run
+- Risk-signal escalation: any mention of auth, payments, PII, encryption, or compliance automatically bumps low tiers (turbo/standard) to `thorough`
+- `SpeedMode` enum in `models.py` with `AUTO` sentinel kept separate from concrete modes
+- `apply_speed_mode()` in `model_routing.py` — validates that `AUTO` is never applied directly
+- `auto_classify_speed()` in `model_routing.py` — async Haiku classifier with 2 s timeout, JSON extraction via regex, risk-flag escalation, and safe fallback to `standard` on any failure
+- `_build_speed_mode_section()` in `self_orchestrate.py` — injects mode-specific advisory instructions into the planning and feedback prompts
+- `speed_mode` field added to `OrchestratorConfig` and `OrchestrationPlan`
+
+**Tests**
+- `tests/test_self_orchestrate_speed.py` — unit tests for `_build_speed_mode_section` covering all five modes
+- `tests/test_model_routing.py` — extended with `apply_speed_mode` and `auto_classify_speed` coverage
+
+**Docs**
+- `CLAUDE.md` updated with Speed Modes section: mode table, auto-classification flow, examples, cost/performance notes, and implementation details
+
+### Changed
+- `.gitignore` extended to exclude `*.new` workspace artefacts
+
+---
+
 ## [0.2.0] - 2026-03-17
 
 ### Added

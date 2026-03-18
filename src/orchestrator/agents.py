@@ -377,6 +377,14 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
         "the file exists using the Read tool.\n\n"
         "NEVER use EnterPlanMode or ExitPlanMode tools. You are not in plan mode — you are executing. "
         "Do NOT write your output to a plan file. Write it to the exact artifact path specified in the instructions.\n\n"
+        "TOOL PRIORITY: If mcp__ai-code-knowledge__* tools are available, you MUST use them for ALL "
+        "codebase exploration (finding files, locating symbols, understanding code). "
+        "DO NOT use Glob, Grep, or Bash (cat/grep/sed/find) for exploration — use the MCP tools instead. "
+        "Start with mcp__ai-code-knowledge__get_project_overview, then use find_symbol/semantic_search/get_implementation_context. "
+        "Only use Read/Edit/Write for actually reading or modifying specific files.\n\n"
+        "NEVER USE BASH FOR FILE OPERATIONS. Use Read (not cat/head/tail), Grep (not grep/rg), "
+        "Glob (not find/ls), Edit (not sed/awk), Write (not echo/cat heredoc). "
+        "The Bash tool is ONLY for running tests, git commands, and build tools.\n\n"
     )
     full_system_prompt = autonomous_prefix + tools_section + (system_prompt or "")
 

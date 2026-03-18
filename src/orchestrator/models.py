@@ -88,6 +88,14 @@ class WorkflowType(str, Enum):
     CUSTOM = "custom"
 
 
+class SpeedMode(str, Enum):
+    TURBO = "turbo"
+    STANDARD = "standard"
+    THOROUGH = "thorough"
+    PARANOID = "paranoid"
+    AUTO = "auto"
+
+
 class AgentRole(str, Enum):
     PRODUCT_MANAGER = "product_manager"
     SOFTWARE_ARCHITECT = "software_architect"
@@ -211,16 +219,18 @@ class DataFlowEntry(BaseModel):
 
 class Architecture(BaseModel):
     components: list[Component] = Field(min_length=1)
-    data_flow: str | list[DataFlowEntry | dict[str, Any]] = Field(min_length=20)
+    data_flow: str | list[DataFlowEntry | dict[str, Any]] = Field()
     tech_decisions: list[TechDecision] = Field(min_length=1)
     constraints: list[str] = Field(default_factory=list)
     directory_structure: dict[str, Any] | list[str] | None = None
 
-    @field_validator("data_flow", mode="before")
+    @field_validator("data_flow", mode="after")
     @classmethod
     def _validate_data_flow(cls, v: Any) -> Any:
-        if isinstance(v, list):
-            return v  # skip min_length check for list format
+        if isinstance(v, str) and len(v) < 20:
+            raise ValueError("String data_flow must be at least 20 characters")
+        if isinstance(v, list) and len(v) < 1:
+            raise ValueError("List data_flow must have at least 1 entry")
         return v
 
 
@@ -937,6 +947,13 @@ class KnowledgeContext(BaseModel):
     file_count: int = 0
 
 
+class TestRunnerConfig(BaseModel):
+    """Configuration for test-runner MCP server integration."""
+    enabled: bool = True
+    server_path: str = ""            # empty = auto-detect from sibling dirs
+    cleanup_mcp_config: bool = True
+
+
 class ExplorationConfig(BaseModel):
     """Configuration for codebase exploration depth."""
     exploration_depth: str = "normal"  # none | minimal | normal | deep
@@ -1009,8 +1026,10 @@ class OrchestratorConfig(BaseModel):
     debate: DebateConfig = Field(default_factory=DebateConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     knowledge_context: KnowledgeContext | None = None
+    test_runner: TestRunnerConfig = Field(default_factory=TestRunnerConfig)
     monitoring: dict[str, Any] = Field(default_factory=dict)
     routing_mode: str | None = None
+    speed_mode: SpeedMode | None = None
 
     @field_validator("max_budget_usd")
     @classmethod

@@ -1049,6 +1049,41 @@ class WorkflowEngine:
                     self._checkpoint_state()
                     self.progress.on_task_complete()
 
+            # Rebuild knowledge index between waves so that later-wave agents
+            # can discover symbols created by earlier waves via MCP tools.
+            if (
+                wave_num < len(waves)
+                and self.config.knowledge.enabled
+                and self.config.knowledge_context
+                and self.config.knowledge_context.mcp_configured
+            ):
+                logger.info(f"  Rebuilding knowledge index after wave {wave_num}...")
+                try:
+                    result = await build_knowledge(
+                        project_root=self.project_root,
+                        aicoder_path=self.config.knowledge.aicoder_path,
+                        timeout_seconds=self.config.knowledge.build_timeout_seconds,
+                        skip_if_fresh_minutes=0,
+                        richness=self.config.knowledge.richness,
+                        skip_vectors=True,   # Skip slow vector phase between waves
+                        skip_features=True,  # Skip slow feature phase between waves
+                    )
+                    if result.success and self.config.knowledge.inject_brief:
+                        brief = synthesize_brief(
+                            result.knowledge_root,
+                            max_files=self.config.knowledge.brief_max_files,
+                            max_symbols=self.config.knowledge.brief_max_symbols,
+                        )
+                        self.config.knowledge_context.brief = brief
+                        self.config.knowledge_context.file_count = result.file_count
+                        logger.info(
+                            f"  Knowledge rebuilt: {result.file_count} files in {result.build_time_ms:.0f}ms"
+                        )
+                    elif not result.success:
+                        logger.warning(f"  Knowledge rebuild failed: {result.error}")
+                except Exception as e:
+                    logger.warning(f"  Knowledge rebuild error (non-fatal): {e}")
+
             # Check if any task in this wave failed
             failed_in_wave = [t for t in wave if t.status == TaskStatus.FAILED]
             if failed_in_wave:
@@ -1287,8 +1322,14 @@ class WorkflowEngine:
 
     async def _start_knowledge_watcher(self) -> None:
         """Start the file-change knowledge watcher for implementation steps."""
-        if self._knowledge_watcher is not None:
+        if self._knowledge_watcher is not None and self._knowledge_watcher.alive:
             return  # Already running
+
+        if self._knowledge_watcher is not None and self._knowledge_watcher.failed:
+            logger.warning(
+                f"Knowledge watcher had died ({self._knowledge_watcher.failure_error}), restarting"
+            )
+            self._knowledge_watcher = None
 
         self._knowledge_watcher = KnowledgeWatcher(
             project_root=self.project_root,
@@ -1309,6 +1350,13 @@ class WorkflowEngine:
         """Stop the file-change knowledge watcher if running."""
         if self._knowledge_watcher is None:
             return
+
+        if self._knowledge_watcher.failed:
+            logger.warning(
+                f"Knowledge watcher had died during execution: "
+                f"{self._knowledge_watcher.failure_error}"
+            )
+
         await self._knowledge_watcher.stop()
         if self._knowledge_watcher.rebuild_count > 0:
             logger.info(
