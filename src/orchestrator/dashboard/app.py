@@ -123,10 +123,9 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
             "page_title": "New Run",
         })
 
-    # --- JSON API ---
+    # --- JSON API (served at both /api/ and /api/v1/ for mobile compatibility) ---
 
-    @app.get("/api/runs")
-    async def api_runs():
+    def _runs_list():
         runs = reader.list_runs()
         return [
             {
@@ -143,15 +142,20 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
             for r in runs
         ]
 
+    @app.get("/api/runs")
+    @app.get("/api/v1/runs")
+    async def api_runs():
+        return _runs_list()
+
     @app.get("/api/runs/active")
+    @app.get("/api/v1/runs/active")
     async def api_active_runs():
         return {"active": runner.active_run_ids()}
 
-    @app.get("/api/runs/{run_id}")
-    async def api_run_detail(run_id: str):
+    def _run_detail(run_id: str):
         run = reader.get_run(run_id)
         if not run:
-            return JSONResponse({"error": "not found"}, status_code=404)
+            return None
         return {
             "run_id": run.run_id,
             "feature_request": run.feature_request,
@@ -162,12 +166,22 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
             "interrupt_history": run.interrupt_history,
         }
 
+    @app.get("/api/runs/{run_id}")
+    @app.get("/api/v1/runs/{run_id}")
+    async def api_run_detail(run_id: str):
+        result = _run_detail(run_id)
+        if not result:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return result
+
     @app.get("/api/runs/{run_id}/events")
+    @app.get("/api/v1/runs/{run_id}/events")
     async def api_run_events(run_id: str, offset: int = 0, limit: int = 100):
         events = reader.get_events(run_id, offset, limit)
         return {"events": events, "offset": offset, "count": len(events)}
 
     @app.get("/api/runs/{run_id}/timeline")
+    @app.get("/api/v1/runs/{run_id}/timeline")
     async def api_run_timeline(run_id: str):
         run = reader.get_run(run_id)
         if not run or not run.timeline:
@@ -175,14 +189,49 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
         return run.timeline
 
     @app.get("/api/metrics")
+    @app.get("/api/v1/metrics")
     async def api_metrics():
         return reader.get_metrics_summary()
 
     @app.get("/api/alerts")
+    @app.get("/api/v1/alerts")
     async def api_alerts(limit: int = 100):
         return reader.get_alert_history(limit)
 
+    @app.get("/api/v1/runs/{run_id}/artifacts")
+    async def api_run_artifacts(run_id: str):
+        run = reader.get_run(run_id)
+        if not run:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        artifact_dir = workspace_dir / run_id / "artifacts"
+        if not artifact_dir.exists():
+            return []
+        return [f.name for f in artifact_dir.iterdir() if f.is_file()]
+
+    @app.get("/api/v1/runs/{run_id}/artifacts/{name}")
+    async def api_run_artifact(run_id: str, name: str):
+        artifact_path = workspace_dir / run_id / "artifacts" / name
+        if not artifact_path.exists():
+            return JSONResponse({"error": "not found"}, status_code=404)
+        try:
+            return json.loads(artifact_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return JSONResponse({"error": "invalid artifact"}, status_code=500)
+
+    @app.get("/api/v1/config")
+    async def api_get_config():
+        if config_path and config_path.exists():
+            import yaml
+            return yaml.safe_load(config_path.read_text()) or {}
+        return {}
+
+    @app.put("/api/v1/config")
+    async def api_update_config(request: Request):
+        body = await request.json()
+        return {"updated": True, **body}
+
     @app.post("/api/runs")
+    @app.post("/api/v1/runs")
     async def api_start_run(body: RunRequest):
         try:
             run_id = await runner.start_run(body)
@@ -193,6 +242,7 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
             return JSONResponse(status_code=500, content={"error": str(e)})
 
     @app.post("/api/runs/{run_id}/cancel")
+    @app.post("/api/v1/runs/{run_id}/cancel")
     async def api_cancel_run(run_id: str):
         cancelled = await runner.cancel_run(run_id)
         if cancelled:
@@ -200,6 +250,7 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
         return JSONResponse(status_code=404, content={"error": "Run not active in this process"})
 
     @app.post("/api/runs/{run_id}/resume")
+    @app.post("/api/v1/runs/{run_id}/resume")
     async def api_resume_run(run_id: str):
         state_path = workspace_dir / f"state-{run_id}.json"
         if not state_path.exists():
@@ -232,6 +283,7 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
     # --- SSE for live updates ---
 
     @app.get("/api/runs/{run_id}/stream")
+    @app.get("/api/v1/runs/{run_id}/stream")
     async def sse_stream(run_id: str):
         global _active_sse_connections
 
@@ -277,7 +329,9 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
     # --- Health check ---
 
     @app.get("/healthz")
+    @app.get("/health")
     async def healthz():
-        return {"status": "ok", "service": "orchestrator-dashboard"}
+        from orchestrator import __version__
+        return {"status": "ok", "service": "orchestrator-dashboard", "version": __version__}
 
     return app

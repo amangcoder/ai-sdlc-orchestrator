@@ -147,6 +147,7 @@ async def start_run(run_request: RunStartRequest, request: Request):
 
     Rate-limited: max 1 request per 5 seconds per source IP.
     Returns HTTP 409 if a run is already active.
+    Returns HTTP 422 if workspace_id is provided but not in the allow-list.
     Returns HTTP 429 if rate limit exceeded.
     """
     # Rate limiting — use client host IP (don't trust X-Forwarded-For)
@@ -159,9 +160,35 @@ async def start_run(run_request: RunStartRequest, request: Request):
             content={"error": "Too many requests — please wait before starting another run"},
         )
 
+    # ── Workspace ID validation ────────────────────────────────────────────
+    # IMPORTANT: resolve workspace_dir_override BEFORE building RunRequest so
+    # RunTracker can apply it before engine initialisation reads config.workspace_dir.
+    workspace_dir_override: str | None = None
+
+    if run_request.workspace_id is not None:
+        from orchestrator.mobile_api.directory_service import resolve_workspace_id
+
+        frozen_dir_map: dict = request.app.state.frozen_dir_map
+        resolved_path = resolve_workspace_id(run_request.workspace_id, frozen_dir_map)
+
+        if resolved_path is None:
+            return JSONResponse(
+                status_code=422,
+                content={"detail": "workspace_id is not a recognised directory"},
+            )
+
+        workspace_dir_override = str(resolved_path)
+
+    # workspace_dir_override is set BEFORE tracker.start_run() is called.
+    # The engine reads config.workspace_dir during initialisation — the
+    # RunTracker override block must execute before engine.__init__.
+
     tracker = request.app.state.tracker
 
-    # Build a RunRequest compatible with the existing RunTracker
+    # Build a RunRequest compatible with the existing RunTracker.
+    # All new fields are forwarded with their exact values:
+    # None means "use config default" — do NOT substitute values here;
+    # that logic lives in RunTracker.start_run().
     from orchestrator.dashboard.runner import RunRequest
 
     run_req = RunRequest(
@@ -173,6 +200,20 @@ async def start_run(run_request: RunStartRequest, request: Request):
         max_budget_usd=run_request.max_budget_usd,
         dry_run=run_request.dry_run,
         resume_run_id=run_request.resume_run_id,
+        # New fields — forwarded as-is
+        workspace_dir_override=workspace_dir_override,
+        self_orchestrate=run_request.self_orchestrate,
+        confirm=run_request.confirm,
+        tech_stack_confirmation=run_request.tech_stack_confirmation,
+        checklist_verify=run_request.checklist_verify,
+        max_concurrent_agents=run_request.max_concurrent_agents if run_request.max_concurrent_agents is not None else 0,
+        mode=run_request.mode,
+        phase=run_request.phase,
+        from_phase=run_request.from_phase,
+        log_format=run_request.log_format,
+        researchers=run_request.researchers,
+        brainstormers=run_request.brainstormers,
+        debate_rounds=run_request.debate_rounds,
     )
 
     try:

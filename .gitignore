@@ -44,3 +44,22 @@ Thumbs.db
 
 .knowledge/
 workspace/
+
+# Flutter / Dart
+mobile/.dart_tool/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/.packages
+mobile/build/
+
+# Android
+mobile/android/.gradle/
+mobile/android/local.properties
+mobile/android/app/debug.keystore
+
+# iOS generated
+mobile/ios/Flutter/Generated.xcconfig
+mobile/ios/Flutter/flutter_export_environment.sh
+mobile/ios/Flutter/ephemeral/
+mobile/ios/Runner/GeneratedPluginRegistrant.h
+mobile/ios/Runner/GeneratedPluginRegistrant.m

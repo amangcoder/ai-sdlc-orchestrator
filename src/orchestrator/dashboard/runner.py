@@ -7,7 +7,7 @@ import logging
 import time
 import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -19,17 +19,41 @@ logger = logging.getLogger(__name__)
 
 
 class RunRequest(BaseModel):
-    """Validated input for starting an orchestration run from the web UI."""
+    """Validated input for starting an orchestration run from the web UI or Mobile API.
 
+    All new fields default to None. None means "use the server config default"
+    for that field — the override logic in RunTracker.start_run() applies the
+    appropriate backend default when None is received.
+
+    IMPORTANT: Use `if value is not None:` checks — NEVER `if value:` — to
+    avoid silently dropping falsy values like False, 0, or empty strings.
+    """
+
+    # ── Existing fields (unchanged — dashboard call sites depend on these) ─
     feature_request: str = Field(..., min_length=1, max_length=10_000)
     workflow_type: str = Field(default="feature_development")
     debate: bool = False
-    knowledge: bool | None = None
+    knowledge: bool | None = None  # tristate: None=inherit, True=on, False=off
     enhanced_perception: bool = False
     max_budget_usd: float = Field(default=50.0, ge=1.0, le=500.0)
     max_concurrent_agents: int = Field(default=0, ge=0, le=100)
     dry_run: bool = False
     resume_run_id: str | None = None
+
+    # ── New fields (all None = use config default) ─────────────────────────
+    workspace_dir_override: str | None = None
+    self_orchestrate: bool | None = None
+    confirm: bool | None = None
+    tech_stack_confirmation: bool | None = None
+    checklist_verify: bool | None = None
+    # Override max_concurrent_agents via nullable field (separate from int default=0)
+    mode: Literal["fast", "superhaiku", "supersonnet", "balanced", "overkill"] | None = None
+    phase: Literal["pm", "architect", "engineer", "qa", "reviewer"] | None = None
+    from_phase: Literal["pm", "architect", "engineer", "qa", "reviewer"] | None = None
+    log_format: Literal["console", "json"] | None = None
+    researchers: int | None = None
+    brainstormers: int | None = None
+    debate_rounds: int | None = None
 
 
 class RunTracker:
@@ -58,16 +82,62 @@ class RunTracker:
 
         config = load_config(self._config_path)
 
-        # Apply web overrides
-        config.confirm = False
-        config.tech_stack_confirmation = False
+        # ── Apply workspace directory override ────────────────────────────
+        if request.workspace_dir_override is not None:
+            config.workspace_dir = request.workspace_dir_override
+
+        # ── Apply flag overrides ──────────────────────────────────────────
+        # CRITICAL: Use `if value is not None:` — NEVER `if value:`.
+        # Falsy values (False, 0) are valid user intentions and must not be dropped.
+
+        # self_orchestrate
+        if request.self_orchestrate is not None:
+            config.self_orchestrate = request.self_orchestrate
+
+        # confirm: backward-compat default is False (dashboard never sends confirm)
+        if request.confirm is not None:
+            config.confirm = request.confirm
+        else:
+            config.confirm = False  # backward compat — legacy dashboard omits this
+
+        # tech_stack_confirmation: backward-compat default is False for web
+        if request.tech_stack_confirmation is not None:
+            config.tech_stack_confirmation = request.tech_stack_confirmation
+        else:
+            config.tech_stack_confirmation = False  # backward compat
+
+        # checklist_verify
+        if request.checklist_verify is not None:
+            config.checklist_verify = request.checklist_verify
+
+        # enhanced_perception (always present — keep existing behavior)
         config.enhanced_perception = request.enhanced_perception
+
+        # max_budget_usd (always present)
         config.max_budget_usd = request.max_budget_usd
+
+        # debate
         config.debate.enabled = request.debate
+
+        # knowledge (tristate: None=inherit, True=on, False=off)
         if request.knowledge is not None:
             config.knowledge.enabled = request.knowledge
+
+        # max_concurrent_agents (legacy field: 0 = "use config default")
         if request.max_concurrent_agents > 0:
             config.max_concurrent_agents = request.max_concurrent_agents
+
+        # routing mode
+        if request.mode is not None:
+            config.routing_mode = request.mode
+
+        # debate sub-settings
+        if request.researchers is not None:
+            config.debate.researcher_count = request.researchers
+        if request.brainstormers is not None:
+            config.debate.brainstormer_count = request.brainstormers
+        if request.debate_rounds is not None:
+            config.debate.max_rounds = request.debate_rounds
 
         # Resolve workflow type
         wf_key = request.workflow_type.lower().replace("-", "_")
@@ -99,7 +169,7 @@ class RunTracker:
         )
 
         task = asyncio.create_task(
-            self._run_wrapper(run_id, engine, request, workflow_type, interrupt_manager)
+            self._run_wrapper(run_id, engine, request, workflow_type, interrupt_manager)  # noqa: E501
         )
         self._tasks[run_id] = task
         self._start_times[run_id] = time.monotonic()
@@ -118,6 +188,8 @@ class RunTracker:
         try:
             await engine.run(
                 request.feature_request,
+                single_phase=request.phase,
+                from_phase=request.from_phase,
                 resume=bool(request.resume_run_id),
                 resume_run_id=request.resume_run_id,
                 workflow_type=workflow_type,

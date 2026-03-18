@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -111,6 +112,58 @@ def create_mobile_app(
     # Store config_path on state for config router access
     app.state.config_path = config_path
 
+    # ── Config loading ─────────────────────────────────────────────────────
+    # Load OrchestratorConfig for directory list and flag forwarding.
+    # On failure, fall back to defaults rather than crashing startup.
+    from orchestrator.config import load_config
+    from orchestrator.models import OrchestratorConfig
+
+    try:
+        config = load_config(config_path)
+    except Exception as exc:
+        logger.warning(
+            "Failed to load config from %s (using defaults): %s", config_path, exc
+        )
+        config = OrchestratorConfig()
+
+    app.state.config = config
+
+    # ── Per-installation directory salt ────────────────────────────────────
+    # Stable UUID used to generate opaque directory IDs. Persisted to disk so
+    # IDs remain consistent across server restarts (mobile clients cache them).
+    salt_file = workspace_dir / ".server_salt"
+    if salt_file.exists():
+        try:
+            app.state.directory_salt = uuid.UUID(salt_file.read_text(encoding="utf-8").strip())
+        except (ValueError, OSError) as exc:
+            logger.warning("Could not read salt file %s (%s) — regenerating", salt_file, exc)
+            app.state.directory_salt = uuid.uuid4()
+            try:
+                salt_file.write_text(str(app.state.directory_salt), encoding="utf-8")
+            except OSError:
+                pass
+    else:
+        app.state.directory_salt = uuid.uuid4()
+        try:
+            salt_file.write_text(str(app.state.directory_salt), encoding="utf-8")
+        except OSError:
+            pass  # Non-fatal: IDs will regenerate on next restart
+
+    # ── Directory map (built once at startup) ──────────────────────────────
+    from orchestrator.mobile_api.directory_service import build_directory_entries
+
+    try:
+        directory_entries, frozen_dir_map = build_directory_entries(
+            config, workspace_dir, app.state.directory_salt
+        )
+    except Exception as exc:
+        logger.warning("Failed to build directory entries (%s) — using empty map", exc)
+        directory_entries = []
+        frozen_dir_map = {}
+
+    app.state.directory_entries = directory_entries
+    app.state.frozen_dir_map = frozen_dir_map
+
     # ── Authentication middleware ──────────────────────────────────────────
     from orchestrator.mobile_api.auth import AuthMiddleware
 
@@ -121,12 +174,14 @@ def create_mobile_app(
     from orchestrator.mobile_api.routes.websocket import router as ws_router
     from orchestrator.mobile_api.routes.artifacts import router as artifacts_router
     from orchestrator.mobile_api.routes.config import router as config_router
+    from orchestrator.mobile_api.routes.directories import router as directories_router
     from orchestrator.mobile_api.qr_setup import router as qr_router
 
     app.include_router(runs_router, prefix="/api/v1")
     app.include_router(ws_router, prefix="/api/v1")
     app.include_router(artifacts_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")
+    app.include_router(directories_router, prefix="/api/v1")
     app.include_router(qr_router)  # No prefix — /api/v1/setup/qr is in the router
 
     # ── Health endpoint (auth-exempt) ──────────────────────────────────────

@@ -38,9 +38,7 @@ def main() -> None:
     from orchestrator.dashboard.app import create_app
 
     workspace = args.workspace.resolve()
-    if not workspace.exists():
-        print(f"Workspace directory not found: {workspace}")
-        raise SystemExit(1)
+    workspace.mkdir(parents=True, exist_ok=True)
 
     app = create_app(workspace, config_path=args.config)
     print(f"Dashboard: http://{args.host}:{args.port}")

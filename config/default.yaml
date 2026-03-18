@@ -1,4 +1,6 @@
 workspace_dir: workspace
+# List of directories exposed to the mobile app. If empty, defaults to workspace_dir.
+allowed_directories: []
 max_review_cycles: 3
 max_budget_usd: 50.0
 default_workflow: feature_development

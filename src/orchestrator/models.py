@@ -39,9 +39,6 @@ class ReviewVerdict(str, Enum):
     APPROVE = "approve"
     REJECT = "reject"
     REQUEST_CHANGES = "request_changes"
-    # AICoder-compatible aliases
-    PASS = "pass"
-    FAIL = "fail"
     PASS_WITH_WARNINGS = "pass_with_warnings"
 
 
@@ -980,6 +977,17 @@ class DebateConfig(BaseModel):
     mediator_max_turns: int = 40
 
 
+class AllowedDirectoryConfig(BaseModel):
+    """One entry in the server-side directory allow-list.
+
+    Used by the Mobile API to restrict which directories can be selected
+    as the orchestration workspace by mobile clients.
+    """
+
+    path: str
+    name: str | None = None
+
+
 class OrchestratorConfig(BaseModel):
     workspace_dir: str = "workspace"
     max_review_cycles: int = 3
@@ -990,6 +998,10 @@ class OrchestratorConfig(BaseModel):
     checklist_verify: bool = True
     tech_stack_confirmation: bool = True
     max_concurrent_agents: int = 10
+    self_orchestrate: bool = False
+    # List of directories exposed to the mobile app.
+    # If empty, defaults to workspace_dir.
+    allowed_directories: list[AllowedDirectoryConfig] = Field(default_factory=list)
     phases: dict[str, PhaseConfig] = Field(default_factory=dict)
     agents: dict[str, AgentConfig] = Field(default_factory=dict)
     exploration: ExplorationConfig = Field(default_factory=ExplorationConfig)
