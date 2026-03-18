@@ -222,16 +222,18 @@ class DataFlowEntry(BaseModel):
 
 class Architecture(BaseModel):
     components: list[Component] = Field(min_length=1)
-    data_flow: str | list[DataFlowEntry | dict[str, Any]] = Field(min_length=20)
+    data_flow: str | list[DataFlowEntry | dict[str, Any]] = Field()
     tech_decisions: list[TechDecision] = Field(min_length=1)
     constraints: list[str] = Field(default_factory=list)
     directory_structure: dict[str, Any] | list[str] | None = None
 
-    @field_validator("data_flow", mode="before")
+    @field_validator("data_flow", mode="after")
     @classmethod
     def _validate_data_flow(cls, v: Any) -> Any:
-        if isinstance(v, list):
-            return v  # skip min_length check for list format
+        if isinstance(v, str) and len(v) < 20:
+            raise ValueError("String data_flow must be at least 20 characters")
+        if isinstance(v, list) and len(v) < 1:
+            raise ValueError("List data_flow must have at least 1 entry")
         return v
 
 

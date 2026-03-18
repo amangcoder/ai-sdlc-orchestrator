@@ -346,6 +346,7 @@ class OrchestratorEngine:
             project_root=self.project_root,
             run_logger=self.run_logger,
             dry_run=self.dry_run,
+            mcp_servers=self._mcp_servers,
         )
 
         try:
