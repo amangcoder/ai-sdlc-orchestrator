@@ -19,6 +19,11 @@ from orchestrator.knowledge import (
     synthesize_brief,
     update_cumulative_context,
 )
+from orchestrator.test_runner import (
+    cleanup_test_runner_mcp_config,
+    ensure_test_runner_mcp_config,
+    get_test_runner_mcp_config,
+)
 from orchestrator.models import (
     EngTaskState,
     KnowledgeContext,
@@ -102,12 +107,18 @@ class OrchestratorEngine:
         self.interrupt_manager = interrupt_manager
         self.confirm_callback = confirm_callback
         self.run_logger: RunLogger | None = None
+        self._test_runner_mcp_config: dict[str, Any] | None = None
 
     @property
     def _mcp_servers(self) -> dict[str, Any] | None:
-        """Return MCP server config for agent invocations, if available."""
+        """Return merged MCP server config for agent invocations."""
+        servers: dict[str, Any] = {}
         kc = self.config.knowledge_context
-        return kc.mcp_server_config if kc else None
+        if kc and kc.mcp_server_config:
+            servers.update(kc.mcp_server_config)
+        if self._test_runner_mcp_config:
+            servers.update(self._test_runner_mcp_config)
+        return servers or None
 
     async def run(
         self,
@@ -215,6 +226,23 @@ class OrchestratorEngine:
                     "Agents will explore codebase manually."
                 )
 
+        # Configure test-runner MCP server (structured test execution for QA agents)
+        if self.config.test_runner.enabled:
+            tr_config = get_test_runner_mcp_config(
+                server_path=self.config.test_runner.server_path,
+                project_root=self.project_root,
+            )
+            if tr_config:
+                self._test_runner_mcp_config = tr_config
+                ensure_test_runner_mcp_config(
+                    server_path=self.config.test_runner.server_path,
+                    target_project=self.project_root,
+                    project_root=self.project_root,
+                )
+                logger.info("Test-runner MCP server configured")
+            else:
+                logger.info("Test-runner MCP server not found — QA agents will run tests via Bash")
+
         # Initialize monitoring stack (opt-in)
         self._monitoring = None
         monitoring_raw = self.config.monitoring
@@ -298,6 +326,12 @@ class OrchestratorEngine:
             and self.config.knowledge_context.mcp_configured
         ):
             cleanup_mcp_config(self.project_root)
+        if (
+            self.config.test_runner.enabled
+            and self.config.test_runner.cleanup_mcp_config
+            and self._test_runner_mcp_config
+        ):
+            cleanup_test_runner_mcp_config(self.project_root)
 
         self._save_state(state, workspace)
         return state

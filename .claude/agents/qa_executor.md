@@ -25,9 +25,10 @@ PM → Architect → Principal Engineer → TPM → Engineers → ► YOU (QA Ex
 
 1. **Read the PRD** — Build a checklist of every acceptance criterion. You will check them off one by one.
 2. **Run the test suite:**
-   - Find the test command (look for `pytest`, `npm test`, `go test`, `cargo test`, Makefile targets, package.json scripts)
-   - Run it and capture output
-   - Record pass/fail/skip counts accurately
+   - Use `mcp__test-runner__run_tests` to run all tests. It auto-detects pytest/jest/vitest and returns structured results with precise pass/fail/skip counts, durations, and failure messages
+   - For targeted testing of specific files, use `mcp__test-runner__run_single_test` with the `testFile` parameter
+   - If the MCP test-runner tools are unavailable, fall back to Bash: find the test command (`pytest`, `npm test`, etc.) and run it manually
+   - Record pass/fail/skip counts from the structured `summary` field (or parse CLI output if using Bash fallback)
 3. **Run static analysis (if configured):**
    - Linter: `ruff`, `eslint`, `golangci-lint`, etc.
    - Type checker: `mypy`, `tsc --noEmit`, etc.

@@ -255,6 +255,10 @@ def _build_parser() -> argparse.ArgumentParser:
                         choices=["fast", "superhaiku", "supersonnet", "balanced", "overkill"],
                         default=None, metavar="MODE",
                         help="Model routing mode: fast (haiku-heavy), superhaiku, supersonnet, balanced, overkill (opus everywhere)")
+    parser.add_argument("--speed",
+                        choices=["turbo", "standard", "thorough", "paranoid", "auto"],
+                        default=None, metavar="SPEED",
+                        help="Pipeline depth mode: turbo (4 steps), standard (6), thorough (8+), paranoid (10+), auto (default: intelligent selection)")
     return parser
 
 
@@ -665,6 +669,25 @@ def main() -> None:
         config.max_concurrent_agents = args.max_concurrent_agents
     if args.checklist_verify is not None:
         config.checklist_verify = args.checklist_verify
+
+    # Speed mode handling: auto-classify if not explicitly set
+    if args.speed:
+        from orchestrator.model_routing import apply_speed_mode
+        from orchestrator.models import SpeedMode
+
+        speed_mode = SpeedMode(args.speed)
+
+        # If auto, run the classifier to get a concrete mode
+        if speed_mode == SpeedMode.AUTO:
+            from orchestrator.model_routing import auto_classify_speed
+            project_root = Path.cwd()
+            console = Console()
+            console.print("[dim]Auto-classifying speed mode...[/dim]")
+            speed_mode = asyncio.run(auto_classify_speed(args.feature_request, project_root))
+            console.print(f"[green]Selected speed mode:[/green] {speed_mode.value}\n")
+
+        apply_speed_mode(config, speed_mode)
+
     if args.mode:
         from orchestrator.model_routing import RoutingMode, apply_routing_mode
         apply_routing_mode(config, RoutingMode(args.mode))

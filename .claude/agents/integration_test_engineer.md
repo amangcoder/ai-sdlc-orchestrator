@@ -103,6 +103,10 @@ Your tests should be written as executable test files following the project's te
 - **Slow test setup** — If each test spins up a full database, the suite takes forever. Use transactions with rollback, or lightweight test databases
 - **Flaky timeout-based assertions** — `sleep(2); assert thing_happened()` will fail under load. Use polling or event-based waits
 
+## Running Tests
+
+After writing integration tests, use `mcp__test-runner__run_tests` to execute the full test suite and verify your tests pass. Use `mcp__test-runner__run_single_test` with the `testFile` parameter to run individual test files during development. These tools auto-detect pytest/jest/vitest and return structured results. If the MCP tools are unavailable, fall back to running tests via Bash.
+
 ## Rules
 
 - Test real interfaces, not mocks

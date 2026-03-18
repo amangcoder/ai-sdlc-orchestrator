@@ -950,6 +950,13 @@ class KnowledgeContext(BaseModel):
     file_count: int = 0
 
 
+class TestRunnerConfig(BaseModel):
+    """Configuration for test-runner MCP server integration."""
+    enabled: bool = True
+    server_path: str = ""            # empty = auto-detect from sibling dirs
+    cleanup_mcp_config: bool = True
+
+
 class ExplorationConfig(BaseModel):
     """Configuration for codebase exploration depth."""
     exploration_depth: str = "normal"  # none | minimal | normal | deep
@@ -1007,6 +1014,7 @@ class OrchestratorConfig(BaseModel):
     debate: DebateConfig = Field(default_factory=DebateConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     knowledge_context: KnowledgeContext | None = None
+    test_runner: TestRunnerConfig = Field(default_factory=TestRunnerConfig)
     monitoring: dict[str, Any] = Field(default_factory=dict)
     routing_mode: str | None = None
     speed_mode: SpeedMode | None = None

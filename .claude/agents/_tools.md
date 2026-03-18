@@ -48,3 +48,29 @@ Only fall back to Read/Edit/Write for **actually modifying files** or reading ar
 
 ### Data tools
 21. `mcp__ai-code-knowledge__get_static_data_schema` — structure of static data files: keys, exports, relationships (no params)
+
+---
+
+## Test Runner MCP Tools
+
+Use these tools to execute tests with structured output instead of running test commands via Bash. The test-runner auto-detects pytest, jest, and vitest.
+
+| Tool | Purpose | Key Parameters |
+|------|---------|---------------|
+| `mcp__test-runner__run_tests` | Run the full test suite | `filter` (glob/regex, optional), `skipCache` (bool, optional), `timeout` (seconds, optional) |
+| `mcp__test-runner__run_single_test` | Run a specific test file | `testFile` (relative path, **required**), `testName` (pattern, optional), `skipCache`, `timeout` |
+
+**Output format:**
+```json
+{
+  "summary": {"total": 10, "passed": 9, "failed": 1, "skipped": 0, "duration": 3.2},
+  "tests": [{"suite": "TestAuth", "name": "test_login", "status": "passed|failed|skipped|errored", "duration": 0.1, "failureMessage": "..."}],
+  "fromCache": false,
+  "framework": "pytest|jest|vitest",
+  "timestamp": "2025-01-01T00:00:00Z"
+}
+```
+
+**When to use:** Always prefer `mcp__test-runner__run_tests` over manual Bash test commands (`pytest`, `npm test`, `jest`, `vitest`). The structured output gives you precise pass/fail/skip counts and failure messages without parsing CLI output.
+
+**Fallback:** If these tools are unavailable (test-runner not installed), fall back to running test commands via Bash.

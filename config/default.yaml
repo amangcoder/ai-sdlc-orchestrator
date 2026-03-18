@@ -58,6 +58,12 @@ knowledge:
   watcher_enabled: true              # watch for file changes during implementation and rebuild .knowledge
   watcher_debounce_seconds: 5.0      # debounce delay before triggering rebuild after file changes
 
+# --- Test runner MCP server (structured test execution for QA agents) ---
+test_runner:
+  enabled: true                      # set to false to disable test-runner MCP integration
+  server_path: ""                    # absolute path to test-runner server; empty = auto-detect from sibling dirs
+  cleanup_mcp_config: true           # remove test-runner MCP config from target project after pipeline completes
+
 # --- Communication logs (conversation history persistence across runs) ---
 comms_log:
   enabled: false                   # enable with --comms-log CLI flag

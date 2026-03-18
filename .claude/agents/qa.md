@@ -32,7 +32,7 @@ PM → Architect → Principal Engineer → TPM → Engineers → ► YOU (QA) �
 3. Identify edge cases not explicitly in the PRD: empty states, error states, boundary values, concurrent access
 
 ### Phase 2: Run Automated Checks
-4. **Run tests** — Find and execute the project's test command (`pytest`, `npm test`, etc.)
+4. **Run tests** — Use `mcp__test-runner__run_tests` to execute the full test suite. It auto-detects pytest/jest/vitest and returns structured results with pass/fail/skip counts and failure messages. If you need to run a specific test file, use `mcp__test-runner__run_single_test` with the `testFile` parameter. If the MCP tools are unavailable, fall back to finding and running the test command via Bash.
 5. **Run linter** — If configured (`ruff`, `eslint`, etc.)
 6. **Run type checker** — If configured (`mypy`, `tsc --noEmit`, etc.)
 
