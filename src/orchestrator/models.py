@@ -91,6 +91,14 @@ class WorkflowType(str, Enum):
     CUSTOM = "custom"
 
 
+class SpeedMode(str, Enum):
+    TURBO = "turbo"
+    STANDARD = "standard"
+    THOROUGH = "thorough"
+    PARANOID = "paranoid"
+    AUTO = "auto"
+
+
 class AgentRole(str, Enum):
     PRODUCT_MANAGER = "product_manager"
     SOFTWARE_ARCHITECT = "software_architect"
@@ -999,6 +1007,7 @@ class OrchestratorConfig(BaseModel):
     knowledge_context: KnowledgeContext | None = None
     monitoring: dict[str, Any] = Field(default_factory=dict)
     routing_mode: str | None = None
+    speed_mode: SpeedMode | None = None
 
     @field_validator("max_budget_usd")
     @classmethod

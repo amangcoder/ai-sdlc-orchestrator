@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.0] - 2026-03-18
+
+### Added
+
+**Speed Modes (`--speed` flag)**
+- Four concrete pipeline-depth modes: `turbo` (4 steps, $0.01–0.03), `standard` (6 steps, $0.05–0.15), `thorough` (8+ steps, $0.20–0.50), `paranoid` (10+ steps, $0.50–2.00)
+- `auto` (default) — single Claude Haiku call classifies the feature request into a complexity tier and maps it to a concrete speed mode in ~1–2 seconds at ~$0.001/run
+- Risk-signal escalation: any mention of auth, payments, PII, encryption, or compliance automatically bumps low tiers (turbo/standard) to `thorough`
+- `SpeedMode` enum in `models.py` with `AUTO` sentinel kept separate from concrete modes
+- `apply_speed_mode()` in `model_routing.py` — validates that `AUTO` is never applied directly
+- `auto_classify_speed()` in `model_routing.py` — async Haiku classifier with 2 s timeout, JSON extraction via regex, risk-flag escalation, and safe fallback to `standard` on any failure
+- `_build_speed_mode_section()` in `self_orchestrate.py` — injects mode-specific advisory instructions into the planning and feedback prompts
+- `speed_mode` field added to `OrchestratorConfig` and `OrchestrationPlan`
+
+**Tests**
+- `tests/test_self_orchestrate_speed.py` — unit tests for `_build_speed_mode_section` covering all five modes
+- `tests/test_model_routing.py` — extended with `apply_speed_mode` and `auto_classify_speed` coverage
+
+**Docs**
+- `CLAUDE.md` updated with Speed Modes section: mode table, auto-classification flow, examples, cost/performance notes, and implementation details
+
+### Changed
+- `.gitignore` extended to exclude `*.new` workspace artefacts
+
+---
+
 ## [0.2.0] - 2026-03-17
 
 ### Added
