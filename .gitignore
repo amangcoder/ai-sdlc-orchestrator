@@ -65,3 +65,4 @@ mobile/ios/Runner/GeneratedPluginRegistrant.h
 mobile/ios/Runner/GeneratedPluginRegistrant.m
 
 *.new
+.claude/worktrees/

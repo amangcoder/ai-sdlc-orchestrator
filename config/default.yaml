@@ -1,10 +1,20 @@
 workspace_dir: workspace
 # List of directories exposed to the mobile app. If empty, defaults to workspace_dir.
 allowed_directories: []
+
+# --- Mobile API dynamic directory browsing ---
+# Root for dynamic directory tree browser in the mobile app.
+# Must be an absolute path, must exist, and must not be a symlink.
+# Example: projects_root: /home/user/projects
+projects_root: /Users/amangupta/Projects       # root for dynamic directory browser in the mobile app
+max_browse_depth: 10                           # max depth clients can navigate (1-50, default 10)
+
+# --- Mobile API SSH access ---
+# ssh_port: 22                                 # SSH daemon port for TCP reachability probe (default 22)
+
 max_review_cycles: 3
 max_budget_usd: 50.0
 default_workflow: feature_development
-enhanced_perception: false
 confirm: false                     # review and approve each agent prompt before execution (--confirm)
 checklist_verify: false            # use --no-checklist-verify to skip post-write quality checklist loops in planning agents
 tech_stack_confirmation: true      # pause after Architecture to review proposed tech stack before implementation
@@ -47,7 +57,7 @@ knowledge:
   aicoder_path: ""                   # absolute path to AICoder installation; empty = auto-detect
   richness: rich                     # minimal | standard | rich — depth of knowledge extraction
   build_timeout_seconds: 60          # max time for knowledge build
-  skip_if_fresh_minutes: 5           # skip rebuild if .knowledge/ was built within this many minutes
+  skip_if_fresh_minutes: 60          # skip rebuild if .knowledge/ was built within this many minutes (1 hour — knowledge built once per pipeline run)
   inject_brief: true                 # inject codebase brief into agent prompts
   inject_artifact_digests: true      # inject condensed artifact digests into downstream prompts
   cumulative_context: true           # maintain context.md with decisions from each phase
@@ -57,7 +67,7 @@ knowledge:
   cleanup_mcp_config: true           # remove MCP config from target project after pipeline completes
   skip_vectors: false                # skip embedding generation (Phase 7) — saves time when semantic search isn't needed
   skip_features: false               # skip feature discovery (Phase 9) — saves time when feature clustering isn't needed
-  watcher_enabled: true              # watch for file changes during implementation and rebuild .knowledge
+  watcher_enabled: false             # watch for file changes during implementation and rebuild .knowledge (disabled to prevent cascading rebuilds during implementation phases)
   watcher_debounce_seconds: 5.0      # debounce delay before triggering rebuild after file changes
 
 # --- Test runner MCP server (structured test execution for QA agents) ---

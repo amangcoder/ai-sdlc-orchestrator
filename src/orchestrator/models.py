@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
@@ -1010,7 +1011,6 @@ class OrchestratorConfig(BaseModel):
     max_review_cycles: int = 3
     max_budget_usd: float = 50.0
     default_workflow: WorkflowType = WorkflowType.FEATURE_DEVELOPMENT
-    enhanced_perception: bool = False
     confirm: bool = False
     checklist_verify: bool = True
     tech_stack_confirmation: bool = True
@@ -1030,6 +1030,41 @@ class OrchestratorConfig(BaseModel):
     monitoring: dict[str, Any] = Field(default_factory=dict)
     routing_mode: str | None = None
     speed_mode: SpeedMode | None = None
+
+    # ── Mobile API dynamic directory browsing ──────────────────────────────
+    # Root directory exposed for dynamic tree browsing on the mobile app.
+    # When set, mobile clients can navigate subdirectories dynamically.
+    projects_root: str | None = None
+    max_browse_depth: int = Field(default=10, ge=1, le=50)
+
+    # ── Mobile API SSH config probe ────────────────────────────────────────
+    # SSH daemon port on the server host (used for TCP reachability probe).
+    ssh_port: int = Field(default=22, ge=1, le=65535)
+
+    @field_validator("projects_root")
+    @classmethod
+    def validate_projects_root(cls, v: str | None) -> str | None:
+        """Reject non-absolute, non-existent, or symlinked projects_root paths."""
+        if v is None:
+            return None
+        p = Path(v)
+        if not p.is_absolute():
+            raise ValueError(
+                f"projects_root must be an absolute path; got {v!r}"
+            )
+        if not p.exists():
+            raise ValueError(
+                f"projects_root does not exist: {v!r}"
+            )
+        if p.is_symlink():
+            raise ValueError(
+                f"projects_root must not be a symlink: {v!r}"
+            )
+        if not p.is_dir():
+            raise ValueError(
+                f"projects_root must be a directory: {v!r}"
+            )
+        return v
 
     @field_validator("max_budget_usd")
     @classmethod

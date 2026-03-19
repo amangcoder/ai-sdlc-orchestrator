@@ -76,17 +76,20 @@ class _RunCardState extends State<RunCard>
                   ),
                   const SizedBox(width: 8),
                   // Workflow type chip
-                  Chip(
-                    label: Text(
-                      _formatWorkflowType(run.workflowType),
-                      style: const TextStyle(fontSize: 11),
+                  Flexible(
+                    child: Chip(
+                      label: Text(
+                        _formatWorkflowType(run.workflowType),
+                        style: const TextStyle(fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      backgroundColor:
+                          _workflowColor(context, run.workflowType),
+                      padding: EdgeInsets.zero,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
-                    backgroundColor:
-                        _workflowColor(context, run.workflowType),
-                    padding: EdgeInsets.zero,
-                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  const Spacer(),
+                  const SizedBox(width: 8),
                   // Status indicator
                   _StatusIndicator(
                     status: run.status,

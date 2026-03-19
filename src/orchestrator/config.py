@@ -120,7 +120,6 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             max_review_cycles=raw.get("max_review_cycles", 3),
             max_budget_usd=raw.get("max_budget_usd", 50.0),
             default_workflow=default_workflow,
-            enhanced_perception=raw.get("enhanced_perception", False),
             checklist_verify=raw.get("checklist_verify", True),
             tech_stack_confirmation=raw.get("tech_stack_confirmation", True),
             max_concurrent_agents=raw.get("max_concurrent_agents", 0),
@@ -130,6 +129,10 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             debate=debate_config,
             knowledge=knowledge_config,
             monitoring=raw.get("monitoring", {}),
+            # Dynamic directory browsing (new mobile API features)
+            projects_root=raw.get("projects_root"),
+            max_browse_depth=raw.get("max_browse_depth", 10),
+            ssh_port=raw.get("ssh_port", 22),
         )
     except ValidationError as exc:
         raise ConfigurationError(_format_validation_error("orchestrator", exc)) from exc

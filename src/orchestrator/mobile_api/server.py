@@ -67,7 +67,17 @@ def main() -> None:
     workspace = args.workspace.resolve()
     workspace.mkdir(parents=True, exist_ok=True)
 
-    app = create_mobile_app(workspace_dir=workspace, config_path=args.config)
+    # When no --config is provided, look for config/default.yaml relative to CWD
+    # rather than relying on the installed package path (which may point to a
+    # different copy of the repo).
+    config_path = args.config
+    if config_path is None:
+        cwd_config = Path.cwd() / "config" / "default.yaml"
+        if cwd_config.exists():
+            config_path = cwd_config
+            logger.info("Using config from CWD: %s", config_path)
+
+    app = create_mobile_app(workspace_dir=workspace, config_path=config_path)
 
     # Launch uvicorn — workers=1 is hardcoded (RunTracker uses in-process asyncio state)
     import uvicorn

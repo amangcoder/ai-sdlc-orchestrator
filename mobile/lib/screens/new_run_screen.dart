@@ -7,9 +7,16 @@ import '../models/run_summary.dart';
 import '../models/directory_entry.dart';
 import '../services/api_service.dart';
 import '../services/flag_preferences_service.dart';
+import '../widgets/directory_browser_sheet.dart';
 
 class NewRunScreen extends ConsumerStatefulWidget {
-  const NewRunScreen({super.key});
+  /// When non-null, the new-run form pre-selects the workspace folder whose
+  /// opaque ID matches [preselectedWorkspaceId].  This is the mechanism that
+  /// ensures a run created from [ProjectDetailScreen] is always executed in
+  /// the correct project folder — the core workspace-isolation requirement.
+  final String? preselectedWorkspaceId;
+
+  const NewRunScreen({super.key, this.preselectedWorkspaceId});
 
   @override
   ConsumerState<NewRunScreen> createState() => _NewRunScreenState();
@@ -35,8 +42,10 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
   // Existing flags
   bool _debate = false;
   bool _dryRun = false;
-  bool _enhancedPerception = false;
   double _maxBudget = 50.0;
+
+  // System orchestrate toggle (TASK-020)
+  bool _useSystemOrchestrate = false;
 
   // New flags — null means "inherit server config default"
   bool? _knowledge; // tristate: null=auto, true=on, false=off
@@ -46,6 +55,7 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
   bool? _checklistVerify;
   int _maxConcurrentAgents = 0; // 0 = unlimited
   String? _mode;
+  String? _speed;
   String? _phase;
   String? _fromPhase;
   String? _logFormat;
@@ -70,6 +80,14 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
     ('supersonnet', 'Super Sonnet'),
     ('balanced', 'Balanced'),
     ('overkill', 'Overkill'),
+  ];
+
+  static const _speeds = [
+    (null, '(auto)'),
+    ('turbo', 'Turbo'),
+    ('standard', 'Standard'),
+    ('thorough', 'Thorough'),
+    ('paranoid', 'Paranoid'),
   ];
 
   static const _phases = [
@@ -109,7 +127,6 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
     int count = 0;
     if (_debate) count++;
     if (_dryRun) count++;
-    if (_enhancedPerception) count++;
     if (_maxBudget != 50.0) count++;
     if (_knowledge != null) count++;
     if (_selfOrchestrate != null) count++;
@@ -118,12 +135,14 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
     if (_checklistVerify != null) count++;
     if (_maxConcurrentAgents != 0) count++;
     if (_mode != null) count++;
+    if (_speed != null) count++;
     if (_phase != null) count++;
     if (_fromPhase != null) count++;
     if (_logFormat != null) count++;
     if (_debate && _researchers != 3) count++;
     if (_debate && _brainstormers != 3) count++;
     if (_debate && _debateRounds != 2) count++;
+    if (_useSystemOrchestrate) count++;
     return count;
   }
 
@@ -161,13 +180,21 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
       final dirs = await api.getDirectories();
       if (!mounted) return;
 
-      final lastDirId = await _prefs.loadLastDirectoryId();
+      // Prefer the workspaceId injected from ProjectDetailScreen (core
+      // workspace-isolation requirement) over the persisted last-used dir.
+      final injectedId = widget.preselectedWorkspaceId;
+      final lastDirId =
+          injectedId ?? await _prefs.loadLastDirectoryId();
       DirectoryEntry? preSelected;
       bool stale = false;
 
       if (lastDirId != null) {
         preSelected = dirs.where((d) => d.id == lastDirId).firstOrNull;
-        if (preSelected == null && dirs.isNotEmpty) stale = true;
+        // Only show the stale banner for the saved preference, not for an
+        // explicitly injected workspace — it means the project still exists.
+        if (preSelected == null && dirs.isNotEmpty && injectedId == null) {
+          stale = true;
+        }
       }
       preSelected ??= dirs.isNotEmpty ? dirs.first : null;
 
@@ -198,7 +225,6 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
     setState(() {
       _debate = flags['debate'] as bool? ?? false;
       _dryRun = flags['dry_run'] as bool? ?? false;
-      _enhancedPerception = flags['enhanced_perception'] as bool? ?? false;
       _maxBudget = (flags['max_budget_usd'] as num?)?.toDouble() ?? 50.0;
       _knowledge = flags['knowledge'] as bool?;
       _selfOrchestrate = flags['self_orchestrate'] as bool?;
@@ -207,12 +233,15 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
       _checklistVerify = flags['checklist_verify'] as bool?;
       _maxConcurrentAgents = flags['max_concurrent_agents'] as int? ?? 0;
       _mode = flags['mode'] as String?;
+      _speed = flags['speed'] as String?;
       _phase = flags['phase'] as String?;
       _fromPhase = flags['from_phase'] as String?;
       _logFormat = flags['log_format'] as String?;
       _researchers = flags['researchers'] as int? ?? 3;
       _brainstormers = flags['brainstormers'] as int? ?? 3;
       _debateRounds = flags['debate_rounds'] as int? ?? 2;
+      _useSystemOrchestrate =
+          flags['use_system_orchestrate'] as bool? ?? false;
     });
   }
 
@@ -221,7 +250,6 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
     final flags = <String, dynamic>{
       'debate': _debate,
       'dry_run': _dryRun,
-      'enhanced_perception': _enhancedPerception,
       'max_budget_usd': _maxBudget,
       if (_knowledge != null) 'knowledge': _knowledge,
       if (_selfOrchestrate != null) 'self_orchestrate': _selfOrchestrate,
@@ -231,12 +259,14 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
       if (_checklistVerify != null) 'checklist_verify': _checklistVerify,
       'max_concurrent_agents': _maxConcurrentAgents,
       if (_mode != null) 'mode': _mode,
+      if (_speed != null) 'speed': _speed,
       if (_phase != null) 'phase': _phase,
       if (_fromPhase != null) 'from_phase': _fromPhase,
       if (_logFormat != null) 'log_format': _logFormat,
       'researchers': _researchers,
       'brainstormers': _brainstormers,
       'debate_rounds': _debateRounds,
+      'use_system_orchestrate': _useSystemOrchestrate,
     };
     await _prefs.saveFlags(_selectedDirectory!.id, flags);
   }
@@ -245,7 +275,6 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
     setState(() {
       _debate = false;
       _dryRun = false;
-      _enhancedPerception = false;
       _maxBudget = 50.0;
       _knowledge = null;
       _selfOrchestrate = null;
@@ -254,12 +283,14 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
       _checklistVerify = null;
       _maxConcurrentAgents = 0;
       _mode = null;
+      _speed = null;
       _phase = null;
       _fromPhase = null;
       _logFormat = null;
       _researchers = 3;
       _brainstormers = 3;
       _debateRounds = 2;
+      _useSystemOrchestrate = false;
     });
   }
 
@@ -294,7 +325,6 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
         'workspace_id': _selectedDirectory!.id,
         'debate': _debate,
         'dry_run': _dryRun,
-        'enhanced_perception': _enhancedPerception,
         'max_budget_usd': _maxBudget,
         if (_knowledge != null) 'knowledge': _knowledge,
         if (_selfOrchestrate != null) 'self_orchestrate': _selfOrchestrate,
@@ -305,12 +335,14 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
         if (_maxConcurrentAgents > 0)
           'max_concurrent_agents': _maxConcurrentAgents,
         if (_mode != null) 'mode': _mode,
+        if (_speed != null) 'speed': _speed,
         if (_phase != null) 'phase': _phase,
         if (_fromPhase != null) 'from_phase': _fromPhase,
         if (_logFormat != null) 'log_format': _logFormat,
         if (_debate && _researchers != 3) 'researchers': _researchers,
         if (_debate && _brainstormers != 3) 'brainstormers': _brainstormers,
         if (_debate && _debateRounds != 2) 'debate_rounds': _debateRounds,
+        if (_useSystemOrchestrate) 'use_system_orchestrate': true,
       };
 
       final result = await api.startRun(payload);
@@ -330,6 +362,14 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
     } on AuthException {
       await ref.read(authNotifierProvider.notifier).clear();
       if (mounted) context.go('/settings');
+    } on ServerException catch (e) {
+      // Handles HTTP 422 "orchestrate binary not found on PATH" and other
+      // server-side 4xx/5xx errors with a user-readable message.
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -341,8 +381,20 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
     }
   }
 
-  void _showDirectoryPicker() {
-    showModalBottomSheet<void>(
+  Future<void> _showDirectoryPicker() async {
+    // Try the dynamic directory browser first (requires projects_root on server)
+    final selected = await showModalBottomSheet<DirectoryEntry>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => const DirectoryBrowserSheet(),
+    );
+    if (selected != null && mounted) {
+      await _onDirectorySelected(selected);
+    }
+  }
+
+  Future<void> _showStaticDirectoryPicker() {
+    return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (ctx) => _DirectoryPickerSheet(
@@ -359,6 +411,7 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
   String get _runSummary {
     final dir = _selectedDirectory?.name ?? '…';
     final modeLabel = _mode ?? 'default model';
+    final speedLabel = _speed != null ? ' · $_speed' : '';
     final dryRunStr = _dryRun ? ' · dry-run' : '';
     final budget = '\$${_maxBudget.toStringAsFixed(0)} budget';
     final wf = _workflowTypes
@@ -367,7 +420,7 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
           orElse: () => (_workflowType, _workflowType),
         )
         .$2;
-    return '$wf on $dir · $modeLabel$dryRunStr · $budget';
+    return '$wf on $dir · $modeLabel$speedLabel$dryRunStr · $budget';
   }
 
   @override
@@ -466,6 +519,20 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
                         setState(() => _workflowType = v ?? _workflowType),
                   ),
                   const SizedBox(height: 16),
+
+                  // System orchestrate toggle
+                  SwitchListTile(
+                    title: const Text('Use system orchestrate'),
+                    subtitle: const Text(
+                      'Invokes the globally-installed orchestrate binary'
+                      ' — required for self-modification',
+                    ),
+                    value: _useSystemOrchestrate,
+                    onChanged: (v) =>
+                        setState(() => _useSystemOrchestrate = v),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  const SizedBox(height: 8),
 
                   // Advanced options
                   _buildAdvancedOptions(theme),
@@ -594,10 +661,27 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
                 ],
               ),
             ),
-            TextButton(
-              onPressed:
-                  _directories.isEmpty ? null : _showDirectoryPicker,
-              child: const Text('Change'),
+            Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: _showDirectoryPicker,
+                  child: const Text('Browse'),
+                ),
+                if (_directories.isNotEmpty)
+                  TextButton(
+                    onPressed: _showStaticDirectoryPicker,
+                    style: TextButton.styleFrom(
+                      textStyle: Theme.of(context).textTheme.labelSmall,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    child: const Text('Static list'),
+                  ),
+              ],
             ),
           ],
         ),
@@ -741,12 +825,6 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
           // ── Knowledge & Quality ─────────────────────────────────
           _sectionLabel('Knowledge & Quality', theme),
           _knowledgeTile(theme),
-          SwitchListTile(
-            title: const Text('Enhanced perception'),
-            value: _enhancedPerception,
-            onChanged: (v) =>
-                setState(() => _enhancedPerception = v),
-          ),
           _cyclingSwitchTile(
             'Checklist verify',
             'Run post-write quality checklist in planning phases',
@@ -778,6 +856,23 @@ class _NewRunScreenState extends ConsumerState<NewRunScreen> {
                       value: m.$1, child: Text(m.$2)))
                   .toList(),
               onChanged: (v) => setState(() => _mode = v),
+            ),
+          ),
+          Padding(
+            padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: DropdownButtonFormField<String?>(
+              value: _speed,
+              decoration: const InputDecoration(
+                labelText: 'Speed mode',
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              items: _speeds
+                  .map((s) => DropdownMenuItem<String?>(
+                      value: s.$1, child: Text(s.$2)))
+                  .toList(),
+              onChanged: (v) => setState(() => _speed = v),
             ),
           ),
           Padding(

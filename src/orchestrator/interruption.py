@@ -281,7 +281,6 @@ async def run_injected_task(
         max_turns=40,
         workspace_dir=str(workspace),
         project_root=str(project_root),
-        enhanced_perception=config.enhanced_perception,
     )
 
     result = await invoke_agent(invocation)

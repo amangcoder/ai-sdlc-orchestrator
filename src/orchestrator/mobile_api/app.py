@@ -65,6 +65,14 @@ def create_mobile_app(
         except Exception:
             active_ids = set()
 
+        # Clear the LRU directory cache on startup to prevent stale entries
+        # from a previous server process (different salt or filesystem layout).
+        try:
+            from orchestrator.mobile_api.dynamic_directory_service import _clear_cache
+            _clear_cache()
+        except Exception as exc:
+            logger.debug("Could not clear directory cache on startup: %s", exc)
+
         for state_file in workspace_dir.glob("state-*.json"):
             try:
                 state = json.loads(state_file.read_text(encoding="utf-8"))
@@ -164,6 +172,26 @@ def create_mobile_app(
     app.state.directory_entries = directory_entries
     app.state.frozen_dir_map = frozen_dir_map
 
+    # ── Dynamic directory browsing state ───────────────────────────────────
+    # projects_root: resolved Path for dynamic directory tree (None if not configured).
+    # max_browse_depth: maximum subdirectory depth clients may navigate.
+    from pathlib import Path as _Path
+
+    if config.projects_root is not None:
+        try:
+            app.state.projects_root = _Path(config.projects_root).resolve()
+        except Exception as exc:
+            logger.warning(
+                "Failed to resolve projects_root %r (%s) — dynamic browsing disabled",
+                config.projects_root,
+                exc,
+            )
+            app.state.projects_root = None
+    else:
+        app.state.projects_root = None
+
+    app.state.max_browse_depth = config.max_browse_depth
+
     # ── Authentication middleware ──────────────────────────────────────────
     from orchestrator.mobile_api.auth import AuthMiddleware
 
@@ -175,6 +203,8 @@ def create_mobile_app(
     from orchestrator.mobile_api.routes.artifacts import router as artifacts_router
     from orchestrator.mobile_api.routes.config import router as config_router
     from orchestrator.mobile_api.routes.directories import router as directories_router
+    from orchestrator.mobile_api.routes.projects import router as projects_router
+    from orchestrator.mobile_api.routes.ssh import router as ssh_router
     from orchestrator.mobile_api.qr_setup import router as qr_router
 
     app.include_router(runs_router, prefix="/api/v1")
@@ -182,6 +212,8 @@ def create_mobile_app(
     app.include_router(artifacts_router, prefix="/api/v1")
     app.include_router(config_router, prefix="/api/v1")
     app.include_router(directories_router, prefix="/api/v1")
+    app.include_router(projects_router, prefix="/api/v1")
+    app.include_router(ssh_router, prefix="/api/v1")
     app.include_router(qr_router)  # No prefix — /api/v1/setup/qr is in the router
 
     # ── Health endpoint (auth-exempt) ──────────────────────────────────────

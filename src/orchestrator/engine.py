@@ -469,6 +469,42 @@ class OrchestratorEngine:
                 and state.phases[phase_name].status == PhaseStatus.COMPLETED
                 and self.config.tech_stack_confirmation
             ):
+                # Try file-based prompt IPC first (for mobile API-triggered runs)
+                try:
+                    from orchestrator.prompt_manager import (
+                        cleanup_prompt_files,
+                        poll_for_response,
+                        write_prompt,
+                    )
+
+                    prompt_id = write_prompt(
+                        run_id=state.run_id,
+                        workspace=workspace,
+                        question="Confirm tech stack? Review the architecture decisions before proceeding to implementation.",
+                        prompt_type="single_choice",
+                        options=["Confirm", "Abort"],
+                    )
+                    response = poll_for_response(
+                        run_id=state.run_id,
+                        workspace=workspace,
+                        prompt_id=prompt_id,
+                        timeout_seconds=600,
+                    )
+                    cleanup_prompt_files(state.run_id, workspace)
+
+                    if response is None or response.lower() == "abort":
+                        logger.info(
+                            "User %s at tech stack confirmation for run %s",
+                            "timed out" if response is None else "aborted",
+                            state.run_id,
+                        )
+                        state.status = "cancelled"
+                        self._save_state(state, workspace)
+                        break
+                except Exception:
+                    # Fall back to CLI-based confirmation if prompt IPC fails
+                    pass
+
                 try:
                     from orchestrator.tech_stack import confirm_tech_stack
                     confirm_tech_stack(workspace, dry_run=self.dry_run)
@@ -758,7 +794,7 @@ class OrchestratorEngine:
                 workspace_dir=str(workspace),
                 project_root=str(self.project_root),
                 isolation="worktree",
-                enhanced_perception=self.config.enhanced_perception,
+
                 mcp_servers=self._mcp_servers,
             ))
 
@@ -1014,7 +1050,7 @@ class OrchestratorEngine:
                 max_turns=max_turns,
                 workspace_dir=str(workspace),
                 project_root=str(self.project_root),
-                enhanced_perception=self.config.enhanced_perception,
+
                 mcp_servers=self._mcp_servers,
             )
 

@@ -205,8 +205,151 @@ def _inject_cumulative_context(workspace: Path) -> str:
     return f"\n\n## Pipeline Context (decisions from prior phases)\n\n{content}\n"
 
 
-def _inject_artifact_digests(workspace: Path, artifact_names: list[str], config: OrchestratorConfig) -> str:
-    """Return condensed digests of upstream artifacts if enabled."""
+def _digest_artifact_from_data(artifact_name: str, data: dict) -> str:
+    """Generate a digest from cached artifact data (no disk I/O).
+
+    This is called when the artifact is loaded from the ArtifactCache,
+    avoiding redundant disk reads.
+    """
+    if artifact_name == "prd":
+        return _digest_prd(data)
+    elif artifact_name == "architecture":
+        return _digest_architecture(data)
+    elif artifact_name == "tasks":
+        return _digest_tasks(data)
+    elif artifact_name == "engineering_plan":
+        return _digest_engineering_plan(data)
+    else:
+        return _digest_generic(artifact_name, data)
+
+
+def _digest_prd(data: dict) -> str:
+    """Digest a PRD artifact."""
+    title = data.get("title", "Untitled")
+    overview = data.get("overview", "")[:200]
+    goals = data.get("goals", [])
+    reqs = data.get("requirements", [])
+    must = [r for r in reqs if r.get("priority") == "must"]
+    criteria = data.get("acceptance_criteria", [])
+
+    lines = [
+        f"### PRD Digest: {title}",
+        f"**Overview:** {overview}",
+        f"**Goals:** {len(goals)} — " + "; ".join(g[:60] for g in goals[:3]),
+        f"**Requirements:** {len(reqs)} total ({len(must)} must-have)",
+    ]
+    if must:
+        lines.append("**Key Must-Haves:**")
+        for r in must[:5]:
+            lines.append(f"  - {r.get('id', '?')}: {r.get('description', '')[:80]}")
+    lines.append(f"**Acceptance Criteria:** {len(criteria)} defined")
+    return "\n".join(lines)
+
+
+def _digest_architecture(data: dict) -> str:
+    """Digest an Architecture artifact."""
+    components = data.get("components", [])
+    data_flow = data.get("data_flow", "")[:200]
+    decisions = data.get("tech_decisions", [])
+
+    lines = [
+        "### Architecture Digest",
+        f"**Components:** {len(components)}",
+    ]
+    for c in components[:8]:
+        deps = ", ".join(c.get("dependencies", [])) or "none"
+        lines.append(f"  - **{c.get('name', '?')}**: {c.get('responsibility', '')[:80]} (deps: {deps})")
+    lines.append(f"**Data Flow:** {data_flow}")
+    if decisions:
+        lines.append(f"**Tech Decisions:** {len(decisions)}")
+        for d in decisions[:3]:
+            lines.append(f"  - {d.get('decision', '')[:80]}")
+    return "\n".join(lines)
+
+
+def _digest_tasks(data: dict) -> str:
+    """Digest a Tasks artifact."""
+    tasks = data.get("tasks", [])
+    by_role: dict[str, int] = {}
+    by_complexity: dict[str, int] = {}
+    for t in tasks:
+        role = t.get("assigned_role", "unknown")
+        by_role[role] = by_role.get(role, 0) + 1
+        comp = t.get("estimated_complexity", "unknown")
+        by_complexity[comp] = by_complexity.get(comp, 0) + 1
+
+    lines = [
+        f"### Task Breakdown Digest ({len(tasks)} tasks)",
+        f"**By role:** " + ", ".join(f"{r}: {c}" for r, c in sorted(by_role.items())),
+        f"**By complexity:** " + ", ".join(f"{k}: {v}" for k, v in sorted(by_complexity.items())),
+        "**Tasks:**",
+    ]
+    for t in tasks[:10]:
+        deps = ", ".join(t.get("dependencies", [])) or "none"
+        lines.append(f"  - {t.get('task_id', '?')}: {t.get('title', '')[:60]} [{t.get('assigned_role', '?')}] (deps: {deps})")
+    if len(tasks) > 10:
+        lines.append(f"  ... and {len(tasks) - 10} more tasks")
+    return "\n".join(lines)
+
+
+def _digest_engineering_plan(data: dict) -> str:
+    """Digest an Engineering Plan artifact."""
+    strategy = data.get("strategy", "")[:200]
+    order = data.get("implementation_order", [])
+    risks = data.get("risk_areas", [])
+
+    lines = [
+        "### Engineering Plan Digest",
+        f"**Strategy:** {strategy}",
+        f"**Implementation Order:** {len(order)} steps",
+    ]
+    for step in order[:5]:
+        if isinstance(step, dict):
+            label = f"{step.get('phase', '?')}: {step.get('description', '')}"
+            lines.append(f"  - {label[:80]}")
+        else:
+            lines.append(f"  - {str(step)[:80]}")
+    if risks:
+        risk_strs = []
+        for r in risks[:3]:
+            if isinstance(r, dict):
+                risk_strs.append(str(r.get("description", r.get("risk", str(r))))[:60])
+            else:
+                risk_strs.append(str(r)[:60])
+        lines.append(f"**Risks:** {', '.join(risk_strs)}")
+    return "\n".join(lines)
+
+
+def _digest_generic(artifact_name: str, data: dict) -> str:
+    """Generic digest for unknown artifact types."""
+    keys = list(data.keys())[:8]
+    lines = [f"### {artifact_name.replace('_', ' ').title()} Digest"]
+    for k in keys:
+        v = data[k]
+        if isinstance(v, str):
+            lines.append(f"**{k}:** {v[:100]}")
+        elif isinstance(v, (int, float, bool)):
+            lines.append(f"**{k}:** {v}")
+        elif isinstance(v, list) and len(v) > 0:
+            lines.append(f"**{k}:** {len(v)} items")
+        elif isinstance(v, dict):
+            lines.append(f"**{k}:** object with {len(v)} keys")
+    return "\n".join(lines)
+
+
+def _inject_artifact_digests(
+    workspace: Path,
+    artifact_names: list[str],
+    config: OrchestratorConfig,
+    artifact_cache: Any | None = None,  # Optional ArtifactCache from WorkflowEngine
+) -> str:
+    """Return condensed digests of upstream artifacts if enabled.
+
+    If artifact_cache is provided, uses cached artifact data to avoid redundant disk reads.
+    Otherwise falls back to reading artifacts from disk.
+
+    Performance: When cache is provided, eliminates 60+ disk reads per 20-task phase.
+    """
     if not config.knowledge.inject_artifact_digests:
         return ""
     kc = config.knowledge_context
@@ -217,9 +360,20 @@ def _inject_artifact_digests(workspace: Path, artifact_names: list[str], config:
 
     parts = []
     for name in artifact_names:
+        # If cache is available and has the artifact, use cached data
+        if artifact_cache and hasattr(artifact_cache, 'get'):
+            cached_data = artifact_cache.get(name)
+            if cached_data:
+                digest = _digest_artifact_from_data(name, cached_data)
+                if digest:
+                    parts.append(digest)
+                    continue
+
+        # Fall back to disk read if cache miss or cache not available
         digest = generate_artifact_digest(workspace, name)
         if digest:
             parts.append(digest)
+
     if not parts:
         return ""
     return "\n\n## Upstream Artifact Summaries (condensed — read full files for details)\n\n" + "\n\n".join(parts) + "\n"

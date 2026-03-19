@@ -156,7 +156,7 @@ class TestStartNewRunScenario:
 
     async def test_start_run_with_all_advanced_options(self, client):
         """
-        NewRunScreen advanced options (debate, dry_run, enhanced_perception)
+        NewRunScreen advanced options (debate, dry_run)
         are all accepted by the API without 422.
         """
         response = await client.post(
@@ -166,7 +166,6 @@ class TestStartNewRunScenario:
                 "workflow_type": "security_audit",
                 "debate": True,
                 "knowledge": True,
-                "enhanced_perception": True,
                 "max_budget_usd": 100.0,
                 "dry_run": True,
             },

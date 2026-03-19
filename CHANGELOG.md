@@ -2,6 +2,61 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] - 2026-03-19
+
+### Added
+
+**Mobile App — Projects & SSH**
+- Project-centric dashboard with 2-column grid replacing the flat runs list (REQ-001)
+- Project detail screen (`project_detail_screen.dart`) with per-project run history
+- SSH terminal screen (`ssh_terminal_screen.dart`) with quick-connect from dashboard AppBar (REQ-022)
+- SSH credentials management in Settings with host reachability probing
+- Directory browser bottom sheet widget for workspace navigation
+- Prompt card widget for displaying pending orchestrator prompts
+- `ProjectsProvider` for project state management
+- `SshService` for SSH connection handling
+- Models: `PendingPrompt`, `ProjectEntry`, `SshCredentials`, `SshConfigResponse`, `DirectoryChildrenResponse`
+
+**Mobile API — Projects, SSH & Prompts**
+- `GET /api/v1/projects` and project routes (`routes/projects.py`)
+- `GET /api/v1/ssh/config` and SSH routes (`routes/ssh.py`) with TCP reachability probe
+- `GET /api/v1/runs/{run_id}/pending-prompt` — poll for orchestrator prompts awaiting user input
+- `POST /api/v1/runs/{run_id}/respond` — submit user response to pending prompt
+- `PromptManager` (`prompt_manager.py`) — file-based prompt/response exchange between mobile client and orchestrator
+- `DynamicDirectoryService` (`dynamic_directory_service.py`) — rglob fallback for workspace resolution
+- `SystemRunner` (`system_runner.py`) — subprocess orchestration for mobile-triggered runs
+- `SpeedEnum` type added to models (turbo/standard/thorough/paranoid/auto)
+- WebSocket prompt sanitization (truncation, bidi char stripping) and run_id format validation
+
+**Performance Optimizations (Phase 2 & 3)**
+- `ArtifactCache` — phase-scoped in-memory cache eliminating 60+ redundant disk reads per phase
+- `TaskReadinessTracker` — fine-grained dynamic task scheduling replacing fixed wave barriers (10–150s savings)
+- Async worktree creation/merge/cleanup via `asyncio.create_subprocess_exec` for parallel engineer setup
+- Artifact digest functions (`_digest_prd`, `_digest_architecture`, `_digest_tasks`, `_digest_engineering_plan`) operating on cached data without disk I/O
+
+**Tests**
+- Contract tests for projects, prompts, dynamic directories, and system orchestration
+- SSH storage tests, directory browser widget tests, prompt card widget tests
+- `PendingPrompt` and `ProjectEntry` model tests
+- Screen-level tests for mobile app
+- Phase 2 and Phase 3 performance test suites
+- LRU cache unit tests
+
+### Changed
+
+- Dashboard screen now project-centric with pull-to-refresh for both projects and runs
+- Settings screen extended with SSH credentials section (host, port, username, key/password)
+- Runs route refactored with shared `_resolve_workspace_path` helper eliminating copy-paste
+- WebSocket route validates run_id format before accepting connections
+- `RunStartRequest` now supports `speed` field; removed `enhanced_perception` field
+- `AgentInvocation` model dropped `enhanced_perception` field
+
+### Removed
+
+- `perception.py` — enhanced perception meta-cognitive prompt enrichment layer (replaced by artifact digest optimizations)
+
+---
+
 ## [0.4.0] - 2026-03-19
 
 ### Added

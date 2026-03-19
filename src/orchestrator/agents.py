@@ -76,7 +76,6 @@ class AgentInvocation(BaseModel):
     workspace_dir: str | None = None
     project_root: str | None = None  # cwd for agent — project root so it can explore the codebase
     isolation: str | None = None  # "worktree" for parallel engineers
-    enhanced_perception: bool = False
     display_name: str | None = None  # codename for parallel agents
     mcp_servers: dict[str, Any] | None = None  # MCP server config for direct SDK injection
 
@@ -113,12 +112,100 @@ def _cleanup_worktree(project_root: Path, worktree_dir: Path, branch_name: str) 
     )
 
 
+# OPTIMIZATION (Phase 2): Async versions for parallel worktree creation
+async def _create_worktree_async(project_root: Path, branch_suffix: str) -> tuple[Path, str]:
+    """Create a git worktree asynchronously (parallelizable).
+
+    Phase 2 optimization: Allows multiple worktrees to be created in parallel
+    via asyncio.gather() instead of sequentially via subprocess.run().
+    """
+    worktree_dir = Path(tempfile.mkdtemp(prefix=f"orch-wt-{branch_suffix}-"))
+    branch_name = f"worktree/{branch_suffix}"
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "git", "worktree", "add", "-b", branch_name, str(worktree_dir), "HEAD",
+            cwd=project_root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await proc.communicate()
+
+        if proc.returncode != 0:
+            raise subprocess.CalledProcessError(
+                proc.returncode,
+                "git worktree add",
+                stdout=stdout,
+                stderr=stderr,
+            )
+    except Exception:
+        # Clean up temp directory if git command failed
+        import shutil
+        if worktree_dir.exists():
+            try:
+                shutil.rmtree(worktree_dir)
+            except Exception:
+                pass
+        raise
+
+    return worktree_dir, branch_name
+
+
+async def _merge_worktree_async(project_root: Path, branch_name: str) -> None:
+    """Merge a worktree branch asynchronously (can be parallelized)."""
+    proc = await asyncio.create_subprocess_exec(
+        "git", "merge", "--no-edit", branch_name,
+        cwd=project_root,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout, stderr = await proc.communicate()
+
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(
+            proc.returncode,
+            "git merge",
+            stdout=stdout,
+            stderr=stderr,
+        )
+
+
+async def _cleanup_worktree_async(project_root: Path, worktree_dir: Path, branch_name: str) -> None:
+    """Remove a worktree and its branch asynchronously."""
+    # Run all three cleanup commands (they're independent)
+    tasks = [
+        asyncio.create_subprocess_exec(
+            "git", "worktree", "remove", "--force", str(worktree_dir),
+            cwd=project_root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        ),
+        asyncio.create_subprocess_exec(
+            "git", "worktree", "prune",
+            cwd=project_root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        ),
+        asyncio.create_subprocess_exec(
+            "git", "branch", "-D", branch_name,
+            cwd=project_root,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        ),
+    ]
+
+    procs = await asyncio.gather(*tasks, return_exceptions=True)
+
+    # Log any errors but don't raise (cleanup is best-effort)
+    for i, result in enumerate(procs):
+        if isinstance(result, Exception):
+            logger.warning(f"Cleanup subprocess {i} failed: {result}")
+
+
 async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
     """Invoke a Claude Code sub-agent via the SDK.
 
     Uses claude_agent_sdk.query() when available, falls back to CLI subprocess.
-    When enhanced_perception is enabled, enriches the prompt via a lightweight
-    Haiku pre-processing call before the main agent invocation.
     """
     # Defense-in-depth: even though AgentInvocation.agent_name is validated by
     # Pydantic to match ^[\w-]+$, verify the resolved path stays within AGENTS_DIR.
@@ -133,11 +220,6 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
             f"AGENTS_DIR '{resolved_agents_dir}'. Refusing to invoke agent."
         )
 
-    perception_cost = 0.0
-    if invocation.enhanced_perception:
-        from orchestrator.perception import enhance_prompt
-        invocation, perception_cost = await enhance_prompt(invocation)
-
     # Worktree isolation: run in a separate git worktree if requested
     worktree_dir = None
     branch_name = None
@@ -147,10 +229,11 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
         import uuid as _uuid
         suffix = _uuid.uuid4().hex[:8]
         try:
-            worktree_dir, branch_name = _create_worktree(project_root, suffix)
+            # Phase 2 optimization: use async worktree creation for parallelization
+            worktree_dir, branch_name = await _create_worktree_async(project_root, suffix)
             invocation.project_root = str(worktree_dir)
             logger.info(f"Created worktree for {invocation.agent_name}: {worktree_dir}")
-        except subprocess.CalledProcessError as e:
+        except (subprocess.CalledProcessError, Exception) as e:
             logger.warning(f"Failed to create worktree: {e}. Running without isolation.")
             worktree_dir = None
 
@@ -171,7 +254,8 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
         if worktree_dir and project_root and branch_name:
             try:
                 if result.success:
-                    _merge_worktree(project_root, branch_name)
+                    # Phase 2 optimization: use async merge for consistency
+                    await _merge_worktree_async(project_root, branch_name)
                     logger.info(f"Merged worktree branch {branch_name}")
             except subprocess.CalledProcessError as e:
                 logger.error(f"Failed to merge worktree {branch_name}: {e}")
@@ -185,9 +269,9 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
                         output_tokens=result.output_tokens,
                     )
             finally:
-                _cleanup_worktree(project_root, worktree_dir, branch_name)
+                # Phase 2 optimization: use async cleanup
+                await _cleanup_worktree_async(project_root, worktree_dir, branch_name)
 
-    result.cost_usd += perception_cost
     return result
 
 

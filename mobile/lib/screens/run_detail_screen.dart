@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../models/run_detail.dart';
 import '../models/phase_state.dart';
 import '../models/ws_event.dart';
+import '../models/pending_prompt.dart';
 import '../providers/auth_provider.dart';
 import '../services/api_service.dart';
 import '../services/secure_storage_service.dart';
@@ -12,6 +13,7 @@ import '../services/websocket_service.dart';
 import '../widgets/phase_list_item.dart';
 import '../widgets/connection_status_chip.dart';
 import '../widgets/error_state_widget.dart';
+import '../widgets/prompt_card.dart';
 
 /// Canonical phase ordering for display.
 const _kPhaseOrder = [
@@ -26,6 +28,9 @@ const _kPhaseOrder = [
   'qa',
   'code_review',
 ];
+
+/// Terminal run statuses — PromptCard auto-dismisses when run reaches these.
+const _kTerminalStatuses = {'completed', 'cancelled', 'failed'};
 
 /// Detailed view of a single orchestration run with live phase updates.
 class RunDetailScreen extends ConsumerStatefulWidget {
@@ -50,6 +55,14 @@ class _RunDetailScreenState extends ConsumerState<RunDetailScreen> {
   ScaffoldFeatureController<SnackBar, SnackBarClosedReason>? _cancelSnackbar;
   bool _isCancelling = false;
 
+  // ── Prompt integration (TASK-015) ─────────────────────────────────────────
+
+  PendingPrompt? _pendingPrompt;
+  bool _responseSubmitted = false;
+  Timer? _promptPollTimer;
+
+  // ─────────────────────────────────────────────────────────────────────────
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +75,7 @@ class _RunDetailScreenState extends ConsumerState<RunDetailScreen> {
     _statusSub?.cancel();
     _wsService?.disconnect();
     _cancelPollTimer?.cancel();
+    _promptPollTimer?.cancel();
     super.dispose();
   }
 
@@ -101,24 +115,42 @@ class _RunDetailScreenState extends ConsumerState<RunDetailScreen> {
 
     // IMPORTANT: call connect() first — it initialises the internal stream
     // controllers (statusStream, eventStream) synchronously before returning.
-    // Subscribing to statusStream BEFORE connect() would throw a null-check
-    // error because _statusStream is null until connect() runs.
     _wsSub = _wsService!.connect(widget.runId).listen(
       (event) => _handleWsEvent(event),
       onError: (_) {},
     );
 
     _statusSub = _wsService!.statusStream.listen((status) {
-      if (mounted) setState(() => _connectionStatus = status);
+      if (!mounted) return;
+      setState(() => _connectionStatus = status);
+      // Start prompt polling when WS goes offline as a fallback (REQ-010).
+      if (status == ConnectionStatus.disconnected ||
+          status == ConnectionStatus.polling) {
+        _startPromptPolling();
+      } else if (status == ConnectionStatus.connected) {
+        _stopPromptPolling();
+      }
     });
 
     setState(() => _connectionStatus = ConnectionStatus.connected);
   }
 
+  // ── WebSocket event handling ──────────────────────────────────────────────
+
   void _handleWsEvent(WsEvent event) {
     if (!mounted) return;
     setState(() {
-      // Update phase states from events
+      // ── Prompt pending (TASK-015 AC-007) ─────────────────────────────
+      if (event.event == 'prompt_pending') {
+        final prompt = event.promptPending;
+        if (prompt != null) {
+          _pendingPrompt = prompt;
+          _responseSubmitted = false;
+        }
+        return;
+      }
+
+      // ── Phase state updates ────────────────────────────────────────────
       if (event.event == 'phase_start' || event.event == 'task_invoke') {
         final phase = event.data['phase'] as String? ??
             event.data['step'] as String?;
@@ -144,11 +176,65 @@ class _RunDetailScreenState extends ConsumerState<RunDetailScreen> {
         }
       } else if (event.event == 'run_complete' ||
           event.event == 'stream_end') {
+        // Auto-dismiss PromptCard on terminal status (AC-022).
+        _dismissPromptCard();
         _wsService?.disconnect();
         _loadRun();
       }
+
+      // AC-022: also auto-dismiss on terminal status in run_status_changed
+      if (event.event == 'run_status_changed') {
+        final status = event.data['status'] as String?;
+        if (status != null && _kTerminalStatuses.contains(status)) {
+          _dismissPromptCard();
+        }
+      }
     });
   }
+
+  // ── Prompt polling (fallback when WS is disconnected) ────────────────────
+
+  void _startPromptPolling() {
+    if (_promptPollTimer?.isActive == true) return;
+    _promptPollTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _pollForPrompt(),
+    );
+  }
+
+  void _stopPromptPolling() {
+    _promptPollTimer?.cancel();
+    _promptPollTimer = null;
+  }
+
+  Future<void> _pollForPrompt() async {
+    if (!mounted) return;
+    try {
+      final api = ref.read(apiServiceProvider);
+      if (api == null) return;
+      final prompt = await api.getPendingPrompt(widget.runId);
+      if (!mounted) return;
+      if (prompt != null && prompt.promptId != _pendingPrompt?.promptId) {
+        setState(() {
+          _pendingPrompt = prompt;
+          _responseSubmitted = false;
+        });
+      }
+    } catch (_) {
+      // Swallow polling errors — they are non-fatal.
+    }
+  }
+
+  // ── Prompt card lifecycle ─────────────────────────────────────────────────
+
+  void _dismissPromptCard() {
+    setState(() {
+      _pendingPrompt = null;
+      _responseSubmitted = true;
+    });
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
 
   Future<void> _confirmCancel() async {
     final confirmed = await showDialog<bool>(
@@ -183,7 +269,6 @@ class _RunDetailScreenState extends ConsumerState<RunDetailScreen> {
     if (_isCancelling) return;
     setState(() => _isCancelling = true);
 
-    // Show persistent snackbar immediately
     _cancelSnackbar = ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text(
@@ -202,7 +287,6 @@ class _RunDetailScreenState extends ConsumerState<RunDetailScreen> {
       // Ignore cancel errors — still poll for status
     }
 
-    // Poll until run is no longer active
     _cancelPollTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
       try {
         final creds = await ref.read(authNotifierProvider.future);
@@ -266,7 +350,7 @@ class _RunDetailScreenState extends ConsumerState<RunDetailScreen> {
     final run = _runDetail!;
     final isActive = run.status == 'running';
 
-    // Sort phases by canonical order, then remaining alphabetically
+    // Sort phases by canonical order, then remaining alphabetically.
     final sortedPhases = run.phases.keys.toList()
       ..sort((a, b) {
         final ai = _kPhaseOrder.indexOf(a);
@@ -360,6 +444,50 @@ class _RunDetailScreenState extends ConsumerState<RunDetailScreen> {
             ),
           ),
           const SizedBox(height: 16),
+
+          // ── Pending prompt card (TASK-015) — shown above phase list ─────
+          if (_pendingPrompt != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: PromptCard(
+                prompt: _pendingPrompt!,
+                runId: widget.runId,
+                onDismiss: _dismissPromptCard,
+              ),
+            ),
+
+          // ── Response submitted indicator ──────────────────────────────
+          if (_pendingPrompt == null && _responseSubmitted)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .tertiaryContainer
+                      .withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Theme.of(context).colorScheme.tertiary,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle,
+                        size: 18,
+                        color: Theme.of(context).colorScheme.tertiary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Response submitted — waiting for orchestrator',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
 
           // Phase list
           Text(

@@ -219,8 +219,6 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Path to custom workflow definition file")
     parser.add_argument("--config", type=Path, default=None, metavar="PATH", help="Path to config YAML file")
     parser.add_argument("--log-format", choices=["console", "json"], default="console", help="Log output format")
-    parser.add_argument("--enhanced-perception", action="store_true",
-                        help="Enable enhanced perception mode: enrich prompts via meta-cognitive pre-processing")
     parser.add_argument("--self-orchestrate", action="store_true",
                         help="Let the AI design the optimal pipeline for your request before executing")
     parser.add_argument("-y", "--yes", action="store_true",
@@ -462,8 +460,6 @@ def _print_orchestration_plan(plan, console: Console) -> None:
     flags = []
     if plan.custom_workflow:
         flags.append("custom pipeline")
-    if plan.enhanced_perception:
-        flags.append("enhanced perception")
     flags_str = f"  ({', '.join(flags)})" if flags else ""
 
     console.print(f"[bold cyan]Proposed Pipeline:[/bold cyan] [bold]{wf_label}[/bold]{flags_str}")
@@ -659,8 +655,6 @@ def main() -> None:
     _configure_structlog(json_logs=(args.log_format == "json"))
     config = load_config(args.config)
     args.feature_request = sanitize_feature_request(args.feature_request)
-    if args.enhanced_perception:
-        config.enhanced_perception = True
     if args.confirm:
         config.confirm = True
     if args.tech_stack_confirmation is not None:
@@ -791,9 +785,6 @@ def main() -> None:
 
         workflow_type = plan.workflow_type
         custom_workflow = plan.custom_workflow
-        if plan.enhanced_perception:
-            config.enhanced_perception = True
-
         # Use the enriched feature request for the actual run
         args.feature_request = feature_request
     else:

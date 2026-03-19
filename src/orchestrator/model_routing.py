@@ -256,7 +256,6 @@ async def auto_classify_speed(feature_request: str, project_root: Path) -> Speed
 
     try:
         # Lazy imports — avoids circular imports at module load time.
-        # This mirrors the pattern in perception.py line 200 and main.py line 678.
         from orchestrator.agents import AgentInvocation as _AI, _invoke_via_cli, _invoke_via_sdk  # noqa: PLC0415
         from orchestrator.self_orchestrate import _assess_codebase  # noqa: PLC0415
 

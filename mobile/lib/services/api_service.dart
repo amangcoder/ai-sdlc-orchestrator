@@ -1,10 +1,16 @@
 import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/run_summary.dart';
 import '../models/run_detail.dart';
 import '../models/config_model.dart';
 import '../models/directory_entry.dart';
+import '../models/directory_children_response.dart';
+import '../models/ssh_config_response.dart';
+import '../models/project_entry.dart';
+import '../models/pending_prompt.dart';
 import '../services/secure_storage_service.dart';
+import '../providers/auth_provider.dart';
 
 // Typed exceptions
 class AuthException implements Exception {
@@ -26,6 +32,15 @@ class RateLimitException implements Exception {
   const RateLimitException();
 }
 
+/// Thrown when the run is no longer active (HTTP 410).
+class GoneException implements Exception {
+  final String? message;
+  const GoneException([this.message]);
+
+  @override
+  String toString() => 'GoneException: ${message ?? 'Run is no longer active'}';
+}
+
 class ServerException implements Exception {
   final String message;
   const ServerException([this.message = 'Server error']);
@@ -34,6 +49,14 @@ class ServerException implements Exception {
 class NetworkException implements Exception {
   final String message;
   const NetworkException([this.message = 'Network error']);
+}
+
+/// Thrown when a directory browse request is blocked by the server-side
+/// max_browse_depth limit (HTTP 400 with a depth-limit error body).
+class DirectoryDepthException implements Exception {
+  final String message;
+  const DirectoryDepthException(
+      [this.message = 'Maximum directory depth reached']);
 }
 
 class ApiService {
@@ -103,10 +126,41 @@ class ApiService {
               type: DioExceptionType.badResponse,
             ));
             return;
+          } else if (statusCode == 410) {
+            final String? msg;
+            if (responseData is Map<String, dynamic>) {
+              msg = (responseData['detail'] as String?) ??
+                  (responseData['error'] as String?);
+            } else {
+              msg = null;
+            }
+            handler.reject(DioException(
+              requestOptions: error.requestOptions,
+              error: GoneException(msg),
+              response: error.response,
+              type: DioExceptionType.badResponse,
+            ));
+            return;
           } else if (statusCode == 429) {
             handler.reject(DioException(
               requestOptions: error.requestOptions,
               error: const RateLimitException(),
+              response: error.response,
+              type: DioExceptionType.badResponse,
+            ));
+            return;
+          } else if (statusCode == 422) {
+            final String msg;
+            if (responseData is Map<String, dynamic>) {
+              msg = (responseData['error'] as String?) ??
+                  (responseData['detail'] as String?) ??
+                  'Unprocessable entity';
+            } else {
+              msg = 'Unprocessable entity';
+            }
+            handler.reject(DioException(
+              requestOptions: error.requestOptions,
+              error: ServerException(msg),
               response: error.response,
               type: DioExceptionType.badResponse,
             ));
@@ -138,6 +192,7 @@ class ApiService {
     if (e.error is AuthException) return e.error! as AuthException;
     if (e.error is NotFoundException) return e.error! as NotFoundException;
     if (e.error is ConflictException) return e.error! as ConflictException;
+    if (e.error is GoneException) return e.error! as GoneException;
     if (e.error is RateLimitException) return e.error! as RateLimitException;
     if (e.error is ServerException) return e.error! as ServerException;
     if (e.error is NetworkException) return e.error! as NetworkException;
@@ -289,4 +344,175 @@ class ApiService {
       throw _mapError(e);
     }
   }
+
+  // ── Dynamic Directory Browse API ─────────────────────────────────────────
+
+  /// Returns the root DirectoryEntry for the server's configured projects_root.
+  ///
+  /// Throws [NotFoundException] when projects_root is not configured (HTTP 404).
+  Future<DirectoryEntry> getDirectoryRoot() async {
+    try {
+      final Response<dynamic> response =
+          await _dio.get<dynamic>('/api/v1/directories/root');
+      return DirectoryEntry.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// Lists immediate children of the directory identified by [dirId].
+  ///
+  /// Throws [DirectoryDepthException] on HTTP 400 (depth limit reached).
+  /// Throws [AuthException] on HTTP 403 (outside projects_root).
+  Future<DirectoryChildrenResponse> getDirectoryChildren(String dirId) async {
+    try {
+      final Response<dynamic> response =
+          await _dio.get<dynamic>('/api/v1/directories/$dirId/children');
+      return DirectoryChildrenResponse.fromJson(
+          response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      // HTTP 400 may be a depth-limit error — inspect the body
+      if (e.response?.statusCode == 400) {
+        final dynamic data = e.response?.data;
+        final String msg;
+        if (data is Map<String, dynamic>) {
+          msg = (data['detail'] as String?) ??
+              (data['error'] as String?) ??
+              'Maximum directory depth reached';
+        } else {
+          msg = 'Maximum directory depth reached';
+        }
+        throw DirectoryDepthException(msg);
+      }
+      throw _mapError(e);
+    }
+  }
+
+  /// Creates a new subdirectory named [name] under the directory [parentDirId].
+  ///
+  /// Returns the newly created [DirectoryEntry].
+  /// Throws [ConflictException] on HTTP 409 (directory already exists).
+  /// Throws [ServerException] on HTTP 400 (invalid name regex).
+  /// Throws [AuthException] on HTTP 403 (parent outside projects_root).
+  Future<DirectoryEntry> createDirectory(
+      String parentDirId, String name) async {
+    try {
+      final Response<dynamic> response = await _dio.post<dynamic>(
+        '/api/v1/directories/$parentDirId/children',
+        data: <String, dynamic>{'name': name},
+      );
+      return DirectoryEntry.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  // ── SSH Config Probe ──────────────────────────────────────────────────────
+
+  /// Returns the SSH configuration status from the server (no auth required).
+  ///
+  /// Never throws on a reachability failure — the response body reflects it.
+  Future<SshConfigResponse> getSshConfig() async {
+    // SSH config endpoint does not require authentication
+    final Dio noAuthDio = Dio(BaseOptions(
+      baseUrl: credentials.url,
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
+    ));
+    try {
+      final Response<dynamic> response =
+          await noAuthDio.get<dynamic>('/api/v1/ssh/config');
+      return SshConfigResponse.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  // ── Projects API ──────────────────────────────────────────────────────────
+
+  /// Returns all project directory entries from GET /api/v1/projects.
+  Future<List<ProjectEntry>> listProjects() async {
+    try {
+      final Response<dynamic> response =
+          await _dio.get<dynamic>('/api/v1/projects');
+      final List<dynamic> list = response.data as List<dynamic>;
+      return list
+          .map((dynamic e) =>
+              ProjectEntry.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// Returns runs filtered by [workspaceId] from
+  /// GET /api/v1/runs?workspace_id={workspaceId}.
+  Future<List<RunSummary>> listRunsByProject(String workspaceId) async {
+    try {
+      final Response<dynamic> response = await _dio.get<dynamic>(
+        '/api/v1/runs',
+        queryParameters: <String, dynamic>{'workspace_id': workspaceId},
+      );
+      final List<dynamic> list = response.data as List<dynamic>;
+      return list
+          .map((dynamic e) =>
+              RunSummary.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  // ── Prompt/Response API ───────────────────────────────────────────────────
+
+  /// Returns the pending prompt for [runId], or null when HTTP 204 (no prompt).
+  ///
+  /// Throws [NotFoundException] on HTTP 404.
+  Future<PendingPrompt?> getPendingPrompt(String runId) async {
+    try {
+      final Response<dynamic> response = await _dio.get<dynamic>(
+        '/api/v1/runs/$runId/pending-prompt',
+      );
+      if (response.statusCode == 204 || response.data == null) return null;
+      return PendingPrompt.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      // Dio throws on non-2xx; a 204 with no body may arrive as a success
+      // with null data — handled above.  Any other error is remapped.
+      throw _mapError(e);
+    }
+  }
+
+  /// Submits the user's [response] for [promptId] on [runId].
+  ///
+  /// Throws [ConflictException] on HTTP 409 (stale prompt_id).
+  /// Throws [GoneException] on HTTP 410 (run no longer active).
+  Future<void> respondToPrompt(
+      String runId, String promptId, String response) async {
+    try {
+      await _dio.post<dynamic>(
+        '/api/v1/runs/$runId/respond',
+        data: <String, dynamic>{
+          'prompt_id': promptId,
+          'response': response,
+        },
+      );
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
 }
+
+// ── Riverpod Provider ─────────────────────────────────────────────────────────
+
+/// A shared [ApiService] instance scoped to the current authentication
+/// credentials.  Returns null when the user is not authenticated.
+///
+/// Prefer ref.read/watch(apiServiceProvider) over constructing ApiService
+/// inline — inline construction creates a new Dio instance (and its internal
+/// socket pool) on every call, causing unnecessary socket churn.
+final apiServiceProvider = Provider<ApiService?>((ref) {
+  final authState = ref.watch(authNotifierProvider);
+  final creds = authState.valueOrNull;
+  if (creds == null) return null;
+  return ApiService(credentials: creds);
+});

@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
 from orchestrator.mobile_api.auth import verify_token
+from orchestrator.mobile_api.models import _RUN_ID_RE, PROMPT_FILE_PATTERN
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,32 @@ def _validate_ws_token(token: str) -> bool:
     return verify_token(token)
 
 
+def _sanitize_ws_prompt(raw: dict) -> dict:
+    """Sanitize prompt content for WebSocket emission.
+
+    Reuses the same logic as the REST endpoint sanitizer:
+    - Truncates question to 500 chars
+    - Truncates each option to 100 chars
+    - Strips Unicode bidi override chars
+    """
+    import re
+    bidi_re = re.compile(r"[\u202a-\u202e\u2066-\u2069]")
+
+    sanitized = dict(raw)
+
+    question = str(sanitized.get("question", ""))
+    question = bidi_re.sub("", question)[:500]
+    sanitized["question"] = question
+
+    options = sanitized.get("options")
+    if options is not None and isinstance(options, list):
+        sanitized["options"] = [
+            bidi_re.sub("", str(opt))[:100] for opt in options
+        ]
+
+    return sanitized
+
+
 @router.websocket("/runs/{run_id}/stream")
 async def ws_stream(
     websocket: WebSocket,
@@ -61,7 +88,24 @@ async def ws_stream(
       - Parse JSON, extract 'token' key
       - Validate with hmac.compare_digest via verify_token()
       - Invalid/timeout → close(4001) and return immediately
+
+    Security:
+      - run_id is validated against _RUN_ID_RE before accept()
+      - after_line is clamped to max(0, value)
     """
+    # Validate run_id format before accepting the connection
+    if not _RUN_ID_RE.match(run_id):
+        # Close with 4001 to signal invalid run_id
+        await websocket.accept()
+        try:
+            await websocket.close(code=4001)
+        except RuntimeError:
+            pass
+        return
+
+    # Clamp after_line to non-negative
+    after_line = max(0, after_line)
+
     reader = websocket.app.state.reader
 
     # Step 1: Accept the WebSocket connection (required before any other operation)
@@ -106,6 +150,14 @@ async def ws_stream(
     # Step 6: Streaming loop
     last_send_time = asyncio.get_event_loop().time()
 
+    # Prompt file watcher state
+    last_seen_prompt_id: str | None = None
+    # Counter for prompt poll cadence (check every ~2 seconds = 4 poll cycles at 0.5s)
+    _prompt_poll_counter = 0
+    _PROMPT_POLL_EVERY = 4  # check prompt file every 4 iterations (2 seconds)
+
+    workspace = reader.workspace
+
     while True:
         try:
             # Poll for new events
@@ -141,6 +193,50 @@ async def ws_stream(
                 except (WebSocketDisconnect, RuntimeError):
                     pass
                 return
+
+            # ── Prompt file watcher (every ~2 seconds) ────────────────────
+            _prompt_poll_counter += 1
+            if _prompt_poll_counter >= _PROMPT_POLL_EVERY:
+                _prompt_poll_counter = 0
+                prompt_file = workspace / PROMPT_FILE_PATTERN.format(run_id=run_id)
+                if prompt_file.exists():
+                    try:
+                        prompt_data = json.loads(
+                            prompt_file.read_text(encoding="utf-8")
+                        )
+                        prompt_id = prompt_data.get("prompt_id")
+                        if (
+                            prompt_id
+                            and prompt_id != last_seen_prompt_id
+                        ):
+                            # Check if run is still active before emitting
+                            tracker = websocket.app.state.tracker
+                            if tracker.is_active(run_id):
+                                sanitized = _sanitize_ws_prompt(prompt_data)
+                                prompt_event = {
+                                    "event": "prompt_pending",
+                                    "run_id": run_id,
+                                    "prompt": {
+                                        "prompt_id": sanitized.get("prompt_id", ""),
+                                        "question": sanitized.get("question", ""),
+                                        "type": sanitized.get("type", "free_text"),
+                                        "options": sanitized.get("options"),
+                                        "created_at": sanitized.get("created_at", ""),
+                                    },
+                                }
+                                try:
+                                    await websocket.send_text(
+                                        json.dumps(prompt_event)
+                                    )
+                                    last_send_time = asyncio.get_event_loop().time()
+                                except (WebSocketDisconnect, RuntimeError):
+                                    return
+                                last_seen_prompt_id = prompt_id
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                else:
+                    # Prompt file gone — reset tracking
+                    last_seen_prompt_id = None
 
             # Check if heartbeat is needed (20s of no sent events)
             elapsed = asyncio.get_event_loop().time() - last_send_time

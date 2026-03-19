@@ -168,7 +168,6 @@ class TestOptionalFields:
         assert inv.workspace_dir is None
         assert inv.project_root is None
         assert inv.isolation is None
-        assert inv.enhanced_perception is False
         assert inv.display_name is None
         assert inv.mcp_servers is None
 
@@ -181,7 +180,6 @@ class TestOptionalFields:
             workspace_dir="/tmp/ws",
             project_root="/tmp/proj",
             isolation="worktree",
-            enhanced_perception=True,
             display_name="Orion (spawned:backend_engineer)",
             mcp_servers={"my_server": {"command": "python", "args": []}},
         )
@@ -189,7 +187,6 @@ class TestOptionalFields:
         assert inv.model == ModelTier.HAIKU
         assert inv.max_turns == 10
         assert inv.isolation == "worktree"
-        assert inv.enhanced_perception is True
 
     def test_display_name_allows_colons_and_parens(self):
         """display_name is free-form — not subject to agent_name pattern."""

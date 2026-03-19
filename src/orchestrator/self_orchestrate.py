@@ -38,7 +38,6 @@ class OrchestrationPlan:
 
     workflow_type: WorkflowType
     custom_workflow: str | None = None  # STEP-format definition, if custom
-    enhanced_perception: bool = False
     rationale: str = ""
     cost_usd: float = 0.0
     speed_mode: SpeedMode = SpeedMode.STANDARD
@@ -599,7 +598,6 @@ research steps BEFORE the PRD step
 {{
   "workflow_type": "feature_development|bugfix|refactor|performance_optimization|security_audit|custom",
   "custom_workflow": null or "STEP: ...\\n  agent: ...\\n...",
-  "enhanced_perception": true or false,
   "rationale": "Brief explanation referencing codebase complexity and why you chose this pipeline"
 }}
 ```
@@ -608,8 +606,6 @@ research steps BEFORE the PRD step
 - Use a **built-in workflow** when it closely matches the task — don't over-engineer
 - Use a **custom workflow** when the task spans multiple concerns, needs specialists \
 the built-in doesn't include, or when codebase signals suggest additional steps
-- Enable **enhanced_perception** for ambiguous/complex/domain-heavy requests, or when \
-the codebase is large (agents need more context to be effective)
 - For custom workflows, always include an Implementation step with `parallel: true` \
 and a Code Review step
 - Ensure artifact chains are valid: each step's inputs must be produced by a prior step's outputs
@@ -658,7 +654,6 @@ Produce a revised JSON plan that addresses the user's feedback. Same format:
 {{
   "workflow_type": "feature_development|bugfix|refactor|performance_optimization|security_audit|custom",
   "custom_workflow": null or "STEP: ...\\n  agent: ...\\n...",
-  "enhanced_perception": true or false,
   "rationale": "Brief explanation of what changed and why"
 }}
 ```
@@ -708,7 +703,6 @@ async def revise_plan(
     current_plan_json = json.dumps({
         "workflow_type": current_plan.workflow_type.value,
         "custom_workflow": current_plan.custom_workflow,
-        "enhanced_perception": current_plan.enhanced_perception,
         "rationale": current_plan.rationale,
         "speed_mode": current_plan.speed_mode.value,
     }, indent=2)
@@ -824,7 +818,6 @@ async def self_orchestrate(
             f"[Self-Orchestrate] Pipeline designed ({elapsed:.1f}s, "
             f"${result.cost_usd:.4f}): {plan.workflow_type.value}"
             f"{' (custom)' if plan.custom_workflow else ''}"
-            f"{' +perception' if plan.enhanced_perception else ''}"
         )
         logger.info(f"[Self-Orchestrate] Rationale: {plan.rationale}")
         return plan
@@ -884,7 +877,6 @@ def _parse_plan(
     return OrchestrationPlan(
         workflow_type=workflow_type,
         custom_workflow=custom_workflow,
-        enhanced_perception=bool(data.get("enhanced_perception", False)),
         rationale=data.get("rationale", ""),
         cost_usd=cost_usd,
         speed_mode=speed_mode,

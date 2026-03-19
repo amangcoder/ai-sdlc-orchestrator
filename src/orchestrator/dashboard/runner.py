@@ -34,7 +34,6 @@ class RunRequest(BaseModel):
     workflow_type: str = Field(default="feature_development")
     debate: bool = False
     knowledge: bool | None = None  # tristate: None=inherit, True=on, False=off
-    enhanced_perception: bool = False
     max_budget_usd: float = Field(default=50.0, ge=1.0, le=500.0)
     max_concurrent_agents: int = Field(default=0, ge=0, le=100)
     dry_run: bool = False
@@ -48,6 +47,7 @@ class RunRequest(BaseModel):
     checklist_verify: bool | None = None
     # Override max_concurrent_agents via nullable field (separate from int default=0)
     mode: Literal["fast", "superhaiku", "supersonnet", "balanced", "overkill"] | None = None
+    speed: Literal["turbo", "standard", "thorough", "paranoid", "auto"] | None = None
     phase: Literal["pm", "architect", "engineer", "qa", "reviewer"] | None = None
     from_phase: Literal["pm", "architect", "engineer", "qa", "reviewer"] | None = None
     log_format: Literal["console", "json"] | None = None
@@ -110,9 +110,6 @@ class RunTracker:
         if request.checklist_verify is not None:
             config.checklist_verify = request.checklist_verify
 
-        # enhanced_perception (always present — keep existing behavior)
-        config.enhanced_perception = request.enhanced_perception
-
         # max_budget_usd (always present)
         config.max_budget_usd = request.max_budget_usd
 
@@ -130,6 +127,18 @@ class RunTracker:
         # routing mode
         if request.mode is not None:
             config.routing_mode = request.mode
+
+        # speed mode
+        if request.speed is not None:
+            from orchestrator.model_routing import apply_speed_mode, auto_classify_speed
+            from orchestrator.models import SpeedMode
+
+            speed_mode = SpeedMode(request.speed)
+            if speed_mode == SpeedMode.AUTO:
+                speed_mode = asyncio.run(
+                    auto_classify_speed(request.feature_request, Path.cwd())
+                )
+            apply_speed_mode(config, speed_mode)
 
         # debate sub-settings
         if request.researchers is not None:

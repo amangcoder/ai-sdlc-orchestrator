@@ -159,7 +159,7 @@ class TestPromptTemplateFormatting:
         current_plan_json = json.dumps({
             "workflow_type": "feature_development",
             "custom_workflow": None,
-            "enhanced_perception": False,
+
             "rationale": "test",
             "speed_mode": speed_mode.value,
         })
@@ -217,7 +217,6 @@ class TestParsePlanSpeedMode:
     _valid_json = json.dumps({
         "workflow_type": "feature_development",
         "custom_workflow": None,
-        "enhanced_perception": False,
         "rationale": "Test rationale",
     })
 
@@ -262,7 +261,6 @@ class TestOrchestrationPlanSpeedModeField:
 _MOCK_LLM_RESPONSE = json.dumps({
     "workflow_type": "feature_development",
     "custom_workflow": None,
-    "enhanced_perception": False,
     "rationale": "Simple feature, use standard pipeline",
 })
 

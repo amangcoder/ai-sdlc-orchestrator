@@ -9,6 +9,8 @@ import 'screens/live_events_screen.dart';
 import 'screens/artifact_viewer_screen.dart';
 import 'screens/new_run_screen.dart';
 import 'screens/config_editor_screen.dart';
+import 'screens/ssh_terminal_screen.dart';
+import 'screens/project_detail_screen.dart';
 
 /// Root widget that configures GoRouter with auth-based redirect logic.
 class OrchestratorApp extends ConsumerStatefulWidget {
@@ -55,12 +57,41 @@ class _OrchestratorAppState extends ConsumerState<OrchestratorApp> {
         GoRoute(
           path: '/new-run',
           name: 'new-run',
-          builder: (context, state) => const NewRunScreen(),
+          builder: (context, state) {
+            // workspaceId may be passed as GoRouter 'extra' from
+            // ProjectDetailScreen's "Start Run" button so the new run is
+            // pre-scoped to the project folder (core feature requirement).
+            final extra = state.extra;
+            String? workspaceId;
+            if (extra is Map<String, String>) {
+              workspaceId = extra['workspaceId'];
+            } else if (extra is Map<String, dynamic>) {
+              workspaceId = extra['workspaceId'] as String?;
+            }
+            return NewRunScreen(preselectedWorkspaceId: workspaceId);
+          },
         ),
         GoRoute(
           path: '/config',
           name: 'config',
           builder: (context, state) => const ConfigEditorScreen(),
+        ),
+        GoRoute(
+          path: '/ssh-terminal',
+          name: 'ssh-terminal',
+          builder: (context, state) => const SshTerminalScreen(),
+        ),
+        // Project detail — navigated from a project card on DashboardScreen.
+        // projectName is passed as GoRouter 'extra' from context.push().
+        GoRoute(
+          path: '/project/:projectId',
+          name: 'project-detail',
+          builder: (context, state) => ProjectDetailScreen(
+            projectId: state.pathParameters['projectId']!,
+            projectName: state.extra as String? ??
+                state.uri.queryParameters['name'] ??
+                '',
+          ),
         ),
         GoRoute(
           path: '/runs/:runId',
@@ -141,4 +172,3 @@ class _OrchestratorAppState extends ConsumerState<OrchestratorApp> {
     );
   }
 }
-

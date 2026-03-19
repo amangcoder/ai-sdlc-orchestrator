@@ -35,6 +35,10 @@ _EXEMPT_PATHS: frozenset[str] = frozenset({
     "/redoc/",
     "/openapi.json",
     "/api/v1/setup/qr",
+    # SSH config probe — no auth required per REQ-023.
+    # This endpoint only reports TCP reachability of the SSH port;
+    # no credentials or sensitive data are ever returned.
+    "/api/v1/ssh/config",
 })
 
 

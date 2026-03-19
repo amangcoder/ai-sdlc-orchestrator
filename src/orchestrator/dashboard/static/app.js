@@ -172,7 +172,6 @@ function initNewRunForm() {
       max_concurrent_agents: parseInt(form.querySelector('[name="max_concurrent_agents"]').value) || 0,
       debate: form.querySelector('[name="debate"]').checked,
       knowledge: form.querySelector('[name="knowledge"]').checked,
-      enhanced_perception: form.querySelector('[name="enhanced_perception"]').checked,
       dry_run: form.querySelector('[name="dry_run"]').checked,
     };
 

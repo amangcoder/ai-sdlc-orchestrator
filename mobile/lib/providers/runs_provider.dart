@@ -13,7 +13,8 @@ class RunsNotifier extends AsyncNotifier<List<RunSummary>> {
   Future<List<RunSummary>> _fetchRuns() async {
     final creds = await ref.read(authNotifierProvider.future);
     if (creds == null) return [];
-    final api = ApiService(credentials: creds);
+    // Use the shared provider — avoids constructing a new Dio instance inline.
+    final api = ref.read(apiServiceProvider) ?? ApiService(credentials: creds);
     try {
       final runs = await api.listRuns();
       runs.sort((a, b) {
