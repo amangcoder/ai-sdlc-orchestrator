@@ -138,7 +138,28 @@ async def list_runs(
     """
     manager: WorkspaceManager = request.app.state.workspace_manager
     runs_data = manager.list_runs()
-    
+
+    # Merge in runs from the global registry (CLI-started, IDE-started, etc.)
+    # The registry may point to state files outside the app workspace.
+    seen_ids = {s.get("run_id") for s in runs_data if s.get("run_id")}
+    from orchestrator.run_registry import list_registered_runs
+    for entry in list_registered_runs():
+        rid = entry.get("run_id")
+        if rid and rid not in seen_ids:
+            state_path = Path(entry.get("state_path", ""))
+            if state_path.exists():
+                try:
+                    state_data = json.loads(state_path.read_text(encoding="utf-8"))
+                    state_data["_mtime"] = state_path.stat().st_mtime
+                    state_data.setdefault("source", entry.get("source", "cli"))
+                    runs_data.append(state_data)
+                    seen_ids.add(rid)
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+    # Re-sort after merge (newest first by mtime)
+    runs_data.sort(key=lambda x: x.get("_mtime", 0), reverse=True)
+
     results: list[RunSummaryResponse] = []
     for state in runs_data:
         # When workspace_id filter is active, skip runs not tagged with this ID.
@@ -193,6 +214,18 @@ async def get_run(run_id: str, request: Request):
                         state = _read_per_run_state(project_dir / "workspace", run_id, project_name=project_dir.name)
                     if state is not None:
                         break
+
+    # Fallback: global run registry (CLI-started runs)
+    if state is None:
+        from orchestrator.run_registry import lookup_run
+        entry = lookup_run(run_id)
+        if entry:
+            sp = Path(entry.get("state_path", ""))
+            if sp.exists():
+                try:
+                    state = json.loads(sp.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    pass
 
     if state is None:
         return JSONResponse(
@@ -441,6 +474,39 @@ async def cancel_run(run_id: str, request: Request):
             except OSError:
                 pass
             return CancelResponse(cancelled=True).model_dump()
+
+    # Fallback: check global run registry (CLI-started runs)
+    from orchestrator.run_registry import lookup_run
+    entry = lookup_run(run_id)
+    if entry:
+        reg_state_path = Path(entry.get("state_path", ""))
+        pid = entry.get("pid")
+        if reg_state_path.exists():
+            try:
+                reg_state = json.loads(reg_state_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                reg_state = None
+            if reg_state and reg_state.get("status") == "running":
+                # Write interrupt sentinel in the project workspace
+                sentinel = reg_state_path.parent / ".interrupt"
+                try:
+                    sentinel.write_text("web_cancel")
+                except OSError:
+                    pass
+                # Also send SIGINT to the process if PID is known
+                if pid:
+                    try:
+                        import signal
+                        os.kill(pid, signal.SIGINT)
+                    except (OSError, ProcessLookupError):
+                        pass
+                reg_state["status"] = "cancelled"
+                reg_state["end_time"] = datetime.now(timezone.utc).isoformat()
+                try:
+                    reg_state_path.write_text(json.dumps(reg_state, ensure_ascii=False))
+                except OSError:
+                    pass
+                return CancelResponse(cancelled=True).model_dump()
 
     return JSONResponse(
         status_code=404,

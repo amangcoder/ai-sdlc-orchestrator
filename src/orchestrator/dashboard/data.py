@@ -153,6 +153,7 @@ class RunDataReader:
         1. Per-run directory: project/runs/{run_id}/logs/run-{run_id}.jsonl
         2. Per-run directory: project/runs/{run_id}/logs/run.jsonl
         3. Flat project logs: project/logs/run-{run_id}.jsonl
+        4. Global run registry: ~/.orchestrator/runs/{run_id}.json -> jsonl_path
         """
         # 1+2. Per-run directory
         run_dir = self.manager.run_workspace(run_id)
@@ -168,6 +169,14 @@ class RunDataReader:
         candidate = self.logs_dir / f"run-{run_id}.jsonl"
         if candidate.exists():
             return candidate
+
+        # 4. Global registry — discovers CLI-started runs
+        from orchestrator.run_registry import lookup_run
+        entry = lookup_run(run_id)
+        if entry:
+            jsonl_path = Path(entry["jsonl_path"])
+            if jsonl_path.exists():
+                return jsonl_path
 
         return None
 

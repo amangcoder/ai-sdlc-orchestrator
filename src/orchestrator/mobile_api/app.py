@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -78,6 +79,20 @@ def create_mobile_app(
                 state = json.loads(state_file.read_text(encoding="utf-8"))
                 run_id = state.get("run_id")
                 if state.get("status") == "running" and run_id and run_id not in active_ids:
+                    # Subprocess runs store their PID. If the process is still
+                    # alive (session-independent via start_new_session=True),
+                    # leave the state as-is — the run is still in progress.
+                    pid = state.get("pid")
+                    if pid is not None:
+                        try:
+                            os.kill(pid, 0)  # signal 0 = liveness check only
+                            logger.info(
+                                "Run %s PID %d still alive — leaving as running", run_id, pid
+                            )
+                            continue  # process is alive, skip reconciliation
+                        except (OSError, ProcessLookupError):
+                            pass  # process is dead — fall through to mark interrupted
+
                     logger.info(
                         "Reconciling orphaned run %s: marking as interrupted", run_id
                     )

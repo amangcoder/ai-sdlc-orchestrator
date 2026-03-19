@@ -286,85 +286,107 @@ async def start_subprocess_run(
         "via": "system_orchestrate",
     })
 
-    # Launch the subprocess — use cli_workspace as cwd so both --workspace flag
-    # and process working directory agree (TASK-017 fix: was str(workspace)).
-    # Force unbuffered stdout so the monitor receives lines immediately instead
-    # of waiting for the 8KB pipe buffer to fill (fixes stream stall during
-    # long MCP tool calls where output is infrequent).
+    # Launch orchestrate as a session-independent process that writes directly
+    # to the JSONL file — no stdout pipe.
+    #
+    # WHY: A pipe has a fixed OS buffer (64 KB on Linux, 64 KB on macOS).
+    # When the orchestrate binary is blocked inside a long MCP tool call it
+    # produces no output, but when the call returns it may burst many KB at
+    # once.  If the asyncio reader task is even briefly behind, the pipe
+    # buffer fills and the subprocess **blocks on write**, stalling the entire
+    # run.  Redirecting stdout to a file removes the buffer ceiling: the
+    # subprocess writes at full disk speed regardless of whether the API
+    # server is reading.
+    #
+    # start_new_session=True puts the process in its own POSIX session so it
+    # keeps running even if the API server dies or is restarted.  The monitor
+    # task then polls the JSONL file rather than the pipe.
     sub_env = os.environ.copy()
     sub_env["PYTHONUNBUFFERED"] = "1"
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,  # merge stderr into stdout
-        cwd=str(cli_workspace),
-        env=sub_env,
+
+    # Open the JSONL file in append mode and hand the fd to the subprocess.
+    # We close our copy immediately after launch so only the child holds it.
+    jsonl_fd = os.open(
+        str(jsonl_path),
+        os.O_WRONLY | os.O_APPEND | os.O_CREAT,
+        0o644,
     )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=jsonl_fd,
+            stderr=jsonl_fd,   # merge stderr into the same file
+            cwd=str(cli_workspace),
+            env=sub_env,
+            start_new_session=True,
+        )
+    finally:
+        os.close(jsonl_fd)  # parent no longer needs this fd
+
+    # Store the PID so external tooling (and startup reconciliation) can
+    # check liveness with os.kill(pid, 0).
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+        state["pid"] = proc.pid
+        state_file.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    except (OSError, json.JSONDecodeError):
+        pass
 
     # Create and return the monitoring task
     task = asyncio.create_task(
-        _monitor_subprocess(proc, run_id, state_file, jsonl_path),
+        _monitor_subprocess_file(proc, run_id, state_file, jsonl_path),
         name=f"system_orchestrate_{run_id}",
     )
     return task
 
 
-async def _monitor_subprocess(
+async def _monitor_subprocess_file(
     proc: asyncio.subprocess.Process,
     run_id: str,
     state_file: Path,
     jsonl_path: Path,
+    poll_interval: float = 2.0,
 ) -> None:
-    """Monitor subprocess output and update state/log files on completion.
+    """Monitor a session-independent subprocess by polling its JSONL output file.
 
-    Reads stdout/stderr line by line and appends each line as a log event
-    to the JSONL file. Updates the per-run state file on process exit.
+    The subprocess writes directly to *jsonl_path* (no pipe).  This coroutine:
+    - Polls the file every *poll_interval* seconds for new JSON event lines
+    - Calls _update_state_from_event for each new event so the REST API
+      reflects live progress
+    - On process exit, writes the final status to the state file and appends
+      a run_complete / run_failed event
 
     Args:
-        proc: The running subprocess.
+        proc: The running subprocess (launched with start_new_session=True).
         run_id: The run identifier for log attribution.
         state_file: Path to workspace/state-{run_id}.json.
         jsonl_path: Path to workspace/logs/run-{run_id}.jsonl.
+        poll_interval: Seconds between file polls (default 2s).
     """
-    # Stream stdout/stderr lines to the JSONL log and update state file
-    # with phase/step progress as structured events arrive.
-    if proc.stdout:
-        try:
-            async for line_bytes in proc.stdout:
-                line = line_bytes.decode("utf-8", errors="replace").rstrip()
-                if not line:
-                    continue
+    # The run_start event written before launch is line 0.  Start processing
+    # from line 1 so we don't re-process it for state updates.
+    lines_processed = 1
 
-                # Try to parse as JSON (orchestrate outputs JSON events)
-                try:
-                    event = json.loads(line)
-                    if isinstance(event, dict):
-                        _append_jsonl_event(jsonl_path, event)
-                        # Update state file with progress from structured events
-                        _update_state_from_event(state_file, event, run_id)
-                    else:
-                        _append_jsonl_event(jsonl_path, {
-                            "event": "log",
-                            "run_id": run_id,
-                            "message": line,
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                        })
-                except (json.JSONDecodeError, ValueError):
-                    # Plain text output — wrap as a log event
-                    _append_jsonl_event(jsonl_path, {
-                        "event": "log",
-                        "run_id": run_id,
-                        "message": line,
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                    })
-        except Exception as exc:
-            logger.warning("Error reading subprocess output for run %s: %s", run_id, exc)
+    while True:
+        # Read any new lines written by the subprocess since last poll.
+        lines_processed = _poll_jsonl_state(
+            jsonl_path, state_file, run_id, lines_processed
+        )
 
-    # Wait for process to finish
+        # Break as soon as the process has exited (returncode is set by asyncio
+        # when the child is reaped — no blocking wait needed here).
+        if proc.returncode is not None:
+            break
+
+        await asyncio.sleep(poll_interval)
+
+    # One final poll to catch lines flushed just before exit.
+    _poll_jsonl_state(jsonl_path, state_file, run_id, lines_processed)
+
     return_code = await proc.wait()
     final_status = "completed" if return_code == 0 else "failed"
 
-    # Write final status to the per-run state file
+    # Write final status to the per-run state file.
     try:
         state = json.loads(state_file.read_text(encoding="utf-8"))
         state["status"] = final_status
@@ -377,7 +399,7 @@ async def _monitor_subprocess(
             "Failed to update state file for run %s on completion: %s", run_id, exc
         )
 
-    # Append completion event to JSONL log
+    # Append a completion sentinel so the WebSocket streaming loop knows to close.
     completion_event: dict = {
         "event": "run_complete" if return_code == 0 else "run_failed",
         "run_id": run_id,
@@ -396,6 +418,37 @@ async def _monitor_subprocess(
         )
     else:
         logger.info("System orchestrate run %s completed successfully", run_id)
+
+
+def _poll_jsonl_state(
+    jsonl_path: Path,
+    state_file: Path,
+    run_id: str,
+    lines_processed: int,
+) -> int:
+    """Read new lines from *jsonl_path* starting at *lines_processed* and update state.
+
+    Returns the updated lines_processed count.
+    """
+    try:
+        raw = jsonl_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return lines_processed
+
+    all_lines = raw.splitlines()
+    new_lines = all_lines[lines_processed:]
+    for line in new_lines:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+            if isinstance(event, dict):
+                _update_state_from_event(state_file, event, run_id)
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    return lines_processed + len(new_lines)
 
 
 def _update_state_from_event(state_file: Path, event: dict, run_id: str) -> None:  # noqa: ARG001

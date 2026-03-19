@@ -202,6 +202,20 @@ class OrchestratorEngine:
 
         self.run_logger = RunLogger(workspace / "logs", state.run_id)
 
+        # Register in global registry so the mobile API can discover this run
+        # regardless of whether it was started from CLI, IDE, or mobile app.
+        from orchestrator.run_registry import register_run
+        state_path = workspace / f"state-{state.run_id}.json"
+        register_run(
+            run_id=state.run_id,
+            project_dir=self.project_root,
+            jsonl_path=self.run_logger._log_path,
+            state_path=state_path,
+            feature_request=feature_request,
+            workflow_type=state.workflow_type.value if hasattr(state.workflow_type, "value") else str(state.workflow_type),
+            source="cli",
+        )
+
         # Bootstrap AICoder knowledge (if enabled)
         if self.config.knowledge.enabled:
             knowledge_result = await build_knowledge(
@@ -377,6 +391,11 @@ class OrchestratorEngine:
             cleanup_test_runner_mcp_config(self.project_root)
 
         self._save_state(state, workspace)
+
+        # Update registry with final status
+        from orchestrator.run_registry import update_run
+        update_run(state.run_id, status="completed", total_cost_usd=state.total_cost_usd)
+
         return state
 
     async def _run_workflow(
