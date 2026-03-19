@@ -2,6 +2,44 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] - 2026-03-19
+
+### Added
+
+**Mobile App (Flutter)**
+- New `mobile/` Flutter application for iOS and Android
+- Screens: Dashboard, Run Detail, New Run, Live Events, Artifact Viewer, Config Editor, Settings
+- Providers: `AuthProvider`, `RunsProvider` for state management
+- Services: `ApiService`, `WebSocketService`, `SecureStorageService`, `FlagPreferencesService`
+- Real-time run monitoring via WebSocket event stream
+
+**Mobile API Backend**
+- New `mobile_api/` FastAPI server (`server.py`) exposing the orchestrator over HTTP/WebSocket
+- REST routes: runs (`/runs`), config (`/config`), directories (`/directories`)
+- WebSocket route (`/ws`) for live phase/event streaming
+- Token-based auth (`auth.py`) with rate limiting (`rate_limit.py`)
+- QR-code setup flow (`qr_setup.py`) for easy mobile onboarding
+- Tailscale integration (`tailscale.py`) for secure remote access without port forwarding
+- Directory service (`directory_service.py`) for workspace navigation from mobile
+
+**Integration Test Suite**
+- Full contract test coverage for all mobile API routes: runs, config, directories, auth, WebSocket
+- Round-trip data tests, artifact security tests, E2E scenario tests
+- Shared `conftest.py` with reusable fixtures for the integration suite
+
+**Performance & Caching**
+- Caching layer across pipeline phases (see `CACHE_PATTERNS.md`)
+- Performance optimizations documented in `PERFORMANCE_OPTIMIZATION_PLAN.md`
+- Phase 2 and Phase 3 performance test suites
+
+### Changed
+
+- `models.py` — extended run/phase models with fields required by mobile API
+- `config/default.yaml` — added mobile API server configuration block
+- `model_routing.py` — routing integration fixes merged from master
+- `phases.py`, `engine.py`, `workflow_engine.py`, `agents.py` — minor updates supporting mobile API hooks
+- `self_orchestrate.py` / `interruption.py` — compatibility fixes
+
 ## [0.3.1] - 2026-03-18
 
 ### Fixed
