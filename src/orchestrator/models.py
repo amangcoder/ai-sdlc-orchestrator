@@ -61,6 +61,7 @@ class PhaseStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    SKIPPED = "skipped"
 
 
 class RunStatus(str, Enum):

@@ -640,6 +640,10 @@ def main() -> None:
         else:
             sys.exit(0)
 
+    # Priority: positional feature_request > --feature-request flag
+    if not args.feature_request and args.feature_request_flag:
+        args.feature_request = args.feature_request_flag
+
     if not args.feature_request:
         parser.print_help()
         sys.exit(1)
@@ -833,7 +837,6 @@ def main() -> None:
     confirm_callback = _confirm_agent_invocation if config.confirm else None
     engine = OrchestratorEngine(
         config=config, 
-        project_name=args.workspace_name,
         dry_run=args.dry_run, 
         interrupt_manager=interrupt_manager,
         confirm_callback=confirm_callback,

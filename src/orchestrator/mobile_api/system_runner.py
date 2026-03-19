@@ -69,22 +69,26 @@ def build_cli_args(
     # Optional: workflow type
     workflow_type = getattr(request, "workflow_type", None)
     if workflow_type:
-        args += ["--workflow", str(workflow_type)]
+        val = workflow_type.value if hasattr(workflow_type, "value") else str(workflow_type)
+        args += ["--workflow", val]
 
     # Optional: phase to run
     phase = getattr(request, "phase", None)
     if phase is not None:
-        args += ["--phase", str(phase)]
+        val = phase.value if hasattr(phase, "value") else str(phase)
+        args += ["--phase", val]
 
     # Optional: from-phase (resume from)
     from_phase = getattr(request, "from_phase", None)
     if from_phase is not None:
-        args += ["--from-phase", str(from_phase)]
+        val = from_phase.value if hasattr(from_phase, "value") else str(from_phase)
+        args += ["--from-phase", val]
 
     # Optional: speed mode
     mode = getattr(request, "mode", None)
     if mode is not None:
-        args += ["--mode", str(mode)]
+        val = mode.value if hasattr(mode, "value") else str(mode)
+        args += ["--mode", val]
 
     # Optional: max budget
     max_budget_usd = getattr(request, "max_budget_usd", None)
@@ -94,7 +98,8 @@ def build_cli_args(
     # Optional: speed mode
     speed = getattr(request, "speed", None)
     if speed is not None:
-        args += ["--speed", str(speed)]
+        val = speed.value if hasattr(speed, "value") else str(speed)
+        args += ["--speed", val]
 
     # Optional: debate flag
     debate = getattr(request, "debate", False)
@@ -154,7 +159,8 @@ def build_cli_args(
     # Optional: log format
     log_format = getattr(request, "log_format", None)
     if log_format is not None:
-        args += ["--log-format", str(log_format)]
+        val = log_format.value if hasattr(log_format, "value") else str(log_format)
+        args += ["--log-format", val]
 
     # Optional: resume run ID
     resume_run_id = getattr(request, "resume_run_id", None)
