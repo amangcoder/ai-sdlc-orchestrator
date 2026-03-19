@@ -106,20 +106,6 @@ def create_mobile_app(
         redirect_slashes=False,
     )
 
-    # ── Shared state ───────────────────────────────────────────────────────
-    # These are PUBLIC — test fixtures may replace app.state.tracker after factory returns.
-    from orchestrator.dashboard.data import RunDataReader
-    from orchestrator.dashboard.runner import RunTracker
-    from orchestrator.mobile_api.rate_limit import RateLimiter
-
-    app.state.reader = RunDataReader(workspace_dir)
-    app.state.tracker = RunTracker(workspace_dir, config_path)
-    # Per-app rate limiter so each test app instance has an independent window
-    app.state.rate_limiter = RateLimiter(window_seconds=5.0)
-
-    # Store config_path on state for config router access
-    app.state.config_path = config_path
-
     # ── Config loading ─────────────────────────────────────────────────────
     # Load OrchestratorConfig for directory list and flag forwarding.
     # On failure, fall back to defaults rather than crashing startup.
@@ -135,6 +121,27 @@ def create_mobile_app(
         config = OrchestratorConfig()
 
     app.state.config = config
+
+    # ── Workspace management ───────────────────────────────────────────────
+    from orchestrator.workspace_manager import WorkspaceManager
+    workspace_root = Path(config.workspace_root or workspace_dir).resolve()
+    project_name = config.project_name or Path.cwd().name
+    workspace_manager = WorkspaceManager(workspace_root, project_name)
+    app.state.workspace_manager = workspace_manager  # shared with all routes
+
+    # ── Shared state ───────────────────────────────────────────────────────
+    # These are PUBLIC — test fixtures may replace app.state.tracker after factory returns.
+    from orchestrator.dashboard.data import RunDataReader
+    from orchestrator.dashboard.runner import RunTracker
+    from orchestrator.mobile_api.rate_limit import RateLimiter
+
+    app.state.reader = RunDataReader(workspace_manager)
+    app.state.tracker = RunTracker(workspace_dir, config_path)
+    # Per-app rate limiter so each test app instance has an independent window
+    app.state.rate_limiter = RateLimiter(window_seconds=5.0)
+
+    # Store config_path on state for config router access
+    app.state.config_path = config_path
 
     # ── Per-installation directory salt ────────────────────────────────────
     # Stable UUID used to generate opaque directory IDs. Persisted to disk so

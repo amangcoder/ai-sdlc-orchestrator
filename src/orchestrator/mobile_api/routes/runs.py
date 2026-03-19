@@ -135,10 +135,7 @@ async def list_runs(
 
     current_step is read from per-run state-{id}.json, NOT the global state.json.
     """
-    reader = request.app.state.reader
-    app_workspace: Path = reader.workspace
-
-    manager = WorkspaceManager(app_workspace, app_workspace.name)
+    manager: WorkspaceManager = request.app.state.workspace_manager
     runs_data = manager.list_runs()
     
     results: list[RunSummaryResponse] = []
@@ -151,15 +148,9 @@ async def list_runs(
         resp = _run_summary_from_state(state)
         results.append(resp)
 
-    # list_runs usually caps at 20 but mobile API might want more or less. 
-    # Existing code seemed to imply a cap by slicing in the target content.
-    return results[:100] if workspace_id else results[:20]
-
     # Cap: 100 when filtering by workspace_id, 20 otherwise (backward compat)
     cap = 100 if workspace_id is not None else 20
-    results = results[:cap]
-
-    return [r.model_dump() for r in results]
+    return [r.model_dump() for r in results[:cap]]
 
 
 # ── GET /api/v1/runs/{run_id} ──────────────────────────────────────────────
@@ -179,18 +170,23 @@ async def get_run(run_id: str, request: Request):
             content={"error": "Invalid run_id format"},
         )
 
-    app_workspace: Path = request.app.state.reader.workspace
+    manager: WorkspaceManager = request.app.state.workspace_manager
 
-    # First try app workspace
-    state = _read_per_run_state(app_workspace, run_id)
+    # Primary lookup via shared WorkspaceManager (handles both new and legacy layouts)
+    state_path = manager.find_run_state(run_id)
+    state = None
+    if state_path and state_path.exists():
+        try:
+            state = json.loads(state_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            state = None
 
-    # If not found and we have projects_root, search all project workspaces
+    # Fallback: search per-project workspaces if projects_root is configured
     if state is None:
         projects_root = getattr(request.app.state, "projects_root", None)
         if projects_root is not None:
             for project_dir in Path(projects_root).iterdir():
                 if project_dir.is_dir():
-                    # Check both the project dir itself and a workspace/ subdirectory
                     state = _read_per_run_state(project_dir, run_id, project_name=project_dir.name)
                     if state is None:
                         state = _read_per_run_state(project_dir / "workspace", run_id, project_name=project_dir.name)
@@ -316,6 +312,7 @@ async def start_run(run_request: RunStartRequest, request: Request):
             run_id,
             project_path=project_path,
             workspace_id=run_request.workspace_id,
+            config_path=request.app.state.config_path,
         )
 
         return JSONResponse(

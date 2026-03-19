@@ -43,6 +43,7 @@ def build_cli_args(
     binary_path: str,
     workspace_path: Path,
     run_id: str,
+    config_path: Path | None = None,
 ) -> list[str]:
     """Build the argv list for the orchestrate CLI subprocess.
 
@@ -59,9 +60,6 @@ def build_cli_args(
         Complete argv list starting with binary_path.
     """
     args: list[str] = [binary_path]
-
-    # Required: workspace path
-    args += ["--workspace", str(workspace_path.resolve())]
 
     # Required: feature request text
     feature_request = getattr(request, "feature_request", "")
@@ -163,11 +161,14 @@ def build_cli_args(
     if resume_run_id is not None:
         args += ["--resume-run", str(resume_run_id)]
 
+    # Optional: config file path
+    if config_path is not None:
+        args += ["--config", str(config_path.resolve())]
+
     # Append run-id so the binary writes to the right state file
     args += ["--run-id", run_id]
 
     return args
-
 
 async def start_subprocess_run(
     request: object,
@@ -175,6 +176,7 @@ async def start_subprocess_run(
     run_id: str,
     project_path: Path | None = None,
     workspace_id: str | None = None,
+    config_path: Path | None = None,
 ) -> asyncio.Task:
     """Launch the orchestrate binary as an asyncio subprocess.
 
@@ -240,7 +242,7 @@ async def start_subprocess_run(
             )
             cli_workspace = workspace
 
-    args = build_cli_args(request, binary_path, cli_workspace, run_id)
+    args = build_cli_args(request, binary_path, cli_workspace, run_id, config_path=config_path)
 
     # Ensure the logs directory exists
     logs_dir = workspace / "logs"

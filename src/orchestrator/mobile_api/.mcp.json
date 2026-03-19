@@ -7,7 +7,7 @@
         "/Users/amangupta/Projects/AICoder/mcp-server/dist/server.js"
       ],
       "env": {
-        "KNOWLEDGE_ROOT": "/Users/amangupta/Projects/orchestrator-for-mobile-ui/.knowledge"
+        "KNOWLEDGE_ROOT": "/Users/amangupta/Projects/orchestrator-for-mobile-ui/src/orchestrator/mobile_api/.knowledge"
       }
     },
     "test-runner": {

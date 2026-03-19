@@ -260,6 +260,10 @@ def _build_parser() -> argparse.ArgumentParser:
                         choices=["turbo", "standard", "thorough", "paranoid", "auto"],
                         default=None, metavar="SPEED",
                         help="Pipeline depth mode: turbo (4 steps), standard (6), thorough (8+), paranoid (10+), auto (default: intelligent selection)")
+    parser.add_argument("--run-id", metavar="RUN_ID", dest="run_id", default=None,
+                        help="Explicit run ID to use (used by Mobile API system orchestrate)")
+    parser.add_argument("--feature-request", metavar="TEXT", dest="feature_request_flag", default=None,
+                        help="Feature request as a flag (alternative to positional arg; used by Mobile API system orchestrate)")
     return parser
 
 
