@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -1113,7 +1114,11 @@ class OrchestratorEngine:
             if result.success:
                 return result
 
-            logger.warning(f"Agent {agent_name} failed (attempt {attempt + 1}): {result.error}")
+            is_infra_failure = result.error_code == "INFRA_ERROR"
+            logger.warning(
+                f"Agent {agent_name} failed (attempt {attempt + 1})"
+                f"{' [infra]' if is_infra_failure else ''}: {result.error}"
+            )
 
             # Check if the error is non-retriable before spending another attempt
             NON_RETRIABLE_PATTERNS = [
@@ -1129,6 +1134,11 @@ class OrchestratorEngine:
 
             if self.run_logger:
                 self.run_logger.log_event("agent_retry", {"agent": agent_name, "attempt": attempt + 1})
+
+            if is_infra_failure:
+                # SDK/MCP crash — wait briefly to let MCP server recover
+                logger.info(f"Infrastructure failure for {agent_name} — waiting 3s before retry")
+                await asyncio.sleep(3)
 
             if escalation_model and current_model != escalation_model:
                 logger.info(f"Escalating {agent_name} from {current_model.value} to {escalation_model.value}")

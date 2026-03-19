@@ -539,13 +539,18 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
             success=False,
             error=error_msg,
             cost_usd=0.0,
+            error_code="INFRA_ERROR",
         )
     finally:
         tracker.stop_spinner()
 
     if result_msg is None:
         tracker.print_done(success=False, cost=0.0)
-        return AgentResult(success=False, error="No result message received from SDK")
+        return AgentResult(
+            success=False,
+            error="No result message received from SDK",
+            error_code="INFRA_ERROR",
+        )
 
     cost = result_msg.total_cost_usd or 0.0
     success = not result_msg.is_error

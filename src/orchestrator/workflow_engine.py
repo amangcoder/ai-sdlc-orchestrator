@@ -1550,18 +1550,29 @@ class WorkflowEngine:
                 return
 
             task.retry_count += 1
-            logger.warning(f"Task {task.task_id} failed (attempt {attempt + 1}): {result.error}")
-
-            # Append validation/failure errors to the retry prompt so the
-            # agent can address them on the next attempt (REV-205).
-            error_detail = result.error or "Unknown error"
-            prompt = (
-                f"{prompt}\n\n"
-                f"--- RETRY (attempt {task.retry_count + 1}) ---\n"
-                f"Your previous attempt failed with the following error:\n"
-                f"{error_detail}\n"
-                f"Please fix the issues described above and try again."
+            is_infra_failure = result.error_code == "INFRA_ERROR"
+            logger.warning(
+                f"Task {task.task_id} failed (attempt {attempt + 1})"
+                f"{' [infra]' if is_infra_failure else ''}: {result.error}"
             )
+
+            if is_infra_failure:
+                # SDK/MCP crash — the agent never ran. Don't append "fix the issues"
+                # context (there's nothing to fix). Wait briefly to let MCP server
+                # recover before the next attempt.
+                logger.info(f"Infrastructure failure for {task.task_id} — waiting 3s before retry")
+                await asyncio.sleep(3)
+            else:
+                # Append validation/failure errors to the retry prompt so the
+                # agent can address them on the next attempt (REV-205).
+                error_detail = result.error or "Unknown error"
+                prompt = (
+                    f"{prompt}\n\n"
+                    f"--- RETRY (attempt {task.retry_count + 1}) ---\n"
+                    f"Your previous attempt failed with the following error:\n"
+                    f"{error_detail}\n"
+                    f"Please fix the issues described above and try again."
+                )
 
             if escalation_model and model != escalation_model:
                 logger.info(f"Escalating model to {escalation_model.value}")

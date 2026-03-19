@@ -458,9 +458,10 @@ async def resume_run(run_id: str, request: Request):
     Returns HTTP 400 if run_id format is invalid.
     Returns HTTP 409 if another run is already active.
 
-    TASK-017 fix: Reads workspace_id from the original run's state and
-    propagates workspace_dir_override to the new run so the resumed run
-    executes in the same project workspace as the original.
+    Detects whether the original run was started via system_orchestrate
+    (subprocess) and resumes via the same path. This ensures subprocess
+    runs resume as subprocesses with --resume-run, not via the in-process
+    tracker which cannot load subprocess state files.
     """
     if not _validate_run_id_format(run_id):
         return JSONResponse(
@@ -468,12 +469,7 @@ async def resume_run(run_id: str, request: Request):
             content={"error": "Invalid run_id format"},
         )
 
-    tracker = request.app.state.tracker
-
-    # Build a resume RunRequest
-    from orchestrator.dashboard.runner import RunRequest
-
-    # Read the original run's details to pass the same feature request
+    # Read the original run's details
     workspace: Path = request.app.state.reader.workspace
     state = _read_per_run_state(workspace, run_id)
 
@@ -497,7 +493,6 @@ async def resume_run(run_id: str, request: Request):
     if state:
         feature_request = state.get("feature_request", "")
         workflow_type = state.get("workflow_type", "feature_development")
-        # Propagate workspace_id so resumed run executes in the same project workspace
         original_workspace_id = state.get("workspace_id")
 
     # Resolve workspace_id to a path for the resumed run
@@ -505,6 +500,54 @@ async def resume_run(run_id: str, request: Request):
         resolved = _resolve_workspace_path(original_workspace_id, request)
         if resolved is not None:
             workspace_dir_override = str(resolved)
+
+    # ── System orchestrate resume path ────────────────────────────────────
+    # If the original run was started via system_orchestrate (detected by
+    # checking if the JSONL log was written by system_runner, i.e. it
+    # exists in the app workspace logs dir), resume via subprocess too.
+    is_subprocess_run = (workspace / "logs" / f"run-{run_id}.jsonl").exists()
+    tracker = request.app.state.tracker
+
+    if is_subprocess_run:
+        from orchestrator.mobile_api.system_runner import locate_binary, start_subprocess_run
+
+        binary = locate_binary()
+        if binary is None:
+            return JSONResponse(
+                status_code=422,
+                content={"error": "orchestrate binary not found on PATH"},
+            )
+
+        project_path: Path | None = None
+        if workspace_dir_override is not None:
+            project_path = Path(workspace_dir_override)
+
+        new_run_id = secrets.token_hex(8)
+
+        # Build a minimal request object with resume_run_id set
+        resume_request = RunStartRequest(
+            feature_request=feature_request or "Resume run",
+            workflow_type=workflow_type,
+            use_system_orchestrate=True,
+            resume_run_id=run_id,
+        )
+
+        await start_subprocess_run(
+            resume_request,
+            workspace,
+            new_run_id,
+            project_path=project_path,
+            workspace_id=original_workspace_id,
+            config_path=request.app.state.config_path,
+        )
+
+        return JSONResponse(
+            status_code=202,
+            content=RunStartResponse(run_id=new_run_id, status="started").model_dump(),
+        )
+
+    # ── In-process resume path (existing, unchanged) ─────────────────────
+    from orchestrator.dashboard.runner import RunRequest
 
     run_req = RunRequest(
         feature_request=feature_request or "Resume run",
