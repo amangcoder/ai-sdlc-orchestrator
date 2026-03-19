@@ -43,6 +43,7 @@ class RunDataReader:
     def __init__(self, workspace_manager: WorkspaceManager) -> None:
         self.manager = workspace_manager
         self.workspace = workspace_manager.project_workspace
+        self.logs_dir = self.workspace / "logs"
 
     def list_runs(self) -> list[RunSummary]:
         """List all runs using WorkspaceManager's discovery logic."""
@@ -145,18 +146,43 @@ class RunDataReader:
             interrupt_history=state.get("interrupt_history", []) if state else [],
         )
 
+    def _find_log_file(self, run_id: str) -> Path | None:
+        """Locate the JSONL log file for a run.
+
+        Checks:
+        1. Per-run directory: project/runs/{run_id}/logs/run-{run_id}.jsonl
+        2. Per-run directory: project/runs/{run_id}/logs/run.jsonl
+        3. Flat project logs: project/logs/run-{run_id}.jsonl
+        """
+        # 1+2. Per-run directory
+        run_dir = self.manager.run_workspace(run_id)
+        if run_dir.exists():
+            candidate = run_dir / "logs" / f"run-{run_id}.jsonl"
+            if candidate.exists():
+                return candidate
+            candidate = run_dir / "logs" / "run.jsonl"
+            if candidate.exists():
+                return candidate
+
+        # 3. Flat project logs dir
+        candidate = self.logs_dir / f"run-{run_id}.jsonl"
+        if candidate.exists():
+            return candidate
+
+        return None
+
     def get_events(
         self, run_id: str, offset: int = 0, limit: int = 100,
     ) -> list[dict[str, Any]]:
-        log_file = self.logs_dir / f"run-{run_id}.jsonl"
-        if not log_file.exists():
+        log_file = self._find_log_file(run_id)
+        if not log_file:
             return []
         events = self._read_events(log_file)
         return events[offset : offset + limit]
 
     def tail_events(self, run_id: str, after_line: int = 0) -> list[dict[str, Any]]:
-        log_file = self.logs_dir / f"run-{run_id}.jsonl"
-        if not log_file.exists():
+        log_file = self._find_log_file(run_id)
+        if not log_file:
             return []
         events = self._read_events(log_file)
         return events[after_line:]

@@ -267,6 +267,31 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _file_prompt(
+    run_id: str,
+    workspace: Path,
+    question: str,
+    prompt_type: str = "free_text",
+    options: list[str] | None = None,
+) -> str | None:
+    """Get user input via file-based prompt IPC (for subprocess/mobile runs).
+
+    Writes a .prompt-{run_id}.json, polls for .response-{run_id}.json,
+    cleans up both files, and returns the user's response string.
+    Returns None on timeout.
+    """
+    from orchestrator.prompt_manager import (
+        cleanup_prompt_files,
+        poll_for_response,
+        write_prompt,
+    )
+
+    prompt_id = write_prompt(run_id, workspace, question, prompt_type, options)
+    response = poll_for_response(run_id, workspace, prompt_id)
+    cleanup_prompt_files(run_id, workspace)
+    return response
+
+
 def _format_duration(seconds: float) -> str:
     """Format seconds into human-readable duration."""
     if seconds < 60:
@@ -624,7 +649,7 @@ def main() -> None:
         
         workspace_root = Path(config.workspace_root or config.workspace_dir).resolve()
         project_name = args.workspace_name or config.project_name or Path.cwd().name
-        manager = WorkspaceManager(workspace_root, project_name)
+        manager = WorkspaceManager(workspace_root, project_name, project_root=Path.cwd())
 
         selected = _cmd_list_runs(manager, interactive=True)
         if selected:
@@ -696,6 +721,10 @@ def main() -> None:
         # Use routing-mode-aware model for self-orchestrate agents
         _so_model = config.agents["architect"].model if "architect" in config.agents else None
 
+        # Subprocess mode: use file-based prompts instead of console.input()
+        _is_subprocess = args.run_id is not None
+        _prompt_workspace = project_root  # subprocess cwd = project dir
+
         # Phase 1: Clarifying questions loop
         if not args.yes:
             conversation: list[tuple[str, str]] = []
@@ -722,14 +751,32 @@ def main() -> None:
                     console.print(f"  {i}. {q}")
                 console.print()
 
-                try:
-                    _ring_alarm()
-                    answer = console.input(
-                        "[bold]Your answers (or 'skip' to proceed without answering): [/bold]"
-                    ).strip()
-                except (EOFError, KeyboardInterrupt):
-                    console.print("\nAborted.")
-                    sys.exit(0)
+                # Get user answer via file-based prompt (subprocess) or console
+                if _is_subprocess:
+                    questions_display = "\n".join(
+                        f"{i}. {q}" for i, q in enumerate(result.questions, 1)
+                    )
+                    answer = _file_prompt(
+                        args.run_id,
+                        _prompt_workspace,
+                        f"Clarifying Questions:\n{questions_display}\n\n"
+                        "Your answers (or 'skip' to proceed without answering):",
+                        prompt_type="free_text",
+                    )
+                    if answer is None:
+                        console.print("\nPrompt timeout — proceeding with defaults.")
+                        feature_request = result.refined_request
+                        break
+                    answer = answer.strip()
+                else:
+                    try:
+                        _ring_alarm()
+                        answer = console.input(
+                            "[bold]Your answers (or 'skip' to proceed without answering): [/bold]"
+                        ).strip()
+                    except (EOFError, KeyboardInterrupt):
+                        console.print("\nAborted.")
+                        sys.exit(0)
 
                 if answer.lower() in ("skip", "s", "proceed", "done"):
                     feature_request = result.refined_request
@@ -753,14 +800,27 @@ def main() -> None:
             if args.yes:
                 break
 
-            try:
-                _ring_alarm()
-                answer = console.input(
-                    "[bold]Proceed? [Y]es / [n]o / or type changes: [/bold]"
-                ).strip()
-            except (EOFError, KeyboardInterrupt):
-                console.print("\nAborted.")
-                sys.exit(0)
+            if _is_subprocess:
+                answer = _file_prompt(
+                    args.run_id,
+                    _prompt_workspace,
+                    "Review the pipeline plan above.\n\n"
+                    "Proceed? Yes / No / or type changes:",
+                    prompt_type="free_text",
+                )
+                if answer is None:
+                    console.print("\nPrompt timeout — auto-approving plan.")
+                    break
+                answer = answer.strip()
+            else:
+                try:
+                    _ring_alarm()
+                    answer = console.input(
+                        "[bold]Proceed? [Y]es / [n]o / or type changes: [/bold]"
+                    ).strip()
+                except (EOFError, KeyboardInterrupt):
+                    console.print("\nAborted.")
+                    sys.exit(0)
 
             if not answer or answer.lower() in ("y", "yes"):
                 console.print()
@@ -815,7 +875,7 @@ def main() -> None:
     # Resolve workspace and manager
     workspace_root = Path(config.workspace_root or config.workspace_dir).resolve()
     project_name = args.workspace_name or config.project_name or Path.cwd().name
-    manager = WorkspaceManager(workspace_root, project_name)
+    manager = WorkspaceManager(workspace_root, project_name, project_root=Path.cwd())
 
     # Set up interrupt manager for graceful Ctrl+C pausing
     from orchestrator.interruption import InterruptManager
@@ -851,6 +911,7 @@ def main() -> None:
             resume_run_id=args.resume_run_id,
             workflow_type=workflow_type,
             custom_workflow=custom_workflow,
+            run_id=args.run_id,
         ))
     except KeyboardInterrupt:
         # Hard interrupt (double Ctrl+C) — state was saved at last checkpoint

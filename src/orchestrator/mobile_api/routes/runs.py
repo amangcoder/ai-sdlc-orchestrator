@@ -19,6 +19,7 @@ import json
 import os
 import re
 import secrets
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -403,26 +404,48 @@ async def cancel_run(run_id: str, request: Request):
         )
 
     tracker = request.app.state.tracker
+    manager: WorkspaceManager = request.app.state.workspace_manager
 
-    # Check if run is active BEFORE doing anything
-    if not tracker.is_active(run_id):
-        return JSONResponse(
-            status_code=404,
-            content={"error": "Run not active"},
-        )
+    # Check in-process tracker first
+    if tracker.is_active(run_id):
+        state_path = manager.find_run_state(run_id)
+        sentinel_dir = state_path.parent if state_path else request.app.state.reader.workspace
+        sentinel = sentinel_dir / ".interrupt"
+        try:
+            sentinel.write_text("web_cancel")
+        except OSError:
+            pass
+        await tracker.cancel_run(run_id)
+        return CancelResponse(cancelled=True).model_dump()
 
-    # Run is confirmed active — write sentinel file and cancel
-    # In the new hierarchical structure, the sentinel goes into the run workspace.
-    # Fallback to app workspace if run dir not found.
-    state_path = WorkspaceManager(request.app.state.reader.workspace, "").find_run_state(run_id)
-    sentinel_dir = state_path.parent if state_path else request.app.state.reader.workspace
-    sentinel = sentinel_dir / ".interrupt"
-    try:
-        sentinel.write_text("web_cancel")
-    except OSError:
-        pass
-    await tracker.cancel_run(run_id)
-    return CancelResponse(cancelled=True).model_dump()
+    # Fallback: check if it's a system_orchestrate subprocess run
+    # (state file exists with status "running" but not in the tracker)
+    state_path = manager.find_run_state(run_id)
+    if state_path and state_path.exists():
+        try:
+            state = json.loads(state_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            state = None
+        if state and state.get("status") == "running":
+            # Write interrupt sentinel so the subprocess picks it up
+            sentinel = state_path.parent / ".interrupt"
+            try:
+                sentinel.write_text("web_cancel")
+            except OSError:
+                pass
+            # Update state file directly
+            state["status"] = "cancelled"
+            state["end_time"] = datetime.now(timezone.utc).isoformat()
+            try:
+                state_path.write_text(json.dumps(state, ensure_ascii=False))
+            except OSError:
+                pass
+            return CancelResponse(cancelled=True).model_dump()
+
+    return JSONResponse(
+        status_code=404,
+        content={"error": "Run not active"},
+    )
 
 
 # ── POST /api/v1/runs/{run_id}/resume ─────────────────────────────────────
@@ -578,7 +601,25 @@ def _find_prompt_file(
 
     # Secondary: project workspace (for system_orchestrate runs)
     # Read workspace_id from the run's state file to locate the project directory.
-    state = _read_per_run_state(app_workspace, run_id)
+    # Use the app's workspace_manager first (correctly configured at startup),
+    # then fall back to a direct file check in app_workspace.
+    state = None
+    mgr: WorkspaceManager = request.app.state.workspace_manager
+    state_path = mgr.find_run_state(run_id)
+    if state_path and state_path.exists():
+        try:
+            state = json.loads(state_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            pass
+    # Direct fallback: system_runner writes state-{run_id}.json directly in
+    # app_workspace which may not be where workspace_manager looks.
+    if state is None:
+        direct_state = app_workspace / f"state-{run_id}.json"
+        if direct_state.exists():
+            try:
+                state = json.loads(direct_state.read_text())
+            except (json.JSONDecodeError, OSError):
+                pass
     workspace_id = state.get("workspace_id") if state else None
     if workspace_id is not None:
         project_path = _resolve_workspace_path(workspace_id, request)
@@ -667,8 +708,26 @@ def respond_to_prompt(run_id: str, body: RespondRequest, request: Request):
     workspace: Path = request.app.state.reader.workspace
     tracker = request.app.state.tracker
 
-    # Check if run is active (HTTP 410 if not)
-    if not tracker.is_active(run_id):
+    # Check if run is active (HTTP 410 if not).
+    # For subprocess runs (use_system_orchestrate), the run isn't in the
+    # in-process tracker — fall back to checking the state file status.
+    run_active = tracker.is_active(run_id)
+    if not run_active:
+        # Check via workspace_manager, then direct file fallback
+        active_mgr: WorkspaceManager = request.app.state.workspace_manager
+        state_path = active_mgr.find_run_state(run_id)
+        if not state_path or not state_path.exists():
+            # Direct fallback: system_runner writes state files directly in workspace
+            direct = workspace / f"state-{run_id}.json"
+            if direct.exists():
+                state_path = direct
+        if state_path and state_path.exists():
+            try:
+                state_data = json.loads(state_path.read_text())
+                run_active = state_data.get("status") == "running"
+            except (json.JSONDecodeError, OSError):
+                pass
+    if not run_active:
         return JSONResponse(
             status_code=410,
             content={"error": "Run is no longer active"},

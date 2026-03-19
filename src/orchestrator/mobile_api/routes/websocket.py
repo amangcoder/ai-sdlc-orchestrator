@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime, timezone
+from pathlib import Path
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
@@ -158,6 +159,28 @@ async def ws_stream(
 
     workspace = reader.workspace
 
+    # Resolve the project workspace for this run (subprocess runs write
+    # prompt files to the project dir, not the app workspace).
+    _project_prompt_dir: Path | None = None
+    try:
+        _state_path = workspace / f"state-{run_id}.json"
+        if _state_path.exists():
+            _run_state = json.loads(_state_path.read_text(encoding="utf-8"))
+            _ws_id = _run_state.get("workspace_id")
+            if _ws_id is not None:
+                from orchestrator.mobile_api.directory_service import resolve_workspace_id
+                frozen_dir_map: dict = websocket.app.state.frozen_dir_map
+                resolved = resolve_workspace_id(_ws_id, frozen_dir_map)
+                if resolved is None:
+                    projects_root = getattr(websocket.app.state, "projects_root", None)
+                    if projects_root is not None:
+                        from orchestrator.mobile_api.dynamic_directory_service import resolve_dynamic_id
+                        salt = websocket.app.state.directory_salt
+                        resolved = resolve_dynamic_id(_ws_id, projects_root, salt)
+                _project_prompt_dir = resolved
+    except (json.JSONDecodeError, OSError, AttributeError):
+        pass
+
     while True:
         try:
             # Poll for new events
@@ -198,7 +221,10 @@ async def ws_stream(
             _prompt_poll_counter += 1
             if _prompt_poll_counter >= _PROMPT_POLL_EVERY:
                 _prompt_poll_counter = 0
+                # Search app workspace first, then project workspace
                 prompt_file = workspace / PROMPT_FILE_PATTERN.format(run_id=run_id)
+                if not prompt_file.exists() and _project_prompt_dir is not None:
+                    prompt_file = _project_prompt_dir / PROMPT_FILE_PATTERN.format(run_id=run_id)
                 if prompt_file.exists():
                     try:
                         prompt_data = json.loads(
@@ -209,9 +235,21 @@ async def ws_stream(
                             prompt_id
                             and prompt_id != last_seen_prompt_id
                         ):
-                            # Check if run is still active before emitting
+                            # Check if run is still active: in-process tracker
+                            # OR subprocess state file (subprocess runs aren't
+                            # tracked by RunTracker).
                             tracker = websocket.app.state.tracker
-                            if tracker.is_active(run_id):
+                            run_active = tracker.is_active(run_id)
+                            if not run_active:
+                                try:
+                                    _st = json.loads(
+                                        (workspace / f"state-{run_id}.json")
+                                        .read_text(encoding="utf-8")
+                                    )
+                                    run_active = _st.get("status") == "running"
+                                except (json.JSONDecodeError, OSError):
+                                    pass
+                            if run_active:
                                 sanitized = _sanitize_ws_prompt(prompt_data)
                                 prompt_event = {
                                     "event": "prompt_pending",

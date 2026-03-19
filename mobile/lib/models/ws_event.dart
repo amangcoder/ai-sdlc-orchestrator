@@ -19,7 +19,7 @@ class WsEvent {
         json['event'] as String? ?? json['type'] as String? ?? '';
     return WsEvent(
       event: eventType,
-      ts: json['ts'] as String?,
+      ts: json['ts'] as String? ?? json['timestamp'] as String?,
       data: data,
     );
   }

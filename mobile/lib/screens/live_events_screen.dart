@@ -271,6 +271,17 @@ class _EventRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Log message (for log/log_line events)
+                if (event.event == 'log' || event.event == 'log_line')
+                  Text(
+                    event.data['message'] as String? ?? '',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          fontSize: 11,
+                        ),
+                    maxLines: 5,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 // Step name and agent role
                 if (event.data['step'] != null ||
                     event.data['agent_role'] != null)

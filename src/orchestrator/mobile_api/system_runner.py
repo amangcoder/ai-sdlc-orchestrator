@@ -22,6 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
@@ -90,10 +91,8 @@ def build_cli_args(
         val = mode.value if hasattr(mode, "value") else str(mode)
         args += ["--mode", val]
 
-    # Optional: max budget
-    max_budget_usd = getattr(request, "max_budget_usd", None)
-    if max_budget_usd is not None:
-        args += ["--max-budget", str(max_budget_usd)]
+    # Note: max_budget_usd is not passed as a CLI arg — the config file
+    # already contains this value and the binary reads it from there.
 
     # Optional: speed mode
     speed = getattr(request, "speed", None)
@@ -136,15 +135,12 @@ def build_cli_args(
     if self_orchestrate is True:
         args.append("--self-orchestrate")
 
-    # Optional: confirm flag
-    confirm = getattr(request, "confirm", None)
-    if confirm is True:
-        args.append("--confirm")
+    # Never pass --confirm for subprocess runs — it calls input() per agent
+    # which blocks forever with no TTY attached.
 
-    # Optional: tech stack confirmation (negated flag)
-    tech_stack_confirmation = getattr(request, "tech_stack_confirmation", None)
-    if tech_stack_confirmation is False:
-        args.append("--no-confirm-tech-stack")
+    # Always disable interactive prompts in subprocess runs — there's no TTY.
+    # tech_stack_confirmation calls input() which blocks forever in a subprocess.
+    args.append("--no-confirm-tech-stack")
 
     # Optional: checklist verify (negated flag)
     checklist_verify = getattr(request, "checklist_verify", None)
@@ -156,11 +152,10 @@ def build_cli_args(
     if max_concurrent_agents is not None and max_concurrent_agents > 0:
         args += ["--max-concurrent-agents", str(max_concurrent_agents)]
 
-    # Optional: log format
-    log_format = getattr(request, "log_format", None)
-    if log_format is not None:
-        val = log_format.value if hasattr(log_format, "value") else str(log_format)
-        args += ["--log-format", val]
+    # Always use JSON log format for subprocess runs so the monitor can
+    # parse structured events and update the state file with phase progress.
+    # This overrides any user-supplied log_format.
+    args += ["--log-format", "json"]
 
     # Optional: resume run ID
     resume_run_id = getattr(request, "resume_run_id", None)
@@ -293,11 +288,17 @@ async def start_subprocess_run(
 
     # Launch the subprocess — use cli_workspace as cwd so both --workspace flag
     # and process working directory agree (TASK-017 fix: was str(workspace)).
+    # Force unbuffered stdout so the monitor receives lines immediately instead
+    # of waiting for the 8KB pipe buffer to fill (fixes stream stall during
+    # long MCP tool calls where output is infrequent).
+    sub_env = os.environ.copy()
+    sub_env["PYTHONUNBUFFERED"] = "1"
     proc = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,  # merge stderr into stdout
         cwd=str(cli_workspace),
+        env=sub_env,
     )
 
     # Create and return the monitoring task
@@ -325,7 +326,8 @@ async def _monitor_subprocess(
         state_file: Path to workspace/state-{run_id}.json.
         jsonl_path: Path to workspace/logs/run-{run_id}.jsonl.
     """
-    # Stream stdout/stderr lines to the JSONL log
+    # Stream stdout/stderr lines to the JSONL log and update state file
+    # with phase/step progress as structured events arrive.
     if proc.stdout:
         try:
             async for line_bytes in proc.stdout:
@@ -337,8 +339,9 @@ async def _monitor_subprocess(
                 try:
                     event = json.loads(line)
                     if isinstance(event, dict):
-                        # Append the event as-is (it's already a structured event)
                         _append_jsonl_event(jsonl_path, event)
+                        # Update state file with progress from structured events
+                        _update_state_from_event(state_file, event, run_id)
                     else:
                         _append_jsonl_event(jsonl_path, {
                             "event": "log",
@@ -393,6 +396,87 @@ async def _monitor_subprocess(
         )
     else:
         logger.info("System orchestrate run %s completed successfully", run_id)
+
+
+def _update_state_from_event(state_file: Path, event: dict, run_id: str) -> None:  # noqa: ARG001
+    """Update the per-run state file with progress extracted from structured events.
+
+    Called for each JSON event emitted by the subprocess. Only events that
+    carry phase/step/cost information trigger a state file update — plain
+    log lines are ignored to avoid unnecessary I/O.
+    """
+    event_type = event.get("event", "")
+
+    # Only process events that carry actionable state changes
+    if event_type not in (
+        "run_start", "run_complete", "task_invoke", "task_result",
+        "agent_result", "auto_prd", "budget_warning",
+    ):
+        return
+
+    try:
+        state = json.loads(state_file.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return
+
+    if event_type == "task_invoke":
+        step = event.get("step") or event.get("phase", "")
+        if step:
+            state["current_step"] = step
+            # Mark this phase as running
+            phases = state.setdefault("phases", {})
+            phase_key = step.lower().replace(" ", "_")
+            if phase_key not in phases:
+                phases[phase_key] = {"status": "running"}
+            elif phases[phase_key].get("status") != "completed":
+                phases[phase_key]["status"] = "running"
+
+    elif event_type == "task_result":
+        success = event.get("success", False)
+        step = event.get("step") or event.get("phase", "")
+        cost = event.get("cost_usd", 0.0)
+        if step:
+            phases = state.setdefault("phases", {})
+            phase_key = step.lower().replace(" ", "_")
+            if success:
+                phases[phase_key] = {
+                    "status": "completed",
+                    "cost_usd": cost,
+                }
+                # Count completed steps
+                completed = sum(
+                    1 for p in phases.values()
+                    if p.get("status") == "completed"
+                )
+                state["steps_completed"] = completed
+                state["steps_total"] = max(state.get("steps_total", 0), len(phases))
+            else:
+                phases[phase_key] = {
+                    "status": "failed",
+                    "error": event.get("error", ""),
+                    "cost_usd": cost,
+                }
+
+    elif event_type == "agent_result":
+        cost = event.get("cost_usd", 0.0)
+        state["total_cost_usd"] = state.get("total_cost_usd", 0.0) + cost
+
+    elif event_type == "run_complete":
+        state["status"] = "completed"
+        state["total_cost_usd"] = event.get("total_cost_usd", state.get("total_cost_usd", 0.0))
+        # Merge phase data from the binary's final event
+        if "phases" in event:
+            for key, phase_data in event["phases"].items():
+                phases = state.setdefault("phases", {})
+                if isinstance(phase_data, dict):
+                    phases[key] = phase_data
+
+    try:
+        state_file.write_text(
+            json.dumps(state, ensure_ascii=False), encoding="utf-8"
+        )
+    except OSError:
+        pass
 
 
 def _append_jsonl_event(jsonl_path: Path, event: dict) -> None:

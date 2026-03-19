@@ -143,7 +143,7 @@ class OrchestratorEngine:
         # Workspace resolution
         workspace_root = Path(self.config.workspace_root or self.config.workspace_dir).resolve()
         project_name = self.config.project_name or self.project_root.name
-        self.manager = WorkspaceManager(workspace_root, project_name)
+        self.manager = WorkspaceManager(workspace_root, project_name, project_root=self.project_root)
 
         # For backward compat, if workspace_root isn't set, we use the flat project_workspace
         if not self.config.workspace_root:

@@ -22,9 +22,14 @@ class WorkspaceManager:
             latest -> runs/run_id   <-- convenience symlink
     """
 
-    def __init__(self, workspace_root: Path, project_name: str):
+    def __init__(self, workspace_root: Path, project_name: str, project_root: Path | None = None):
         self.workspace_root = workspace_root.resolve()
         self.project_name = project_name
+        # project_root is the actual project directory (cwd when orchestrate runs).
+        # Needed because the engine's backward-compat path writes state files
+        # to the workspace_dir (which may be a subdir of project_root), but
+        # older runs or different configs may have written to project_root directly.
+        self.project_root = project_root.resolve() if project_root is not None else None
 
     @property
     def project_workspace(self) -> Path:
@@ -54,58 +59,80 @@ class WorkspaceManager:
     def find_run_state(self, run_id: str) -> Optional[Path]:
         """Locate the state.json file for a run.
 
-        Checks:
+        Checks (in order):
         1. project/runs/run_id/state.json (new style)
-        2. project/state-run_id.json (backward-compat / flat layout)
+        2. project_workspace/state-run_id.json (backward-compat / flat layout)
+        3. workspace_root/state-run_id.json (flat root)
+        4. project_root/state-run_id.json (legacy — older runs wrote here)
         """
         # 1. New style
         new_style = self.run_workspace(run_id) / "state.json"
         if new_style.exists():
             return new_style
 
-        # 2. Flat layout / backward compat (checks project root for state-*.json)
+        # 2. Flat layout under project_workspace
         flat_style = self.project_workspace / f"state-{run_id}.json"
         if flat_style.exists():
             return flat_style
 
+        # 3. Flat layout under workspace_root (different from project_workspace)
+        if self.workspace_root != self.project_workspace:
+            root_flat = self.workspace_root / f"state-{run_id}.json"
+            if root_flat.exists():
+                return root_flat
+
+        # 4. Project root (legacy: older config or different workspace_dir)
+        if self.project_root is not None and self.project_root != self.workspace_root:
+            proj_flat = self.project_root / f"state-{run_id}.json"
+            if proj_flat.exists():
+                return proj_flat
+
         return None
 
     def list_runs(self) -> list[dict[str, Any]]:
-        """Scan both new-style and old-style layouts for runs.
+        """Scan new-style, old-style, and flat-root layouts for runs.
 
         Returns metadata sorted newest-first.
         """
         import json
         runs = []
+        seen_ids: set[str] = set()
+
+        def _ingest(state_file: Path) -> None:
+            try:
+                data = json.loads(state_file.read_text())
+                run_id = data.get("run_id")
+                if run_id and run_id not in seen_ids:
+                    seen_ids.add(run_id)
+                    data["_mtime"] = state_file.stat().st_mtime
+                    runs.append(data)
+            except (json.JSONDecodeError, OSError):
+                pass
 
         # 1. New style: project/runs/*/state.json
         runs_root = self.project_workspace / "runs"
         if runs_root.exists():
             for run_dir in runs_root.iterdir():
-                if not run_dir.is_dir():
-                    continue
-                state_file = run_dir / "state.json"
-                if state_file.exists():
-                    try:
-                        data = json.loads(state_file.read_text())
-                        # Add filesystem metadata
-                        data["_mtime"] = state_file.stat().st_mtime
-                        runs.append(data)
-                    except (json.JSONDecodeError, OSError):
-                        continue
+                if run_dir.is_dir():
+                    _ingest(run_dir / "state.json")
 
-        # 2. Old style: project/state-*.json
+        # 2. Old style: project_workspace/state-*.json
         if self.project_workspace.exists():
             for state_file in self.project_workspace.glob("state-*.json"):
-                try:
-                    data = json.loads(state_file.read_text())
-                    # Deduplicate if already found in new style
-                    run_id = data.get("run_id")
-                    if run_id and not any(r.get("run_id") == run_id for r in runs):
-                        data["_mtime"] = state_file.stat().st_mtime
-                        runs.append(data)
-                except (json.JSONDecodeError, OSError):
-                    continue
+                _ingest(state_file)
+
+        # 3. Flat root: workspace_root/state-*.json and workspace_root/state.json
+        #    (engine writes here when workspace_root is not explicitly configured)
+        if self.workspace_root != self.project_workspace and self.workspace_root.exists():
+            for state_file in self.workspace_root.glob("state-*.json"):
+                _ingest(state_file)
+            _ingest(self.workspace_root / "state.json")
+
+        # 4. Project root (legacy — older runs or different workspace_dir)
+        if self.project_root is not None and self.project_root != self.workspace_root and self.project_root.exists():
+            for state_file in self.project_root.glob("state-*.json"):
+                _ingest(state_file)
+            _ingest(self.project_root / "state.json")
 
         # Sort newest-first by mtime
         runs.sort(key=lambda x: x.get("_mtime", 0), reverse=True)
