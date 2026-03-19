@@ -65,18 +65,18 @@ class RunTracker:
         self._tasks: dict[str, asyncio.Task[Any]] = {}
         self._errors: dict[str, str] = {}
         self._start_times: dict[str, float] = {}
+        # Maps resolved workspace path → run_id for per-project conflict detection.
+        # Allows parallel runs across different projects while blocking duplicate
+        # runs within the same project.
+        self._active_by_workspace: dict[str, str] = {}
 
     async def start_run(self, request: RunRequest) -> str:
         """Start a new orchestration run as a background task.
 
-        Returns the run_id. Raises ValueError if a run is already active.
+        Returns the run_id. Raises ValueError if a run is already active for
+        the same workspace (project). Parallel runs across different projects
+        are allowed.
         """
-        if self._tasks:
-            active = next(iter(self._tasks))
-            raise ValueError(
-                f"A run is already active ({active}). "
-                "Cancel or wait for it to finish before starting another."
-            )
 
         sanitize_feature_request(request.feature_request)
 
@@ -85,6 +85,16 @@ class RunTracker:
         # ── Apply workspace directory override ────────────────────────────
         if request.workspace_dir_override is not None:
             config.workspace_dir = request.workspace_dir_override
+
+        # Per-workspace conflict detection: block duplicate runs on the same
+        # project, but allow parallel runs across different projects.
+        active_workspace = str(Path(config.workspace_dir).resolve())
+        if active_workspace in self._active_by_workspace:
+            active = self._active_by_workspace[active_workspace]
+            raise ValueError(
+                f"A run is already active ({active}) for this project. "
+                "Cancel or wait for it to finish before starting another."
+            )
 
         # ── Apply flag overrides ──────────────────────────────────────────
         # CRITICAL: Use `if value is not None:` — NEVER `if value:`.
@@ -182,6 +192,7 @@ class RunTracker:
         )
         self._tasks[run_id] = task
         self._start_times[run_id] = time.monotonic()
+        self._active_by_workspace[active_workspace] = run_id
 
         return run_id
 
@@ -210,6 +221,10 @@ class RunTracker:
         finally:
             self._tasks.pop(run_id, None)
             self._start_times.pop(run_id, None)
+            # Release the per-workspace lock so a new run can start for this project
+            self._active_by_workspace = {
+                ws: rid for ws, rid in self._active_by_workspace.items() if rid != run_id
+            }
 
     async def cancel_run(self, run_id: str) -> bool:
         """Request graceful cancellation of an active run via sentinel file."""
