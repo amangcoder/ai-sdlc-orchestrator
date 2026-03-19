@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 
 from orchestrator.dashboard.data import RunDataReader
 from orchestrator.dashboard.runner import RunRequest, RunTracker
+from orchestrator.workspace_manager import WorkspaceManager
 
 STATIC_DIR = Path(__file__).parent / "static"
 TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -31,11 +32,13 @@ DASHBOARD_TOKEN = os.environ.get("ORCHESTRATOR_DASHBOARD_TOKEN")
 _active_sse_connections = 0
 
 
-def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
+def create_app(workspace_root: Path, project_name: str, config_path: Path | None = None) -> FastAPI:
     from orchestrator import __version__
     app = FastAPI(title="Orchestrator Dashboard", version=__version__)
-    reader = RunDataReader(workspace_dir)
-    runner = RunTracker(workspace_dir, config_path)
+    
+    manager = WorkspaceManager(workspace_root, project_name)
+    reader = RunDataReader(manager)
+    runner = RunTracker(manager.project_workspace, config_path)
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -198,19 +201,18 @@ def create_app(workspace_dir: Path, config_path: Path | None = None) -> FastAPI:
     async def api_alerts(limit: int = 100):
         return reader.get_alert_history(limit)
 
-    @app.get("/api/v1/runs/{run_id}/artifacts")
-    async def api_run_artifacts(run_id: str):
-        run = reader.get_run(run_id)
-        if not run:
+        run_metadata = reader.get_run(run_id)
+        if not run_metadata:
             return JSONResponse({"error": "not found"}, status_code=404)
-        artifact_dir = workspace_dir / run_id / "artifacts"
+        
+        artifact_dir = manager.artifacts_dir(run_id)
         if not artifact_dir.exists():
             return []
         return [f.name for f in artifact_dir.iterdir() if f.is_file()]
 
     @app.get("/api/v1/runs/{run_id}/artifacts/{name}")
     async def api_run_artifact(run_id: str, name: str):
-        artifact_path = workspace_dir / run_id / "artifacts" / name
+        artifact_path = manager.artifacts_dir(run_id) / name
         if not artifact_path.exists():
             return JSONResponse({"error": "not found"}, status_code=404)
         try:

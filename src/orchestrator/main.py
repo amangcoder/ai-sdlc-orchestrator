@@ -18,6 +18,7 @@ from orchestrator.config import load_config
 from orchestrator.engine import OrchestratorEngine
 from orchestrator.agents import AgentInvocation
 from orchestrator.models import ModelTier, PhaseStatus, WorkflowType
+from orchestrator.workspace_manager import WorkspaceManager
 
 MAX_FEATURE_REQUEST_LEN = 10_000
 _SUSPICIOUS_PATTERNS = [
@@ -228,6 +229,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-confirm-tech-stack", dest="tech_stack_confirmation",
                         action="store_false", default=None,
                         help="Skip the tech stack review prompt after Architecture")
+    parser.add_argument("--workspace-name", metavar="NAME",
+                        help="Override project name for workspace subfolder (defaults to current dir name)")
     parser.add_argument("--max-concurrent-agents", type=int, default=None, metavar="N",
                         help="Max agents to run in parallel (0=unlimited, default from config)")
     parser.add_argument("--list-runs", action="store_true",
@@ -526,31 +529,16 @@ def _cmd_validate(artifacts_dir: Path) -> None:
     sys.exit(1 if failed else 0)
 
 
-def _cmd_list_runs(workspace: Path, interactive: bool = True) -> str | None:
-    """List all resumable runs in the workspace.
-
-    Returns a run_id if the user selects one interactively, else None.
-    """
+def _cmd_list_runs(workspace_manager: WorkspaceManager, interactive: bool = True) -> str | None:
+    """List all resumable runs in the workspace using WorkspaceManager."""
     console = Console()
-    state_files = sorted(workspace.glob("state-*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    runs_data = workspace_manager.list_runs()
 
-    # Also include state.json if it exists and its run_id isn't already covered
-    generic_state = workspace / "state.json"
-    if generic_state.exists():
-        try:
-            generic_data = json.loads(generic_state.read_text())
-            generic_run_id = generic_data.get("run_id")
-            covered_ids = {sf.stem.removeprefix("state-") for sf in state_files}
-            if generic_run_id and generic_run_id not in covered_ids:
-                state_files.append(generic_state)
-        except (json.JSONDecodeError, OSError):
-            pass
-
-    if not state_files:
+    if not runs_data:
         console.print("[dim]No saved runs found.[/dim]")
         return None
 
-    table = Table(title="Resumable Runs")
+    table = Table(title=f"Resumable Runs — {workspace_manager.project_name}")
     table.add_column("#", style="dim", width=3)
     table.add_column("Run ID", style="bold")
     table.add_column("Feature Request")
@@ -560,12 +548,8 @@ def _cmd_list_runs(workspace: Path, interactive: bool = True) -> str | None:
     table.add_column("Last Modified", style="dim")
 
     runs: list[dict] = []
-    for sf in state_files:
-        try:
-            data = json.loads(sf.read_text())
-        except (json.JSONDecodeError, OSError):
-            continue
-        run_id = data.get("run_id", sf.stem.removeprefix("state-"))
+    for data in runs_data:
+        run_id = data.get("run_id", "unknown")
         feature = data.get("feature_request", "?")[:50]
         wf = data.get("workflow_type", "?")
         cost = f"${data.get('total_cost_usd', 0):.2f}"
@@ -579,9 +563,11 @@ def _cmd_list_runs(workspace: Path, interactive: bool = True) -> str | None:
             status = f"[green]{completed}/{total} done[/green]"
         else:
             status = f"[yellow]{completed}/{total}[/yellow]"
-        mtime = sf.stat().st_mtime
+        
         from datetime import datetime, timezone
+        mtime = data.get("_mtime", 0)
         modified = datetime.fromtimestamp(mtime, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+        
         runs.append({"run_id": run_id, "feature": feature})
         table.add_row(str(len(runs)), run_id, feature, wf, status, cost, modified)
 
@@ -631,20 +617,22 @@ def main() -> None:
     if args.list_runs:
         _configure_structlog(json_logs=False)
         config = load_config(args.config)
-        workspace = Path(config.workspace_dir).resolve()
-        selected = _cmd_list_runs(workspace, interactive=True)
+        
+        workspace_root = Path(config.workspace_root or config.workspace_dir).resolve()
+        project_name = args.workspace_name or config.project_name or Path.cwd().name
+        manager = WorkspaceManager(workspace_root, project_name)
+
+        selected = _cmd_list_runs(manager, interactive=True)
         if selected:
             # Re-invoke with --resume-run
             args.resume_run_id = selected
             args.resume = False  # resume_run_id implies resume
             if not args.feature_request:
                 # Load feature_request from state so user doesn't have to re-type it
-                state_path = workspace / f"state-{selected}.json"
-                if not state_path.exists():
-                    # Fall back to generic state.json if it contains this run
-                    state_path = workspace / "state.json"
-                data = json.loads(state_path.read_text())
-                args.feature_request = data.get("feature_request", "")
+                state_path = manager.find_run_state(selected)
+                if state_path and state_path.exists():
+                    data = json.loads(state_path.read_text())
+                    args.feature_request = data.get("feature_request", "")
         else:
             sys.exit(0)
 
@@ -816,18 +804,34 @@ def main() -> None:
     if args.knowledge is not None:
         config.knowledge.enabled = args.knowledge
 
+    # Resolve workspace and manager
+    workspace_root = Path(config.workspace_root or config.workspace_dir).resolve()
+    project_name = args.workspace_name or config.project_name or Path.cwd().name
+    manager = WorkspaceManager(workspace_root, project_name)
+
     # Set up interrupt manager for graceful Ctrl+C pausing
     from orchestrator.interruption import InterruptManager
 
     interrupt_manager = InterruptManager()
     interrupt_manager.setup_signal_handler()
-    workspace = Path(config.workspace_dir).resolve()
-    workspace.mkdir(parents=True, exist_ok=True)
-    interrupt_manager.setup_sentinel(workspace)
+    
+    # In new style, the "workspace" for interrupt sentinel is the run dir
+    # but we don't have the run_id yet if starting fresh. 
+    # For now, use the project workspace root as the sentinel home,
+    # or the specific run dir if resuming.
+    sentinel_home = manager.project_workspace
+    if args.resume_run_id:
+        sentinel_home = manager.run_workspace(args.resume_run_id)
+    
+    sentinel_home.mkdir(parents=True, exist_ok=True)
+    interrupt_manager.setup_sentinel(sentinel_home)
 
     confirm_callback = _confirm_agent_invocation if config.confirm else None
     engine = OrchestratorEngine(
-        config=config, dry_run=args.dry_run, interrupt_manager=interrupt_manager,
+        config=config, 
+        project_name=args.workspace_name,
+        dry_run=args.dry_run, 
+        interrupt_manager=interrupt_manager,
         confirm_callback=confirm_callback,
     )
 

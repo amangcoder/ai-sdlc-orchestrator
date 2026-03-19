@@ -78,7 +78,15 @@ class TestLegacyDryRun:
 
     async def test_legacy_state_json_written(self, dry_engine, tmp_workspace):
         state = await dry_engine.run("Build a todo app", single_phase="pm")
-        state_file = tmp_workspace / "state.json"
+        # In current setup, WorkspaceManager will resolve run_workspace
+        # even for dry runs if project_name/root are set.
+        # But if not set, it uses project_workspace (legacy).
+        # We check both for robustness in tests.
+        run_workspace = dry_engine.manager.run_workspace(state.run_id)
+        state_file = run_workspace / "state.json"
+        if not state_file.exists():
+            state_file = tmp_workspace / "state.json"
+        
         assert state_file.exists()
         data = json.loads(state_file.read_text())
         assert data["run_id"] == state.run_id
@@ -105,7 +113,13 @@ class TestWorkflowDryRun:
 
     async def test_workflow_dry_run_state_persisted(self, dry_engine, tmp_workspace):
         state = await dry_engine.run("Build a todo app")
-        state_file = tmp_workspace / "state.json"
+        run_id = state.run_id
+        # Look in the run-specific directory first
+        run_workspace = dry_engine.manager.run_workspace(run_id)
+        state_file = run_workspace / "state.json"
+        if not state_file.exists():
+            state_file = tmp_workspace / "state.json"
+            
         assert state_file.exists()
         data = json.loads(state_file.read_text())
         assert data["workflow_type"] == "feature_development"

@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "ai-code-knowledge": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/amangupta/Projects/AICoder/mcp-server/dist/server.js"
+      ],
+      "env": {
+        "KNOWLEDGE_ROOT": "/Users/amangupta/Projects/orchestrator-for-mobile-ui/.knowledge"
+      }
+    },
+    "test-runner": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/amangupta/Projects/sdlc-mcp-servers/test-runner/dist/index.js"
+      ]
+    }
+  }
+}

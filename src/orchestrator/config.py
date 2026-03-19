@@ -115,8 +115,13 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
         raise ConfigurationError(_format_validation_error("spawn", exc)) from exc
 
     try:
+        workspace_root = raw.get("workspace_root")
+        project_name = raw.get("project_name") or Path.cwd().name
+
         return OrchestratorConfig(
             workspace_dir=raw.get("workspace_dir", "workspace"),
+            workspace_root=workspace_root,
+            project_name=project_name,
             max_review_cycles=raw.get("max_review_cycles", 3),
             max_budget_usd=raw.get("max_budget_usd", 50.0),
             default_workflow=default_workflow,

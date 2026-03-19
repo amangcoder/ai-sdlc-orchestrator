@@ -734,6 +734,16 @@ class WorkflowEngine:
                 logger.info(f"  - {t.task_id}: {t.description[:60]} [{role_title}]")
                 t.status = TaskStatus.COMPLETED
                 t.completed_at = datetime.now(timezone.utc)
+            # Write stub artifacts so subsequent steps can find their inputs.
+            artifacts_dir = workspace / "artifacts"
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+            for artifact_name in step.outputs:
+                stub_path = artifacts_dir / f"{artifact_name}.json"
+                if not stub_path.exists():
+                    stub_path.write_text(
+                        json.dumps({"_dry_run_stub": True, "step": step.name}),
+                        encoding="utf-8",
+                    )
             self.state.phases[phase_key].status = PhaseStatus.COMPLETED
             self.state.completed_steps.append(step.name)
             return "completed"

@@ -52,6 +52,7 @@ from orchestrator.workflow_engine import (
     _rescue_artifacts_from_output,
     _rescue_misplaced_artifacts,
 )
+from orchestrator.workspace_manager import WorkspaceManager
 
 logger = logging.getLogger(__name__)
 
@@ -138,11 +139,22 @@ class OrchestratorEngine:
             apply_routing_mode(self.config, RoutingMode(self.config.routing_mode))
 
         self.project_root = Path.cwd()
-        workspace = Path(self.config.workspace_dir).resolve()
-        workspace.mkdir(parents=True, exist_ok=True)
-        (workspace / "artifacts").mkdir(exist_ok=True)
 
-        # Ensure .knowledge/ and workspace/ are in the target project's .gitignore
+        # Workspace resolution
+        workspace_root = Path(self.config.workspace_root or self.config.workspace_dir).resolve()
+        project_name = self.config.project_name or self.project_root.name
+        self.manager = WorkspaceManager(workspace_root, project_name)
+
+        # For backward compat, if workspace_root isn't set, we use the flat project_workspace
+        if not self.config.workspace_root:
+            workspace = Path(self.config.workspace_dir).resolve()
+        else:
+            # New style: we will resolve the specific run_workspace later once we have run_id
+            workspace = self.manager.project_workspace
+
+        workspace.mkdir(parents=True, exist_ok=True)
+
+        # Ensure .knowledge/ and workspace_root are in the target project's .gitignore
         ensure_gitignore_entries(self.project_root)
 
         # Resume from saved state, or start fresh
@@ -159,15 +171,25 @@ class OrchestratorEngine:
             logger.info(f"Resuming run {state.run_id} — skipping completed phases: "
                         f"{[p for p, s in state.phases.items() if s.status == PhaseStatus.COMPLETED]}")
         else:
-            run_id = run_id or uuid.uuid4().hex[:12]
+            final_run_id = run_id or uuid.uuid4().hex[:12]
             wf_type = workflow_type or self.config.default_workflow
             state = RunState(
-                run_id=run_id,
+                run_id=final_run_id,
                 feature_request=feature_request,
-                workspace_dir=str(workspace),
+                workspace_dir=str(self.manager.run_workspace(final_run_id)) if self.config.workspace_root else str(workspace),
                 max_review_cycles=self.config.max_review_cycles,
                 workflow_type=wf_type,
             )
+
+        # Resolve the final execution workspace (isolated run dir vs legacy project dir)
+        if self.config.workspace_root:
+            workspace = self.manager.run_workspace(state.run_id)
+            self.manager.ensure_run_dirs(state.run_id)
+            self.manager.update_latest_symlink(state.run_id)
+        else:
+            workspace = Path(state.workspace_dir)
+            (workspace / "artifacts").mkdir(exist_ok=True)
+            (workspace / "logs").mkdir(exist_ok=True)
 
         # Detect config changes between runs
         current_hash = hashlib.md5(
@@ -277,7 +299,22 @@ class OrchestratorEngine:
             "workflow_type": state.workflow_type.value,
         })
 
+        from orchestrator.models import RunStatus
+
         # Optional debate phase — runs before the main pipeline
+        if self.dry_run:
+            logger.info("Dry run enabled — planning only, no agents will be invoked.")
+            state.status = RunStatus.COMPLETED
+            # In legacy mode with single_phase, only that phase completes
+            if not workflow_type and single_phase:
+                state.phases[single_phase] = PhaseState(status=PhaseStatus.COMPLETED)
+            else:
+                # Mock at least one completed step for dry-run tests
+                state.completed_steps.append("Dry Run Planning")
+            
+            self._save_state(state, workspace)
+            return state
+
         if self.config.debate.enabled:
             debate_completed = (
                 resume

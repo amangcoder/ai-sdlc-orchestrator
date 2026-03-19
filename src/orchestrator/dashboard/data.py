@@ -8,6 +8,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from orchestrator.workspace_manager import WorkspaceManager
+
 
 @dataclass
 class RunSummary:
@@ -38,38 +40,87 @@ class RunDetail:
 class RunDataReader:
     """Reads orchestrator workspace data for dashboard consumption."""
 
-    def __init__(self, workspace: Path) -> None:
-        self.workspace = workspace
-        self.logs_dir = workspace / "logs"
-        self.state_path = workspace / "state.json"
+    def __init__(self, workspace_manager: WorkspaceManager) -> None:
+        self.manager = workspace_manager
+        self.workspace = workspace_manager.project_workspace
 
     def list_runs(self) -> list[RunSummary]:
-        runs: list[RunSummary] = []
-        if not self.logs_dir.exists():
-            return runs
-
-        for log_file in sorted(self.logs_dir.glob("run-*.jsonl"), reverse=True):
-            run_id = log_file.stem.replace("run-", "")
-            summary = self._parse_run_summary(log_file, run_id)
-            if summary:
-                runs.append(summary)
-        return runs
+        """List all runs using WorkspaceManager's discovery logic."""
+        runs_data = self.manager.list_runs()
+        summaries: list[RunSummary] = []
+        
+        for data in runs_data:
+            run_id = data.get("run_id")
+            if not run_id:
+                continue
+                
+            phases = data.get("phases", {})
+            completed = sum(1 for p in phases.values() if p.get("status") == "completed")
+            total = len(phases)
+            has_failed = any(p.get("status") == "failed" for p in phases.values())
+            
+            # Start time from state if available, else use mtime as fallback for sorting/display
+            start_time = data.get("start_time") or ""
+            
+            summaries.append(RunSummary(
+                run_id=run_id,
+                feature_request=data.get("feature_request", "")[:120],
+                workflow_type=data.get("workflow_type", "unknown"),
+                status="failed" if has_failed else ("completed" if completed == total and total > 0 else "running"),
+                total_cost_usd=data.get("total_cost_usd", 0.0),
+                start_time=start_time,
+                end_time=data.get("end_time"),
+                steps_completed=completed,
+                steps_total=total,
+            ))
+        return summaries
 
     def get_run(self, run_id: str) -> RunDetail | None:
-        log_file = self.logs_dir / f"run-{run_id}.jsonl"
+        state_path = self.manager.find_run_state(run_id)
+        if not state_path or not state_path.exists():
+            return None
+            
+        try:
+            state = json.loads(state_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+            
+        run_workspace = state_path.parent
+        logs_dir = run_workspace / "logs"
+        log_file = logs_dir / f"run-{run_id}.jsonl"
+        
+        # In new style, logs might be named just "run.jsonl" or follow the old pattern
         if not log_file.exists():
-            return None
+            # Try generic log name if in isolated dir
+            log_file = logs_dir / "run.jsonl"
+            
+        events = self._read_events(log_file) if log_file.exists() else []
 
-        events = self._read_events(log_file)
-        if not events:
-            return None
+        # Extract info from events or state
+        feature_request = state.get("feature_request", "")
+        workflow_type = state.get("workflow_type", "")
+        
+        has_failed = any(
+            p.get("status") == "failed" for p in state.get("phases", {}).values()
+        )
+        is_completed = all(
+            p.get("status") == "completed" for p in state.get("phases", {}).values()
+        ) and bool(state.get("phases"))
 
-        # Extract info from events
-        start_event = next((e for e in events if e.get("event") == "run_start"), {})
+        # Find complete event for cost
         end_event = next((e for e in events if e.get("event") == "run_complete"), {})
 
-        # Try loading state.json for richer data
-        state = self._load_state()
+        return RunDetail(
+            run_id=run_id,
+            feature_request=feature_request,
+            workflow_type=workflow_type,
+            status="failed" if has_failed else ("completed" if is_completed else "running"),
+            total_cost_usd=state.get("total_cost_usd", end_event.get("total_cost_usd", 0.0)),
+            phases=state.get("phases", {}),
+            events=events,
+            timeline=self._load_timeline(run_id),
+            interrupt_history=state.get("interrupt_history", []),
+        )
         phases = end_event.get("phases", {})
         if state and state.get("run_id") == run_id:
             phases = state.get("phases", phases)
@@ -137,7 +188,14 @@ class RunDataReader:
         error_count = 0
 
         for run_summary in runs:
-            log_file = self.logs_dir / f"run-{run_summary.run_id}.jsonl"
+            state_path = self.manager.find_run_state(run_summary.run_id)
+            if not state_path:
+                continue
+            logs_dir = state_path.parent / "logs"
+            log_file = logs_dir / f"run-{run_summary.run_id}.jsonl"
+            if not log_file.exists():
+                log_file = logs_dir / "run.jsonl"
+            
             events = self._read_events(log_file)
             for ev in events:
                 if ev.get("event") == "agent_invoke":
@@ -164,31 +222,17 @@ class RunDataReader:
 
     # --- Internal helpers ---
 
-    def _parse_run_summary(self, log_file: Path, run_id: str) -> RunSummary | None:
-        events = self._read_events(log_file)
-        if not events:
+    def _load_timeline(self, run_id: str) -> dict[str, Any] | None:
+        state_path = self.manager.find_run_state(run_id)
+        if not state_path:
             return None
-
-        start = next((e for e in events if e.get("event") == "run_start"), None)
-        end = next((e for e in events if e.get("event") == "run_complete"), None)
-
-        if not start:
+        timeline_path = state_path.parent / "timeline.json"
+        if not timeline_path.exists():
             return None
-
-        phases = end.get("phases", {}) if end else {}
-        has_failed = any(p.get("status") == "failed" for p in phases.values())
-
-        return RunSummary(
-            run_id=run_id,
-            feature_request=start.get("feature_request", "")[:120],
-            workflow_type=start.get("workflow_type", "unknown"),
-            status="failed" if has_failed else ("completed" if end else "running"),
-            total_cost_usd=end.get("total_cost_usd", 0.0) if end else 0.0,
-            start_time=start.get("ts", ""),
-            end_time=end.get("ts") if end else None,
-            steps_completed=len([p for p in phases.values() if p.get("status") == "completed"]),
-            steps_total=len(phases),
-        )
+        try:
+            return json.loads(timeline_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
 
     def _read_events(self, log_file: Path) -> list[dict[str, Any]]:
         events: list[dict[str, Any]] = []
@@ -202,20 +246,3 @@ class RunDataReader:
         except OSError:
             pass
         return events
-
-    def _load_state(self) -> dict[str, Any] | None:
-        if not self.state_path.exists():
-            return None
-        try:
-            return json.loads(self.state_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            return None
-
-    def _load_timeline(self, run_id: str) -> dict[str, Any] | None:
-        timeline_path = self.workspace / "timeline.json"
-        if not timeline_path.exists():
-            return None
-        try:
-            return json.loads(timeline_path.read_text())
-        except (json.JSONDecodeError, OSError):
-            return None

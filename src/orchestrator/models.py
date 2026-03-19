@@ -61,6 +61,13 @@ class PhaseStatus(str, Enum):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+
+
+class RunStatus(str, Enum):
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
     SKIPPED = "skipped"
 
 
@@ -878,6 +885,7 @@ class RunState(BaseModel):
     run_id: str
     feature_request: str
     workspace_dir: str
+    status: RunStatus = RunStatus.RUNNING
     workflow_type: WorkflowType = WorkflowType.FEATURE_DEVELOPMENT
     current_step: str | None = None
     completed_steps: list[str] = Field(default_factory=list)
@@ -1008,6 +1016,8 @@ class AllowedDirectoryConfig(BaseModel):
 
 class OrchestratorConfig(BaseModel):
     workspace_dir: str = "workspace"
+    workspace_root: str | None = None
+    project_name: str | None = None
     max_review_cycles: int = 3
     max_budget_usd: float = 50.0
     default_workflow: WorkflowType = WorkflowType.FEATURE_DEVELOPMENT

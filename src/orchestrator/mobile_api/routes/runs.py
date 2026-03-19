@@ -39,6 +39,7 @@ from orchestrator.mobile_api.models import (
     RESPONSE_FILE_PATTERN,
 )
 from orchestrator.mobile_api.rate_limit import RateLimiter
+from orchestrator.workspace_manager import WorkspaceManager
 
 router = APIRouter()
 
@@ -54,13 +55,14 @@ def _extract_active_run_id(exc: ValueError) -> str:
     return match.group(1) if match else ""
 
 
-def _read_per_run_state(workspace: Path, run_id: str) -> dict[str, Any] | None:
-    """Read workspace/state-{run_id}.json (never state.json)."""
-    state_file = workspace / f"state-{run_id}.json"
-    if not state_file.exists():
+def _read_per_run_state(workspace: Path, run_id: str, project_name: str | None = None) -> dict[str, Any] | None:
+    """Read state from per-run dir or flat workspace."""
+    manager = WorkspaceManager(workspace, project_name or workspace.name)
+    state_path = manager.find_run_state(run_id)
+    if not state_path or not state_path.exists():
         return None
     try:
-        return json.loads(state_file.read_text())
+        return json.loads(state_path.read_text())
     except (json.JSONDecodeError, OSError):
         return None
 
@@ -136,18 +138,12 @@ async def list_runs(
     reader = request.app.state.reader
     app_workspace: Path = reader.workspace
 
+    manager = WorkspaceManager(app_workspace, app_workspace.name)
+    runs_data = manager.list_runs()
+    
     results: list[RunSummaryResponse] = []
-    state_files = sorted(app_workspace.glob("state-*.json"), reverse=True)
-
-    for state_file in state_files:
-        try:
-            state = json.loads(state_file.read_text())
-        except (json.JSONDecodeError, OSError):
-            continue
-
+    for state in runs_data:
         # When workspace_id filter is active, skip runs not tagged with this ID.
-        # Filter by the workspace_id JSON field — consistent with projects.py's
-        # _build_run_count_index approach (TASK-017 LIST_RUNS INCONSISTENCY fix).
         if workspace_id is not None:
             if state.get("workspace_id") != workspace_id:
                 continue
@@ -155,8 +151,9 @@ async def list_runs(
         resp = _run_summary_from_state(state)
         results.append(resp)
 
-    # Sort newest-first by start_time
-    results.sort(key=lambda r: r.start_time or "", reverse=True)
+    # list_runs usually caps at 20 but mobile API might want more or less. 
+    # Existing code seemed to imply a cap by slicing in the target content.
+    return results[:100] if workspace_id else results[:20]
 
     # Cap: 100 when filtering by workspace_id, 20 otherwise (backward compat)
     cap = 100 if workspace_id is not None else 20
@@ -193,8 +190,10 @@ async def get_run(run_id: str, request: Request):
         if projects_root is not None:
             for project_dir in Path(projects_root).iterdir():
                 if project_dir.is_dir():
-                    project_workspace = project_dir / "workspace"
-                    state = _read_per_run_state(project_workspace, run_id)
+                    # Check both the project dir itself and a workspace/ subdirectory
+                    state = _read_per_run_state(project_dir, run_id, project_name=project_dir.name)
+                    if state is None:
+                        state = _read_per_run_state(project_dir / "workspace", run_id, project_name=project_dir.name)
                     if state is not None:
                         break
 
@@ -416,13 +415,15 @@ async def cancel_run(run_id: str, request: Request):
         )
 
     # Run is confirmed active — write sentinel file and cancel
-    # Write the sentinel directly so it's guaranteed regardless of tracker implementation
-    workspace: Path = request.app.state.reader.workspace
-    sentinel = workspace / ".interrupt"
+    # In the new hierarchical structure, the sentinel goes into the run workspace.
+    # Fallback to app workspace if run dir not found.
+    state_path = WorkspaceManager(request.app.state.reader.workspace, "").find_run_state(run_id)
+    sentinel_dir = state_path.parent if state_path else request.app.state.reader.workspace
+    sentinel = sentinel_dir / ".interrupt"
     try:
         sentinel.write_text("web_cancel")
     except OSError:
-        pass  # Best-effort; tracker.cancel_run also writes it for real tracker
+        pass
     await tracker.cancel_run(run_id)
     return CancelResponse(cancelled=True).model_dump()
 
@@ -462,8 +463,9 @@ async def resume_run(run_id: str, request: Request):
         if projects_root is not None:
             for project_dir in Path(projects_root).iterdir():
                 if project_dir.is_dir():
-                    project_workspace = project_dir / "workspace"
-                    state = _read_per_run_state(project_workspace, run_id)
+                    state = _read_per_run_state(project_dir, run_id)
+                    if state is None:
+                        state = _read_per_run_state(project_dir / "workspace", run_id)
                     if state is not None:
                         break
 

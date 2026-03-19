@@ -46,5 +46,12 @@ def save_run_state(state: RunState, workspace: Path) -> None:
     """
     data = json.dumps(state.model_dump(), indent=2, default=str)
     with _state_write_lock:
+        # 1. Canonical state for this run directory (always state.json)
         atomic_write(workspace / "state.json", data)
-        atomic_write(workspace / f"state-{state.run_id}.json", data)
+
+        # 2. Backward compatibility: if we're saving to a workspace that 
+        # looks like a project root (not a specific 'runs/...' subdirectory),
+        # also write 'state-<run_id>.json' so legacy tools can find it.
+        # This is a safe heuristic: if 'runs' isn't in the path, it's project root.
+        if "runs" not in workspace.parts:
+            atomic_write(workspace / f"state-{state.run_id}.json", data)
