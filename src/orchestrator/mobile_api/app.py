@@ -192,11 +192,6 @@ def create_mobile_app(
 
     app.state.max_browse_depth = config.max_browse_depth
 
-    # ── Authentication middleware ──────────────────────────────────────────
-    from orchestrator.mobile_api.auth import AuthMiddleware
-
-    app.add_middleware(AuthMiddleware)
-
     # ── API routers ────────────────────────────────────────────────────────
     from orchestrator.mobile_api.routes.runs import router as runs_router
     from orchestrator.mobile_api.routes.websocket import router as ws_router

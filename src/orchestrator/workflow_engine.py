@@ -2107,6 +2107,44 @@ class WorkflowEngine:
         if self.approval_callback:
             return await self.approval_callback(step)
 
+        # File-based IPC: write a prompt file so the mobile API / Flutter app
+        # can surface the approval request and respond without blocking the
+        # event loop.  Falls back to terminal input only when running attached
+        # to a real TTY (CLI usage).
+        run_id = self.state.run_id
+        workspace = Path(self.state.workspace_dir)
+        try:
+            from orchestrator.prompt_manager import cleanup_prompt_files, write_prompt
+
+            prompt_id = write_prompt(
+                run_id=run_id,
+                workspace=workspace,
+                question=f"Approve step '{step.name}'?",
+                prompt_type="single_choice",
+                options=["Approve", "Reject"],
+            )
+            response_file = workspace / f".response-{run_id}.json"
+            loop = asyncio.get_running_loop()
+            deadline = loop.time() + 600  # 10-minute timeout
+            while loop.time() < deadline:
+                if response_file.exists():
+                    try:
+                        data = json.loads(response_file.read_text(encoding="utf-8"))
+                        if data.get("prompt_id") == prompt_id:
+                            answer = data.get("response", "").lower()
+                            cleanup_prompt_files(run_id, workspace)
+                            return answer in ("approve", "y", "yes")
+                    except (json.JSONDecodeError, OSError):
+                        pass
+                await asyncio.sleep(2.0)
+
+            cleanup_prompt_files(run_id, workspace)
+            logger.warning("Timeout waiting for approval of step '%s'", step.name)
+            return False
+        except Exception:
+            pass
+
+        # Last resort: terminal input (only works when stdin is a TTY)
         try:
             from orchestrator.main import _ring_alarm
             _ring_alarm()

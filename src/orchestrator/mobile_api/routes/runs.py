@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from orchestrator.mobile_api.models import (
     CancelResponse,
@@ -625,12 +625,12 @@ def get_pending_prompt(run_id: str, request: Request):
 
     prompt_file, _ = _find_prompt_file(run_id, workspace, request)
     if prompt_file is None:
-        return JSONResponse(status_code=204, content=None)
+        return Response(status_code=204)
 
     try:
         raw = json.loads(prompt_file.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return JSONResponse(status_code=204, content=None)
+        return Response(status_code=204)
 
     sanitized = _sanitize_prompt(raw)
     response = PendingPromptResponse(

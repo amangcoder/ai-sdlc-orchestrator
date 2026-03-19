@@ -9,9 +9,8 @@ from __future__ import annotations
 import hmac
 import os
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import Request, HTTPException
+from starlette.status import HTTP_401_UNAUTHORIZED
 
 # ── Fail-closed key loading ────────────────────────────────────────────────
 
@@ -53,49 +52,54 @@ def verify_token(token: str) -> bool:
 
 # ── Auth Middleware ────────────────────────────────────────────────────────
 
-class AuthMiddleware(BaseHTTPMiddleware):
+async def auth_middleware(request: Request, call_next):
     """Fail-closed Bearer token authentication for all /api/v1/* HTTP routes.
 
     Exempt paths: /health, /docs, /openapi.json, /api/v1/setup/qr, /redoc.
     All other /api/v1/* paths require a valid Bearer token.
     Non /api/v1/ paths (except exempt) pass through without authentication.
+
+    WebSocket stream endpoints bypass HTTP auth (auth handled via first frame).
     """
+    path = request.url.path
 
-    async def dispatch(self, request: Request, call_next):
-        path = request.url.path
-
-        # Exempt paths pass through without auth
-        if path in _EXEMPT_PATHS:
-            return await call_next(request)
-
-        # Only apply auth to /api/v1/* paths
-        if not path.startswith("/api/v1/"):
-            return await call_next(request)
-
-        # Extract Authorization header
-        auth_header = request.headers.get("Authorization", "")
-
-        # Must be "Bearer <token>" — scheme-sensitive
-        if not auth_header.startswith("Bearer "):
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Unauthorized"},
-            )
-
-        token = auth_header[7:]  # Strip "Bearer " prefix (7 chars)
-
-        # Empty token is rejected
-        if not token:
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Unauthorized"},
-            )
-
-        # Validate using timing-safe comparison
-        if not verify_token(token):
-            return JSONResponse(
-                status_code=401,
-                content={"error": "Unauthorized"},
-            )
-
+    # Exempt paths pass through without auth
+    if path in _EXEMPT_PATHS:
         return await call_next(request)
+
+    # WebSocket stream endpoints bypass HTTP auth (use first-frame auth protocol).
+    # Matches /api/v1/runs/{run_id}/stream
+    if path.startswith("/api/v1/runs/") and path.endswith("/stream"):
+        return await call_next(request)
+
+    # Only apply auth to /api/v1/* paths
+    if not path.startswith("/api/v1/"):
+        return await call_next(request)
+
+    # Extract Authorization header
+    auth_header = request.headers.get("Authorization", "")
+
+    # Must be "Bearer <token>" — scheme-sensitive
+    if not auth_header.startswith("Bearer "):
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+
+    token = auth_header[7:]  # Strip "Bearer " prefix (7 chars)
+
+    # Empty token is rejected
+    if not token:
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+
+    # Validate using timing-safe comparison
+    if not verify_token(token):
+        raise HTTPException(
+            status_code=HTTP_401_UNAUTHORIZED,
+            detail="Unauthorized",
+        )
+
+    return await call_next(request)
