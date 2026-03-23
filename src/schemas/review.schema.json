@@ -1,34 +1,103 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Code Review",
-  "description": "Code review report produced by the Reviewer agent",
-  "type": "object",
-  "required": ["verdict", "issues", "summary"],
-  "properties": {
-    "verdict": {
-      "type": "string",
-      "enum": ["approve", "reject", "request_changes", "pass", "fail", "pass_with_warnings"]
+  "$defs": {
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
     },
-    "issues": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["severity", "description"],
-        "properties": {
-          "severity": { "type": "string", "enum": ["critical", "major", "minor", "nit"] },
-          "file": { "type": "string", "minLength": 1 },
-          "line": { "type": "integer", "minimum": 1 },
-          "description": { "type": "string", "minLength": 1 },
-          "suggestion": { "type": "string" }
+    "ReviewIssue": {
+      "properties": {
+        "severity": {
+          "$ref": "#/$defs/IssueSeverity"
         },
-        "additionalProperties": false
-      }
+        "file": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion"
+        }
+      },
+      "required": [
+        "severity",
+        "description"
+      ],
+      "title": "ReviewIssue",
+      "type": "object"
     },
-    "summary": {
-      "type": "string",
-      "minLength": 20,
-      "description": "Overall assessment of the code changes"
+    "ReviewVerdict": {
+      "enum": [
+        "approve",
+        "reject",
+        "request_changes",
+        "pass_with_warnings"
+      ],
+      "title": "ReviewVerdict",
+      "type": "string"
     }
   },
-  "additionalProperties": false
+  "properties": {
+    "verdict": {
+      "$ref": "#/$defs/ReviewVerdict"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/ReviewIssue"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "summary": {
+      "minLength": 20,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "verdict",
+    "summary"
+  ],
+  "title": "Review",
+  "type": "object"
 }

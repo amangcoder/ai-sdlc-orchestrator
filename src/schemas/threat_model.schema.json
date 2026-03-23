@@ -1,36 +1,74 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Threat Model",
-  "description": "Security threat model produced by the Security Engineer",
-  "type": "object",
-  "required": ["threats", "attack_surface", "recommendations"],
-  "properties": {
-    "threats": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "description", "severity", "mitigation"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^THREAT-\\d+$" },
-          "description": { "type": "string", "minLength": 10 },
-          "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
-          "mitigation": { "type": "string", "minLength": 1 }
+  "$defs": {
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    },
+    "Threat": {
+      "properties": {
+        "id": {
+          "pattern": "^THREAT-\\d+$",
+          "title": "Id",
+          "type": "string"
         },
-        "additionalProperties": false
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/IssueSeverity"
+        },
+        "mitigation": {
+          "minLength": 1,
+          "title": "Mitigation",
+          "type": "string"
+        }
       },
-      "minItems": 1
-    },
-    "attack_surface": {
-      "type": "string",
-      "minLength": 20,
-      "description": "Description of the attack surface"
-    },
-    "recommendations": {
-      "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1,
-      "description": "Security recommendations"
+      "required": [
+        "id",
+        "description",
+        "severity",
+        "mitigation"
+      ],
+      "title": "Threat",
+      "type": "object"
     }
   },
-  "additionalProperties": false
+  "properties": {
+    "threats": {
+      "items": {
+        "$ref": "#/$defs/Threat"
+      },
+      "minItems": 1,
+      "title": "Threats",
+      "type": "array"
+    },
+    "attack_surface": {
+      "minLength": 20,
+      "title": "Attack Surface",
+      "type": "string"
+    },
+    "recommendations": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Recommendations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "threats",
+    "attack_surface",
+    "recommendations"
+  ],
+  "title": "ThreatModel",
+  "type": "object"
 }

@@ -897,9 +897,15 @@ class WorkflowEngine:
                         f"Artifact rescue exhausted for '{step.name}' — "
                         f"performing full step re-execution with error context"
                     )
+                    _error_marker = "--- ARTIFACT ERROR CONTEXT"
                     for task in tasks:
                         task.status = TaskStatus.PENDING
-                        task.description += f"\n\n{error_context}"
+                        # Replace any existing error context rather than accumulating duplicates
+                        if _error_marker in task.description:
+                            idx = task.description.index(_error_marker)
+                            task.description = task.description[:idx].rstrip() + f"\n\n{error_context}"
+                        else:
+                            task.description += f"\n\n{error_context}"
                         task.retry_count = 0
                     try:
                         success = await self._execute_step_tasks(step, tasks)

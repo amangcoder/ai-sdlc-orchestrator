@@ -1,99 +1,269 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "MCPToolSpec",
-  "description": "Formal specification of an MCP server's tool, resource, and prompt surface area.",
-  "type": "object",
-  "required": ["server_name", "version", "description", "sdk", "transport", "capabilities"],
-  "properties": {
-    "server_name": { "type": "string", "minLength": 1 },
-    "version": { "type": "string", "minLength": 1 },
-    "description": { "type": "string", "minLength": 20 },
-    "sdk": { "type": "string", "enum": ["typescript", "python"] },
-    "transport": {
-      "type": "object",
-      "required": ["type", "auth_method"],
+  "$defs": {
+    "MCPPromptDef": {
       "properties": {
-        "type": { "type": "string", "enum": ["stdio", "sse", "streamable_http"] },
-        "auth_method": { "type": "string", "enum": ["none", "bearer", "oauth2", "api_key"] },
-        "port": { "type": "integer" }
+        "id": {
+          "pattern": "^PROMPT-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "arguments": {
+          "items": {
+            "$ref": "#/$defs/MCPToolParam"
+          },
+          "title": "Arguments",
+          "type": "array"
+        }
       },
-      "additionalProperties": false
+      "required": [
+        "id",
+        "name",
+        "description"
+      ],
+      "title": "MCPPromptDef",
+      "type": "object"
+    },
+    "MCPResourceDef": {
+      "properties": {
+        "id": {
+          "pattern": "^RES-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "uri_template": {
+          "minLength": 1,
+          "title": "Uri Template",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "mime_type": {
+          "minLength": 1,
+          "title": "Mime Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "uri_template",
+        "name",
+        "description",
+        "mime_type"
+      ],
+      "title": "MCPResourceDef",
+      "type": "object"
+    },
+    "MCPToolDef": {
+      "properties": {
+        "id": {
+          "pattern": "^TOOL-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "parameters": {
+          "items": {
+            "$ref": "#/$defs/MCPToolParam"
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "returns": {
+          "minLength": 1,
+          "title": "Returns",
+          "type": "string"
+        },
+        "side_effects": {
+          "pattern": "^(none|read|write|external)$",
+          "title": "Side Effects",
+          "type": "string"
+        },
+        "requires_auth": {
+          "default": false,
+          "title": "Requires Auth",
+          "type": "boolean"
+        },
+        "rate_limit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rate Limit"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "description",
+        "returns",
+        "side_effects"
+      ],
+      "title": "MCPToolDef",
+      "type": "object"
+    },
+    "MCPToolParam": {
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "minLength": 1,
+          "title": "Type",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "description"
+      ],
+      "title": "MCPToolParam",
+      "type": "object"
+    },
+    "MCPTransportConfig": {
+      "properties": {
+        "type": {
+          "pattern": "^(stdio|sse|streamable_http)$",
+          "title": "Type",
+          "type": "string"
+        },
+        "auth_method": {
+          "pattern": "^(none|bearer|oauth2|api_key)$",
+          "title": "Auth Method",
+          "type": "string"
+        },
+        "port": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Port"
+        }
+      },
+      "required": [
+        "type",
+        "auth_method"
+      ],
+      "title": "MCPTransportConfig",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "server_name": {
+      "minLength": 1,
+      "title": "Server Name",
+      "type": "string"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    },
+    "description": {
+      "minLength": 20,
+      "title": "Description",
+      "type": "string"
+    },
+    "sdk": {
+      "pattern": "^(typescript|python)$",
+      "title": "Sdk",
+      "type": "string"
+    },
+    "transport": {
+      "$ref": "#/$defs/MCPTransportConfig"
     },
     "tools": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "name", "description", "returns", "side_effects"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^TOOL-\\d+$" },
-          "name": { "type": "string", "minLength": 1 },
-          "description": { "type": "string", "minLength": 10 },
-          "parameters": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["name", "type", "description"],
-              "properties": {
-                "name": { "type": "string", "minLength": 1 },
-                "type": { "type": "string", "minLength": 1 },
-                "description": { "type": "string", "minLength": 1 },
-                "required": { "type": "boolean" }
-              },
-              "additionalProperties": false
-            }
-          },
-          "returns": { "type": "string", "minLength": 1 },
-          "side_effects": { "type": "string", "enum": ["none", "read", "write", "external"] },
-          "requires_auth": { "type": "boolean" },
-          "rate_limit": { "type": ["string", "null"] }
-        },
-        "additionalProperties": false
-      }
+        "$ref": "#/$defs/MCPToolDef"
+      },
+      "title": "Tools",
+      "type": "array"
     },
     "resources": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "uri_template", "name", "description", "mime_type"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^RES-\\d+$" },
-          "uri_template": { "type": "string", "minLength": 1 },
-          "name": { "type": "string", "minLength": 1 },
-          "description": { "type": "string", "minLength": 10 },
-          "mime_type": { "type": "string", "minLength": 1 }
-        },
-        "additionalProperties": false
-      }
+        "$ref": "#/$defs/MCPResourceDef"
+      },
+      "title": "Resources",
+      "type": "array"
     },
     "prompts": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "name", "description"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^PROMPT-\\d+$" },
-          "name": { "type": "string", "minLength": 1 },
-          "description": { "type": "string", "minLength": 10 },
-          "arguments": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["name", "type", "description"],
-              "properties": {
-                "name": { "type": "string", "minLength": 1 },
-                "type": { "type": "string", "minLength": 1 },
-                "description": { "type": "string", "minLength": 1 },
-                "required": { "type": "boolean" }
-              },
-              "additionalProperties": false
-            }
-          }
-        },
-        "additionalProperties": false
-      }
+        "$ref": "#/$defs/MCPPromptDef"
+      },
+      "title": "Prompts",
+      "type": "array"
     },
-    "capabilities": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-    "error_handling": { "type": "object" }
+    "capabilities": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Capabilities",
+      "type": "array"
+    },
+    "error_handling": {
+      "additionalProperties": true,
+      "title": "Error Handling",
+      "type": "object"
+    }
   },
-  "additionalProperties": false
+  "required": [
+    "server_name",
+    "version",
+    "description",
+    "sdk",
+    "transport",
+    "capabilities"
+  ],
+  "title": "MCPToolSpec",
+  "type": "object"
 }

@@ -12,7 +12,7 @@ from typing import Any
 import jsonschema
 from pydantic import ValidationError
 
-from orchestrator.models import ARTIFACT_MODELS
+from orchestrator.models import ARTIFACT_MODELS, _VERDICT_NORMALIZE
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +62,21 @@ def _fix_invalid_json_escapes(raw: str) -> str:
     """
     # Valid JSON escapes: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
     return re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
+
+
+def _normalize_artifact_values(data: dict, artifact_name: str) -> dict:
+    """Normalize artifact-specific values before validation.
+
+    Handles common LLM output variations that are semantically correct
+    but don't match the exact enum values in the Pydantic models.
+    For example, review verdicts "pass"/"fail" → "approve"/"reject".
+    """
+    if artifact_name == "review" and "verdict" in data:
+        original = data["verdict"]
+        mapped = _VERDICT_NORMALIZE.get(original)
+        if mapped:
+            data = {**data, "verdict": mapped}
+    return data
 
 
 def validate_artifact_file(
@@ -117,6 +132,17 @@ def validate_artifact_file(
             )
             data = normalized
             # Rewrite file with corrected keys so downstream consumers see clean data
+            try:
+                artifact_path.write_text(json.dumps(data, indent=2))
+            except OSError:
+                pass
+
+    # Normalize artifact-specific values (e.g. review verdict "pass"→"approve")
+    if auto_normalize and isinstance(data, dict):
+        fixed = _normalize_artifact_values(data, artifact_name)
+        if fixed != data:
+            logger.info("Auto-normalized values in %s", artifact_path.name)
+            data = fixed
             try:
                 artifact_path.write_text(json.dumps(data, indent=2))
             except OSError:

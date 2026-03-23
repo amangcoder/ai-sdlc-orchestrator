@@ -1,41 +1,148 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "QA Report",
-  "description": "Quality assurance report produced by the QA agent",
-  "type": "object",
-  "required": ["test_results", "lint_clean", "type_check_clean", "issues", "verdict"],
-  "properties": {
-    "test_results": {
-      "type": "object",
-      "required": ["passed", "failed", "skipped"],
+  "$defs": {
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    },
+    "QAIssue": {
       "properties": {
-        "passed": { "type": "integer", "minimum": 0 },
-        "failed": { "type": "integer", "minimum": 0 },
-        "skipped": { "type": "integer", "minimum": 0 }
-      },
-      "additionalProperties": false
-    },
-    "lint_clean": { "type": ["boolean", "null"] },
-    "type_check_clean": { "type": ["boolean", "null"] },
-    "issues": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["severity", "description"],
-        "properties": {
-          "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
-          "file": { "type": "string" },
-          "line": { "type": ["integer", "null"], "minimum": 1 },
-          "description": { "type": "string", "minLength": 1 },
-          "suggestion": { "type": "string" }
+        "severity": {
+          "$ref": "#/$defs/IssueSeverity"
         },
-        "additionalProperties": false
-      }
+        "file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "suggestion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggestion"
+        }
+      },
+      "required": [
+        "severity",
+        "description"
+      ],
+      "title": "QAIssue",
+      "type": "object"
     },
-    "verdict": {
-      "type": "string",
-      "enum": ["pass", "fail"]
+    "QAVerdict": {
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "title": "QAVerdict",
+      "type": "string"
+    },
+    "TestResults": {
+      "properties": {
+        "passed": {
+          "minimum": 0,
+          "title": "Passed",
+          "type": "integer"
+        },
+        "failed": {
+          "minimum": 0,
+          "title": "Failed",
+          "type": "integer"
+        },
+        "skipped": {
+          "minimum": 0,
+          "title": "Skipped",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "passed",
+        "failed",
+        "skipped"
+      ],
+      "title": "TestResults",
+      "type": "object"
     }
   },
-  "additionalProperties": false
+  "properties": {
+    "test_results": {
+      "$ref": "#/$defs/TestResults"
+    },
+    "lint_clean": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Lint Clean"
+    },
+    "type_check_clean": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Type Check Clean"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/QAIssue"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "verdict": {
+      "$ref": "#/$defs/QAVerdict"
+    }
+  },
+  "required": [
+    "test_results",
+    "verdict"
+  ],
+  "title": "QAReport",
+  "type": "object"
 }

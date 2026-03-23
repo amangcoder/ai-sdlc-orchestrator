@@ -1,36 +1,89 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Benchmark Report",
-  "description": "Performance benchmark results produced by the Caching & Performance Engineer",
-  "type": "object",
-  "required": ["results"],
-  "properties": {
-    "results": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["metric", "unit"],
-        "properties": {
-          "metric": { "type": "string", "minLength": 1 },
-          "before": { "type": ["number", "null"] },
-          "after": { "type": ["number", "null"] },
-          "unit": { "type": "string", "minLength": 1 },
-          "improvement_pct": { "type": ["number", "null"] }
+  "$defs": {
+    "BenchmarkResult": {
+      "properties": {
+        "metric": {
+          "minLength": 1,
+          "title": "Metric",
+          "type": "string"
         },
-        "additionalProperties": false
+        "before": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Before"
+        },
+        "after": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "After"
+        },
+        "unit": {
+          "minLength": 1,
+          "title": "Unit",
+          "type": "string"
+        },
+        "improvement_pct": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Improvement Pct"
+        }
       },
-      "minItems": 1
-    },
-    "bottlenecks": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Identified performance bottlenecks"
-    },
-    "recommendations": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Performance improvement recommendations"
+      "required": [
+        "metric",
+        "unit"
+      ],
+      "title": "BenchmarkResult",
+      "type": "object"
     }
   },
-  "additionalProperties": false
+  "properties": {
+    "results": {
+      "items": {
+        "$ref": "#/$defs/BenchmarkResult"
+      },
+      "minItems": 1,
+      "title": "Results",
+      "type": "array"
+    },
+    "bottlenecks": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Bottlenecks",
+      "type": "array"
+    },
+    "recommendations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Recommendations",
+      "type": "array"
+    }
+  },
+  "required": [
+    "results"
+  ],
+  "title": "BenchmarkReport",
+  "type": "object"
 }

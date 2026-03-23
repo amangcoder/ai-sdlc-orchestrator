@@ -1,103 +1,174 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Change Impact Analysis",
-  "description": "Blast radius analysis of proposed changes — affected modules, API consumers, downstream risks, deployment constraints",
-  "type": "object",
-  "required": ["summary", "overall_risk", "change_surface", "downstream_impacts", "deployment_constraints", "recommendations"],
-  "properties": {
-    "summary": {
-      "type": "string",
-      "minLength": 50
-    },
-    "overall_risk": {
-      "type": "string",
-      "enum": ["high", "medium", "low"]
-    },
-    "change_surface": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["module", "change_type", "description"],
-        "properties": {
-          "module": { "type": "string", "minLength": 1 },
-          "change_type": {
-            "type": "string",
-            "enum": ["breaking_api", "schema_migration", "interface_change", "behavioral_change", "additive", "config_change"]
-          },
-          "description": { "type": "string", "minLength": 1 }
+  "$defs": {
+    "APIConsumerImpact": {
+      "properties": {
+        "consumer": {
+          "minLength": 1,
+          "title": "Consumer",
+          "type": "string"
+        },
+        "endpoint": {
+          "minLength": 1,
+          "title": "Endpoint",
+          "type": "string"
+        },
+        "breaking": {
+          "default": false,
+          "title": "Breaking",
+          "type": "boolean"
+        },
+        "mitigation": {
+          "minLength": 1,
+          "title": "Mitigation",
+          "type": "string"
         }
       },
-      "minItems": 1
+      "required": [
+        "consumer",
+        "endpoint",
+        "mitigation"
+      ],
+      "title": "APIConsumerImpact",
+      "type": "object"
+    },
+    "ChangeSurface": {
+      "properties": {
+        "module": {
+          "minLength": 1,
+          "title": "Module",
+          "type": "string"
+        },
+        "change_type": {
+          "pattern": "^(breaking_api|schema_migration|interface_change|behavioral_change|additive|config_change)$",
+          "title": "Change Type",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "module",
+        "change_type",
+        "description"
+      ],
+      "title": "ChangeSurface",
+      "type": "object"
+    },
+    "DownstreamImpact": {
+      "properties": {
+        "id": {
+          "pattern": "^IMPACT-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "affected_module": {
+          "minLength": 1,
+          "title": "Affected Module",
+          "type": "string"
+        },
+        "risk_level": {
+          "pattern": "^(high|medium|low)$",
+          "title": "Risk Level",
+          "type": "string"
+        },
+        "impact_type": {
+          "pattern": "^(compile_error|runtime_error|behavioral_change|performance|data_integrity)$",
+          "title": "Impact Type",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "requires_update": {
+          "default": true,
+          "title": "Requires Update",
+          "type": "boolean"
+        },
+        "migration_steps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Migration Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "affected_module",
+        "risk_level",
+        "impact_type",
+        "description"
+      ],
+      "title": "DownstreamImpact",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "summary": {
+      "minLength": 50,
+      "title": "Summary",
+      "type": "string"
+    },
+    "overall_risk": {
+      "pattern": "^(high|medium|low)$",
+      "title": "Overall Risk",
+      "type": "string"
+    },
+    "change_surface": {
+      "items": {
+        "$ref": "#/$defs/ChangeSurface"
+      },
+      "minItems": 1,
+      "title": "Change Surface",
+      "type": "array"
     },
     "downstream_impacts": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "affected_module", "risk_level", "impact_type", "description", "requires_update"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^IMPACT-\\d+$" },
-          "affected_module": { "type": "string", "minLength": 1 },
-          "risk_level": { "type": "string", "enum": ["high", "medium", "low"] },
-          "impact_type": {
-            "type": "string",
-            "enum": ["compile_error", "runtime_error", "behavioral_change", "performance", "data_integrity"]
-          },
-          "description": { "type": "string", "minLength": 10 },
-          "requires_update": { "type": "boolean" },
-          "migration_steps": {
-            "type": "array",
-            "items": { "type": "string" }
-          }
-        }
-      }
+        "$ref": "#/$defs/DownstreamImpact"
+      },
+      "title": "Downstream Impacts",
+      "type": "array"
     },
     "api_consumers_affected": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["consumer", "endpoint", "breaking", "mitigation"],
-        "properties": {
-          "consumer": { "type": "string", "minLength": 1 },
-          "endpoint": { "type": "string", "minLength": 1 },
-          "breaking": { "type": "boolean" },
-          "mitigation": { "type": "string", "minLength": 1 }
-        }
-      }
+        "$ref": "#/$defs/APIConsumerImpact"
+      },
+      "title": "Api Consumers Affected",
+      "type": "array"
     },
     "deployment_constraints": {
-      "type": "object",
-      "properties": {
-        "atomic_changes": {
-          "type": "array",
-          "items": { "type": "array", "items": { "type": "string" } }
-        },
-        "migration_order": {
-          "type": "array",
-          "items": { "type": "string" }
-        },
-        "rollback_plan": { "type": "string", "minLength": 1 },
-        "feature_flags_needed": {
-          "type": "array",
-          "items": { "type": "string" }
-        }
-      }
+      "additionalProperties": true,
+      "title": "Deployment Constraints",
+      "type": "object"
     },
     "coordination_needed": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["team_or_service", "reason", "action_required"],
-        "properties": {
-          "team_or_service": { "type": "string", "minLength": 1 },
-          "reason": { "type": "string", "minLength": 1 },
-          "action_required": { "type": "string", "minLength": 1 }
-        }
-      }
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Coordination Needed",
+      "type": "array"
     },
     "recommendations": {
-      "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Recommendations",
+      "type": "array"
     }
-  }
+  },
+  "required": [
+    "summary",
+    "overall_risk",
+    "change_surface",
+    "recommendations"
+  ],
+  "title": "ChangeImpactAnalysis",
+  "type": "object"
 }

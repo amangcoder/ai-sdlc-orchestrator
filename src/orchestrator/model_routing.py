@@ -57,6 +57,7 @@ ROLE_CATEGORY: dict[AgentRole, AgentCategory] = {
     # Coding / Implementation
     AgentRole.FRONTEND_ENGINEER: AgentCategory.CODING,
     AgentRole.BACKEND_ENGINEER: AgentCategory.CODING,
+    AgentRole.FLUTTER_ENGINEER: AgentCategory.CODING,
     AgentRole.DATABASE_ENGINEER: AgentCategory.CODING,
     AgentRole.CACHING_PERFORMANCE_ENGINEER: AgentCategory.CODING,
     AgentRole.DEVOPS_ENGINEER: AgentCategory.CODING,

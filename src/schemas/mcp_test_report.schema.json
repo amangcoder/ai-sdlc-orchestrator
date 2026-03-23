@@ -1,36 +1,105 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "MCPTestReport",
-  "description": "Protocol-level integration test results for an MCP server.",
-  "type": "object",
-  "required": ["server_name", "transport_tested", "test_cases", "tools_tested", "resources_tested", "protocol_compliance", "verdict"],
-  "properties": {
-    "server_name": { "type": "string", "minLength": 1 },
-    "transport_tested": { "type": "string", "minLength": 1 },
-    "test_cases": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["id", "category", "description", "result"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^MCP-TC-\\d+$" },
-          "category": {
-            "type": "string",
-            "enum": ["tool_call", "resource_read", "prompt_get", "transport", "auth", "capability_negotiation", "error_handling", "concurrency"]
-          },
-          "description": { "type": "string", "minLength": 10 },
-          "result": { "type": "string", "enum": ["pass", "fail", "skip"] },
-          "details": { "type": "string" }
+  "$defs": {
+    "MCPTestCase": {
+      "properties": {
+        "id": {
+          "pattern": "^MCP-TC-\\d+$",
+          "title": "Id",
+          "type": "string"
         },
-        "additionalProperties": false
-      }
+        "category": {
+          "pattern": "^(tool_call|resource_read|prompt_get|transport|auth|capability_negotiation|error_handling|concurrency)$",
+          "title": "Category",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 10,
+          "title": "Description",
+          "type": "string"
+        },
+        "result": {
+          "pattern": "^(pass|fail|skip)$",
+          "title": "Result",
+          "type": "string"
+        },
+        "details": {
+          "default": "",
+          "title": "Details",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "category",
+        "description",
+        "result"
+      ],
+      "title": "MCPTestCase",
+      "type": "object"
     },
-    "tools_tested": { "type": "integer", "minimum": 0 },
-    "resources_tested": { "type": "integer", "minimum": 0 },
-    "protocol_compliance": { "type": "string", "enum": ["full", "partial", "non_compliant"] },
-    "findings": { "type": "array", "items": { "type": "string" } },
-    "verdict": { "type": "string", "enum": ["pass", "fail"] }
+    "QAVerdict": {
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "title": "QAVerdict",
+      "type": "string"
+    }
   },
-  "additionalProperties": false
+  "properties": {
+    "server_name": {
+      "minLength": 1,
+      "title": "Server Name",
+      "type": "string"
+    },
+    "transport_tested": {
+      "minLength": 1,
+      "title": "Transport Tested",
+      "type": "string"
+    },
+    "test_cases": {
+      "items": {
+        "$ref": "#/$defs/MCPTestCase"
+      },
+      "minItems": 1,
+      "title": "Test Cases",
+      "type": "array"
+    },
+    "tools_tested": {
+      "minimum": 0,
+      "title": "Tools Tested",
+      "type": "integer"
+    },
+    "resources_tested": {
+      "minimum": 0,
+      "title": "Resources Tested",
+      "type": "integer"
+    },
+    "protocol_compliance": {
+      "pattern": "^(full|partial|non_compliant)$",
+      "title": "Protocol Compliance",
+      "type": "string"
+    },
+    "findings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Findings",
+      "type": "array"
+    },
+    "verdict": {
+      "$ref": "#/$defs/QAVerdict"
+    }
+  },
+  "required": [
+    "server_name",
+    "transport_tested",
+    "test_cases",
+    "tools_tested",
+    "resources_tested",
+    "protocol_compliance",
+    "verdict"
+  ],
+  "title": "MCPTestReport",
+  "type": "object"
 }

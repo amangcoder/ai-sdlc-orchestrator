@@ -2,6 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.6.0] - 2026-03-23
+
+### Added
+
+**Flutter Engineer Role**
+- `FLUTTER_ENGINEER` agent role with dedicated `build_flutter_engineer_prompt()` targeting the `mobile/` directory
+- Enforces Riverpod state management and ConsumerWidget patterns; writes widget and unit tests alongside implementation
+- Registered in `ROLE_REGISTRY` and `role_to_legacy_agent_name()` mapper
+
+**Artifact Prompt Hardening**
+- `api_contract`: replaced loosely-described fields with strict required keys (`base_url`, `endpoints` with typed sub-fields, optional `auth`/`schemas`)
+- `migration_plan`: strict required fields — `risk_level`, `strategy`, `phases` (with per-phase `rollback_steps`, `verification_queries`, `requires_downtime`), `rollback_plan`, `data_backup`
+- `ux_spec`: locked to exact top-level keys (`flows`, `components`, `responsive_behavior`); explicitly forbids legacy keys (`user_flows`, `screens`, `accessibility_requirements`, etc.) to end repeated schema drift
+- `tech_debt_inventory`: structured `debt_items` array with `quadrant`, `priority`, `test_coverage`; added `health_score`, `quick_wins`, `do_not_touch`
+- `release_plan`: required `version_bump` (`major|minor|patch`), `release_notes`, structured `changelog` dict and `rollout_plan`
+- `incident_report`: required `title`, `severity`, `symptom`, `expected_behavior`, `five_whys`, `affected_code` (with per-entry `file`/`line`/`description`)
+- `load_test_report`: required `test_profiles` (with per-profile pass/degraded/fail result) and `capacity_recommendation`
+- `compliance_report`: required `applicable_regulations` and `summary`; structured `compliance_gaps` with per-gap `id`, `risk_level`, `remediation`
+
+**Validation Auto-Normalization**
+- `_normalize_artifact_values()` in `validation.py` translates common LLM output variants before schema validation (e.g. review verdict `"pass"` → `"approve"`, `"fail"` → `"reject"`)
+- Normalization runs before both JSON Schema and Pydantic layers; rewritten file is persisted to disk so the fix is permanent
+- `_VERDICT_NORMALIZE` map imported from `models.py` and consumed by the validator
+
+**JSON Schema Tightening**
+- All 18 artifact schemas updated: stricter `required` arrays, tighter `enum` constraints, `additionalProperties: false` where appropriate, and corrected `$schema` declarations
+
+**Tests**
+- Extended `tests/test_validation.py` with verdict normalization round-trip tests and schema-edge cases
+
+### Changed
+
+- `ux_specifier.md` agent definition updated to match the new locked `ux_spec.json` schema
+
+---
+
 ## [0.5.0] - 2026-03-19
 
 ### Added

@@ -62,6 +62,13 @@ ROLE_REGISTRY: dict[AgentRole, RoleDefinition] = {
         access=RoleAccess.READ_WRITE,
         agent_file="backend_engineer.md",
     ),
+    AgentRole.FLUTTER_ENGINEER: RoleDefinition(
+        role=AgentRole.FLUTTER_ENGINEER,
+        title="Flutter Engineer",
+        responsibility="Implements Flutter/Dart mobile tasks using Riverpod state management and ConsumerWidget patterns in the mobile/ directory. One task at a time. Does not design or plan.",
+        access=RoleAccess.READ_WRITE,
+        agent_file="flutter_engineer.md",
+    ),
     AgentRole.DATABASE_ENGINEER: RoleDefinition(
         role=AgentRole.DATABASE_ENGINEER,
         title="Database Engineer",
@@ -487,6 +494,7 @@ def role_to_legacy_agent_name(role: AgentRole) -> str:
         AgentRole.TECHNICAL_PROJECT_MANAGER: "tpm",
         AgentRole.FRONTEND_ENGINEER: "frontend_engineer",
         AgentRole.BACKEND_ENGINEER: "backend_engineer",
+        AgentRole.FLUTTER_ENGINEER: "flutter_engineer",
         AgentRole.DATABASE_ENGINEER: "database_engineer",
         AgentRole.CACHING_PERFORMANCE_ENGINEER: "caching_engineer",
         AgentRole.BACKEND_CODE_REVIEWER: "backend_reviewer",

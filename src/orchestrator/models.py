@@ -112,6 +112,7 @@ class AgentRole(str, Enum):
     TECHNICAL_PROJECT_MANAGER = "technical_project_manager"
     FRONTEND_ENGINEER = "frontend_engineer"
     BACKEND_ENGINEER = "backend_engineer"
+    FLUTTER_ENGINEER = "flutter_engineer"
     DATABASE_ENGINEER = "database_engineer"
     CACHING_PERFORMANCE_ENGINEER = "caching_performance_engineer"
     BACKEND_CODE_REVIEWER = "backend_code_reviewer"

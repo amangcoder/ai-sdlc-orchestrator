@@ -585,7 +585,7 @@ Analyze the feature request below **together with the codebase profile** and pro
 JSON response. Consider:
 
 - **Codebase complexity** → larger/more complex codebases benefit from more planning \
-steps, enhanced perception, and specialist agents (security, observability, etc.)
+steps and specialist agents (security, observability, etc.)
 - **Languages & stack** → choose frontend/backend/database specialists that match \
 the actual tech stack
 - **Existing signals** → if the codebase has tests, include QA; if it has Docker, \

@@ -1,97 +1,200 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "DebateConclusion",
-  "description": "Mediator's final synthesis of a multi-agent debate",
-  "type": "object",
-  "required": ["resolved_requirements", "recommended_scope", "recommended_priorities", "overall_confidence", "rounds_conducted", "total_positions_evaluated"],
-  "properties": {
-    "resolved_requirements": {
-      "type": "array",
-      "minItems": 1,
-      "items": {
-        "type": "object",
-        "required": ["requirement", "rationale", "confidence"],
-        "properties": {
-          "requirement": { "type": "string", "minLength": 1 },
-          "rationale": { "type": "string", "minLength": 1 },
-          "source_agents": {
-            "type": "array",
-            "items": { "type": "string" },
-            "default": []
+  "$defs": {
+    "DebateConclusionDissent": {
+      "properties": {
+        "agent_id": {
+          "minLength": 1,
+          "title": "Agent Id",
+          "type": "string"
+        },
+        "dissent": {
+          "minLength": 1,
+          "title": "Dissent",
+          "type": "string"
+        },
+        "mediator_note": {
+          "minLength": 1,
+          "title": "Mediator Note",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id",
+        "dissent",
+        "mediator_note"
+      ],
+      "title": "DebateConclusionDissent",
+      "type": "object"
+    },
+    "DebateConclusionRequirement": {
+      "properties": {
+        "requirement": {
+          "minLength": 1,
+          "title": "Requirement",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "source_agents": {
+          "items": {
+            "type": "string"
           },
-          "confidence": { "type": "integer", "minimum": 0, "maximum": 100 }
+          "title": "Source Agents",
+          "type": "array"
+        },
+        "confidence": {
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Confidence",
+          "type": "integer"
         }
-      }
+      },
+      "required": [
+        "requirement",
+        "rationale",
+        "confidence"
+      ],
+      "title": "DebateConclusionRequirement",
+      "type": "object"
     },
-    "unresolved_tensions": {
-      "type": "array",
-      "default": [],
-      "items": {
-        "type": "object",
-        "required": ["tension", "side_a", "side_b", "mediator_recommendation"],
-        "properties": {
-          "tension": { "type": "string", "minLength": 1 },
-          "side_a": { "type": "string", "minLength": 1 },
-          "side_b": { "type": "string", "minLength": 1 },
-          "mediator_recommendation": { "type": "string", "minLength": 1 }
+    "DebateConclusionRisk": {
+      "properties": {
+        "risk": {
+          "minLength": 1,
+          "title": "Risk",
+          "type": "string"
+        },
+        "severity": {
+          "pattern": "^(critical|high|medium|low)$",
+          "title": "Severity",
+          "type": "string"
+        },
+        "mitigation": {
+          "minLength": 1,
+          "title": "Mitigation",
+          "type": "string"
+        },
+        "raised_by": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Raised By",
+          "type": "array"
         }
-      }
+      },
+      "required": [
+        "risk",
+        "severity",
+        "mitigation"
+      ],
+      "title": "DebateConclusionRisk",
+      "type": "object"
     },
-    "risk_assessment": {
-      "type": "array",
-      "default": [],
-      "items": {
-        "type": "object",
-        "required": ["risk", "severity", "mitigation"],
-        "properties": {
-          "risk": { "type": "string", "minLength": 1 },
-          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
-          "mitigation": { "type": "string", "minLength": 1 },
-          "raised_by": {
-            "type": "array",
-            "items": { "type": "string" },
-            "default": []
-          }
+    "DebateConclusionTension": {
+      "properties": {
+        "tension": {
+          "minLength": 1,
+          "title": "Tension",
+          "type": "string"
+        },
+        "side_a": {
+          "minLength": 1,
+          "title": "Side A",
+          "type": "string"
+        },
+        "side_b": {
+          "minLength": 1,
+          "title": "Side B",
+          "type": "string"
+        },
+        "mediator_recommendation": {
+          "minLength": 1,
+          "title": "Mediator Recommendation",
+          "type": "string"
         }
-      }
-    },
-    "recommended_scope": {
-      "type": "string",
-      "minLength": 20,
-      "description": "What should be built (scoped and actionable)"
-    },
-    "recommended_priorities": {
-      "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1,
-      "description": "Ordered priority list"
-    },
-    "dissenting_opinions": {
-      "type": "array",
-      "default": [],
-      "items": {
-        "type": "object",
-        "required": ["agent_id", "dissent", "mediator_note"],
-        "properties": {
-          "agent_id": { "type": "string", "minLength": 1 },
-          "dissent": { "type": "string", "minLength": 1 },
-          "mediator_note": { "type": "string", "minLength": 1 }
-        }
-      }
-    },
-    "overall_confidence": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 100
-    },
-    "rounds_conducted": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "total_positions_evaluated": {
-      "type": "integer",
-      "minimum": 1
+      },
+      "required": [
+        "tension",
+        "side_a",
+        "side_b",
+        "mediator_recommendation"
+      ],
+      "title": "DebateConclusionTension",
+      "type": "object"
     }
   },
-  "additionalProperties": false
+  "description": "Mediator's final synthesis of the debate.",
+  "properties": {
+    "resolved_requirements": {
+      "items": {
+        "$ref": "#/$defs/DebateConclusionRequirement"
+      },
+      "minItems": 1,
+      "title": "Resolved Requirements",
+      "type": "array"
+    },
+    "unresolved_tensions": {
+      "items": {
+        "$ref": "#/$defs/DebateConclusionTension"
+      },
+      "title": "Unresolved Tensions",
+      "type": "array"
+    },
+    "risk_assessment": {
+      "items": {
+        "$ref": "#/$defs/DebateConclusionRisk"
+      },
+      "title": "Risk Assessment",
+      "type": "array"
+    },
+    "recommended_scope": {
+      "minLength": 20,
+      "title": "Recommended Scope",
+      "type": "string"
+    },
+    "recommended_priorities": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Recommended Priorities",
+      "type": "array"
+    },
+    "dissenting_opinions": {
+      "items": {
+        "$ref": "#/$defs/DebateConclusionDissent"
+      },
+      "title": "Dissenting Opinions",
+      "type": "array"
+    },
+    "overall_confidence": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Overall Confidence",
+      "type": "integer"
+    },
+    "rounds_conducted": {
+      "minimum": 1,
+      "title": "Rounds Conducted",
+      "type": "integer"
+    },
+    "total_positions_evaluated": {
+      "minimum": 1,
+      "title": "Total Positions Evaluated",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "resolved_requirements",
+    "recommended_scope",
+    "recommended_priorities",
+    "overall_confidence",
+    "rounds_conducted",
+    "total_positions_evaluated"
+  ],
+  "title": "DebateConclusion",
+  "type": "object"
 }

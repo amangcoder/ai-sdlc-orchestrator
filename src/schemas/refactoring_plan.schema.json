@@ -1,109 +1,208 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Refactoring Plan",
-  "description": "Safe refactoring sequence with dependency ordering, pre/post-conditions, rollback plans, and stopping points",
-  "type": "object",
-  "required": ["summary", "source_debt_items", "total_steps", "estimated_effort", "refactoring_steps", "dependency_graph", "safe_stopping_points"],
+  "$defs": {
+    "RefactoringStep": {
+      "properties": {
+        "id": {
+          "pattern": "^REFACTOR-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "title": {
+          "minLength": 1,
+          "title": "Title",
+          "type": "string"
+        },
+        "addresses_debt": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Addresses Debt",
+          "type": "array"
+        },
+        "sequence_order": {
+          "minimum": 1,
+          "title": "Sequence Order",
+          "type": "integer"
+        },
+        "parallelizable_with": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Parallelizable With",
+          "type": "array"
+        },
+        "files_to_modify": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Files To Modify",
+          "type": "array"
+        },
+        "preconditions": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Preconditions",
+          "type": "array"
+        },
+        "changes": {
+          "minLength": 10,
+          "title": "Changes",
+          "type": "string"
+        },
+        "postconditions": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Postconditions",
+          "type": "array"
+        },
+        "verification": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Verification",
+          "type": "array"
+        },
+        "rollback": {
+          "minLength": 1,
+          "title": "Rollback",
+          "type": "string"
+        },
+        "risk": {
+          "pattern": "^(low|medium|high)$",
+          "title": "Risk",
+          "type": "string"
+        },
+        "effort": {
+          "pattern": "^(hours|days|week)$",
+          "title": "Effort",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "addresses_debt",
+        "sequence_order",
+        "files_to_modify",
+        "preconditions",
+        "changes",
+        "postconditions",
+        "verification",
+        "rollback",
+        "risk",
+        "effort"
+      ],
+      "title": "RefactoringStep",
+      "type": "object"
+    },
+    "SafeStoppingPoint": {
+      "properties": {
+        "after_step": {
+          "minLength": 1,
+          "title": "After Step",
+          "type": "string"
+        },
+        "system_state": {
+          "minLength": 1,
+          "title": "System State",
+          "type": "string"
+        },
+        "value_delivered": {
+          "minLength": 1,
+          "title": "Value Delivered",
+          "type": "string"
+        }
+      },
+      "required": [
+        "after_step",
+        "system_state",
+        "value_delivered"
+      ],
+      "title": "SafeStoppingPoint",
+      "type": "object"
+    }
+  },
   "properties": {
     "summary": {
-      "type": "string",
-      "minLength": 50
+      "minLength": 50,
+      "title": "Summary",
+      "type": "string"
     },
     "source_debt_items": {
-      "type": "array",
-      "items": { "type": "string", "pattern": "^DEBT-\\d+$" },
-      "minItems": 1
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Source Debt Items",
+      "type": "array"
     },
     "total_steps": {
-      "type": "integer",
-      "minimum": 1
+      "minimum": 1,
+      "title": "Total Steps",
+      "type": "integer"
     },
     "estimated_effort": {
-      "type": "string",
-      "minLength": 1
+      "minLength": 1,
+      "title": "Estimated Effort",
+      "type": "string"
     },
     "refactoring_steps": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "title", "addresses_debt", "sequence_order", "files_to_modify", "preconditions", "changes", "postconditions", "verification", "rollback", "risk", "effort"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^REFACTOR-\\d+$" },
-          "title": { "type": "string", "minLength": 1 },
-          "addresses_debt": {
-            "type": "array",
-            "items": { "type": "string" },
-            "minItems": 1
-          },
-          "sequence_order": { "type": "integer", "minimum": 1 },
-          "parallelizable_with": {
-            "type": "array",
-            "items": { "type": "string" }
-          },
-          "files_to_modify": {
-            "type": "array",
-            "items": { "type": "string" },
-            "minItems": 1
-          },
-          "preconditions": {
-            "type": "array",
-            "items": { "type": "string" },
-            "minItems": 1
-          },
-          "changes": { "type": "string", "minLength": 10 },
-          "postconditions": {
-            "type": "array",
-            "items": { "type": "string" },
-            "minItems": 1
-          },
-          "verification": {
-            "type": "array",
-            "items": { "type": "string" },
-            "minItems": 1
-          },
-          "rollback": { "type": "string", "minLength": 1 },
-          "risk": { "type": "string", "enum": ["low", "medium", "high"] },
-          "effort": { "type": "string", "enum": ["hours", "days", "week"] }
-        }
+        "$ref": "#/$defs/RefactoringStep"
       },
-      "minItems": 1
+      "minItems": 1,
+      "title": "Refactoring Steps",
+      "type": "array"
     },
     "dependency_graph": {
-      "type": "object",
       "additionalProperties": {
-        "type": "array",
-        "items": { "type": "string" }
-      }
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Dependency Graph",
+      "type": "object"
     },
     "safe_stopping_points": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["after_step", "system_state", "value_delivered"],
-        "properties": {
-          "after_step": { "type": "string", "minLength": 1 },
-          "system_state": { "type": "string", "minLength": 1 },
-          "value_delivered": { "type": "string", "minLength": 1 }
-        }
+        "$ref": "#/$defs/SafeStoppingPoint"
       },
-      "minItems": 1
+      "minItems": 1,
+      "title": "Safe Stopping Points",
+      "type": "array"
     },
     "risks": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["risk", "severity", "mitigation", "affected_steps"],
-        "properties": {
-          "risk": { "type": "string", "minLength": 1 },
-          "severity": { "type": "string", "enum": ["critical", "high", "medium", "low"] },
-          "mitigation": { "type": "string", "minLength": 1 },
-          "affected_steps": { "type": "array", "items": { "type": "string" } }
-        }
-      }
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Risks",
+      "type": "array"
     },
     "recommendations": {
-      "type": "array",
-      "items": { "type": "string" }
+      "items": {
+        "type": "string"
+      },
+      "title": "Recommendations",
+      "type": "array"
     }
-  }
+  },
+  "required": [
+    "summary",
+    "source_debt_items",
+    "total_steps",
+    "estimated_effort",
+    "refactoring_steps",
+    "safe_stopping_points"
+  ],
+  "title": "RefactoringPlan",
+  "type": "object"
 }

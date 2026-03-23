@@ -1,132 +1,114 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Runbook",
-  "description": "Operational runbook — deployment, rollback, incident procedures, maintenance tasks",
-  "type": "object",
-  "required": ["summary", "system_name", "deployment", "incident_procedures"],
-  "properties": {
-    "summary": {
-      "type": "string",
-      "minLength": 50
-    },
-    "system_name": {
-      "type": "string",
-      "minLength": 1
-    },
-    "deployment": {
-      "type": "object",
-      "required": ["prerequisites", "steps", "rollback"],
+  "$defs": {
+    "IncidentProcedure": {
       "properties": {
-        "prerequisites": {
-          "type": "array",
-          "items": { "type": "string" },
-          "minItems": 1
+        "id": {
+          "pattern": "^INC-\\d+$",
+          "title": "Id",
+          "type": "string"
         },
-        "steps": {
-          "type": "array",
+        "alert_name": {
+          "minLength": 1,
+          "title": "Alert Name",
+          "type": "string"
+        },
+        "severity": {
+          "$ref": "#/$defs/IssueSeverity"
+        },
+        "diagnosis": {
           "items": {
-            "type": "object",
-            "required": ["step", "action", "verification"],
-            "properties": {
-              "step": { "type": "integer", "minimum": 1 },
-              "action": { "type": "string", "minLength": 1 },
-              "command": { "type": "string" },
-              "verification": { "type": "string", "minLength": 1 }
-            }
+            "additionalProperties": true,
+            "type": "object"
           },
-          "minItems": 1
+          "minItems": 1,
+          "title": "Diagnosis",
+          "type": "array"
         },
-        "rollback": {
-          "type": "object",
-          "required": ["trigger", "steps", "verification"],
-          "properties": {
-            "trigger": { "type": "string", "minLength": 1 },
-            "steps": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "required": ["step", "action"],
-                "properties": {
-                  "step": { "type": "integer", "minimum": 1 },
-                  "action": { "type": "string", "minLength": 1 },
-                  "command": { "type": "string" }
-                }
-              },
-              "minItems": 1
-            },
-            "verification": { "type": "string", "minLength": 1 }
-          }
-        }
-      }
-    },
-    "incident_procedures": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "alert_name", "severity", "diagnosis", "resolution", "escalation"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^INC-\\d+$" },
-          "alert_name": { "type": "string", "minLength": 1 },
-          "severity": { "type": "string", "enum": ["critical", "major", "minor"] },
-          "diagnosis": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["check", "command", "expected"],
-              "properties": {
-                "check": { "type": "string", "minLength": 1 },
-                "command": { "type": "string", "minLength": 1 },
-                "expected": { "type": "string", "minLength": 1 }
-              }
-            },
-            "minItems": 1
+        "resolution": {
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
           },
-          "resolution": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["step", "action"],
-              "properties": {
-                "step": { "type": "integer", "minimum": 1 },
-                "action": { "type": "string", "minLength": 1 },
-                "command": { "type": "string" }
-              }
-            },
-            "minItems": 1
-          },
-          "escalation": { "type": "string", "minLength": 1 }
+          "minItems": 1,
+          "title": "Resolution",
+          "type": "array"
+        },
+        "escalation": {
+          "minLength": 1,
+          "title": "Escalation",
+          "type": "string"
         }
       },
-      "minItems": 1
+      "required": [
+        "id",
+        "alert_name",
+        "severity",
+        "diagnosis",
+        "resolution",
+        "escalation"
+      ],
+      "title": "IncidentProcedure",
+      "type": "object"
+    },
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    }
+  },
+  "properties": {
+    "summary": {
+      "minLength": 50,
+      "title": "Summary",
+      "type": "string"
+    },
+    "system_name": {
+      "minLength": 1,
+      "title": "System Name",
+      "type": "string"
+    },
+    "deployment": {
+      "additionalProperties": true,
+      "title": "Deployment",
+      "type": "object"
+    },
+    "incident_procedures": {
+      "items": {
+        "$ref": "#/$defs/IncidentProcedure"
+      },
+      "minItems": 1,
+      "title": "Incident Procedures",
+      "type": "array"
     },
     "maintenance_tasks": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["task", "frequency", "steps", "verification"],
-        "properties": {
-          "task": { "type": "string", "minLength": 1 },
-          "frequency": { "type": "string", "enum": ["daily", "weekly", "monthly"] },
-          "steps": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-          "verification": { "type": "string", "minLength": 1 }
-        }
-      }
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Maintenance Tasks",
+      "type": "array"
     },
     "key_contacts": {
-      "type": "object",
-      "properties": {
-        "on_call": { "type": "string" },
-        "escalation": { "type": "string" },
-        "vendor_support": { "type": "string" }
-      }
+      "additionalProperties": true,
+      "title": "Key Contacts",
+      "type": "object"
     },
     "dashboards_and_logs": {
-      "type": "object",
-      "properties": {
-        "monitoring": { "type": "string" },
-        "logs": { "type": "string" },
-        "metrics": { "type": "string" }
-      }
+      "additionalProperties": true,
+      "title": "Dashboards And Logs",
+      "type": "object"
     }
-  }
+  },
+  "required": [
+    "summary",
+    "system_name",
+    "incident_procedures"
+  ],
+  "title": "Runbook",
+  "type": "object"
 }

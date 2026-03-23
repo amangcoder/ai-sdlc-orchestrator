@@ -1,115 +1,186 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Data Pipeline Design",
-  "description": "ETL pipeline architecture — data flows, transformations, quality rules, infrastructure",
-  "type": "object",
-  "required": ["summary", "pipelines", "data_quality_rules", "infrastructure", "recommendations"],
-  "properties": {
-    "summary": {
-      "type": "string",
-      "minLength": 50
-    },
-    "pipelines": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["id", "name", "type", "source", "transformations", "destination", "freshness_requirement"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^PIPE-\\d+$" },
-          "name": { "type": "string", "minLength": 1 },
-          "type": { "type": "string", "enum": ["streaming", "batch", "hybrid"] },
-          "source": {
-            "type": "object",
-            "required": ["system", "format"],
-            "properties": {
-              "system": { "type": "string", "minLength": 1 },
-              "format": { "type": "string", "minLength": 1 },
-              "connection": { "type": "string" }
-            }
+  "$defs": {
+    "DataPipeline": {
+      "properties": {
+        "id": {
+          "pattern": "^PIPE-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "pattern": "^(streaming|batch|hybrid)$",
+          "title": "Type",
+          "type": "string"
+        },
+        "source": {
+          "additionalProperties": true,
+          "title": "Source",
+          "type": "object"
+        },
+        "transformations": {
+          "items": {
+            "$ref": "#/$defs/PipelineTransformation"
           },
-          "transformations": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "required": ["step", "operation", "description"],
-              "properties": {
-                "step": { "type": "integer", "minimum": 1 },
-                "operation": {
-                  "type": "string",
-                  "enum": ["validate", "filter", "map", "join", "aggregate", "enrich", "deduplicate"]
-                },
-                "description": { "type": "string", "minLength": 1 },
-                "input_schema": { "type": "string" },
-                "output_schema": { "type": "string" }
-              }
-            }
-          },
-          "destination": {
-            "type": "object",
-            "required": ["system", "format", "write_mode"],
-            "properties": {
-              "system": { "type": "string", "minLength": 1 },
-              "format": { "type": "string", "minLength": 1 },
-              "write_mode": { "type": "string", "enum": ["append", "upsert", "overwrite"] }
-            }
-          },
-          "freshness_requirement": {
-            "type": "string",
-            "enum": ["real_time", "near_real_time", "hourly", "daily"]
-          },
-          "volume_estimate": { "type": "string" },
-          "error_handling": {
-            "type": "object",
-            "properties": {
-              "dead_letter_queue": { "type": "boolean" },
-              "retry_policy": { "type": "string" },
-              "alerting": { "type": "string" }
-            }
-          }
+          "title": "Transformations",
+          "type": "array"
+        },
+        "destination": {
+          "additionalProperties": true,
+          "title": "Destination",
+          "type": "object"
+        },
+        "freshness_requirement": {
+          "pattern": "^(real_time|near_real_time|hourly|daily)$",
+          "title": "Freshness Requirement",
+          "type": "string"
+        },
+        "volume_estimate": {
+          "default": "",
+          "title": "Volume Estimate",
+          "type": "string"
+        },
+        "error_handling": {
+          "additionalProperties": true,
+          "title": "Error Handling",
+          "type": "object"
         }
       },
-      "minItems": 1
+      "required": [
+        "id",
+        "name",
+        "type",
+        "freshness_requirement"
+      ],
+      "title": "DataPipeline",
+      "type": "object"
+    },
+    "DataQualityRule": {
+      "properties": {
+        "id": {
+          "pattern": "^DQ-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "pipeline": {
+          "minLength": 1,
+          "title": "Pipeline",
+          "type": "string"
+        },
+        "rule": {
+          "minLength": 1,
+          "title": "Rule",
+          "type": "string"
+        },
+        "enforcement": {
+          "pattern": "^(block|warn|log)$",
+          "title": "Enforcement",
+          "type": "string"
+        },
+        "threshold": {
+          "default": "",
+          "title": "Threshold",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "pipeline",
+        "rule",
+        "enforcement"
+      ],
+      "title": "DataQualityRule",
+      "type": "object"
+    },
+    "PipelineTransformation": {
+      "properties": {
+        "step": {
+          "minimum": 1,
+          "title": "Step",
+          "type": "integer"
+        },
+        "operation": {
+          "pattern": "^(validate|filter|map|join|aggregate|enrich|deduplicate)$",
+          "title": "Operation",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "input_schema": {
+          "default": "",
+          "title": "Input Schema",
+          "type": "string"
+        },
+        "output_schema": {
+          "default": "",
+          "title": "Output Schema",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "operation",
+        "description"
+      ],
+      "title": "PipelineTransformation",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "summary": {
+      "minLength": 50,
+      "title": "Summary",
+      "type": "string"
+    },
+    "pipelines": {
+      "items": {
+        "$ref": "#/$defs/DataPipeline"
+      },
+      "minItems": 1,
+      "title": "Pipelines",
+      "type": "array"
     },
     "data_quality_rules": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "pipeline", "rule", "enforcement"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^DQ-\\d+$" },
-          "pipeline": { "type": "string", "minLength": 1 },
-          "rule": { "type": "string", "minLength": 1 },
-          "enforcement": { "type": "string", "enum": ["block", "warn", "log"] },
-          "threshold": { "type": "string" }
-        }
-      }
+        "$ref": "#/$defs/DataQualityRule"
+      },
+      "title": "Data Quality Rules",
+      "type": "array"
     },
     "infrastructure": {
-      "type": "object",
-      "properties": {
-        "orchestrator": { "type": "string", "minLength": 1 },
-        "compute": { "type": "string" },
-        "storage": { "type": "string" },
-        "monitoring": { "type": "string" }
-      }
+      "additionalProperties": true,
+      "title": "Infrastructure",
+      "type": "object"
     },
     "data_lineage": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["from", "to", "via"],
-        "properties": {
-          "from": { "type": "string", "minLength": 1 },
-          "to": { "type": "string", "minLength": 1 },
-          "via": { "type": "string", "minLength": 1 },
-          "transformations_applied": { "type": "array", "items": { "type": "string" } }
-        }
-      }
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Data Lineage",
+      "type": "array"
     },
     "recommendations": {
-      "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Recommendations",
+      "type": "array"
     }
-  }
+  },
+  "required": [
+    "summary",
+    "pipelines",
+    "recommendations"
+  ],
+  "title": "DataPipelineDesign",
+  "type": "object"
 }

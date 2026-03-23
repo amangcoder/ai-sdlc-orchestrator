@@ -1,91 +1,181 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Resilience Test Plan",
-  "description": "Chaos/resilience testing plan — failure domains, test scenarios, missing patterns, recovery tests",
-  "type": "object",
-  "required": ["summary", "overall_resilience", "failure_domains", "test_scenarios", "recommendations"],
+  "$defs": {
+    "ChaosTestScenario": {
+      "properties": {
+        "id": {
+          "pattern": "^CHAOS-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "category": {
+          "pattern": "^(dependency_down|slow_dependency|partial_failure|resource_exhaustion|data_corruption|cascading_failure|network_partition|clock_skew)$",
+          "title": "Category",
+          "type": "string"
+        },
+        "failure_injected": {
+          "minLength": 10,
+          "title": "Failure Injected",
+          "type": "string"
+        },
+        "affected_components": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Affected Components",
+          "type": "array"
+        },
+        "expected_behavior": {
+          "minLength": 10,
+          "title": "Expected Behavior",
+          "type": "string"
+        },
+        "actual_behavior": {
+          "default": "",
+          "title": "Actual Behavior",
+          "type": "string"
+        },
+        "severity_if_unhandled": {
+          "$ref": "#/$defs/IssueSeverity",
+          "default": "major"
+        },
+        "blast_radius": {
+          "default": "",
+          "title": "Blast Radius",
+          "type": "string"
+        },
+        "remediation": {
+          "minLength": 1,
+          "title": "Remediation",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "category",
+        "failure_injected",
+        "affected_components",
+        "expected_behavior",
+        "remediation"
+      ],
+      "title": "ChaosTestScenario",
+      "type": "object"
+    },
+    "FailureDomain": {
+      "properties": {
+        "domain": {
+          "minLength": 1,
+          "title": "Domain",
+          "type": "string"
+        },
+        "type": {
+          "pattern": "^(database|cache|queue|api|network|disk|compute)$",
+          "title": "Type",
+          "type": "string"
+        },
+        "single_point_of_failure": {
+          "default": false,
+          "title": "Single Point Of Failure",
+          "type": "boolean"
+        },
+        "current_protections": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Current Protections",
+          "type": "array"
+        },
+        "gaps": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Gaps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "domain",
+        "type"
+      ],
+      "title": "FailureDomain",
+      "type": "object"
+    },
+    "IssueSeverity": {
+      "enum": [
+        "critical",
+        "major",
+        "minor",
+        "nit"
+      ],
+      "title": "IssueSeverity",
+      "type": "string"
+    }
+  },
   "properties": {
     "summary": {
-      "type": "string",
-      "minLength": 50
+      "minLength": 50,
+      "title": "Summary",
+      "type": "string"
     },
     "overall_resilience": {
-      "type": "string",
-      "enum": ["robust", "adequate", "fragile", "untested"]
+      "pattern": "^(robust|adequate|fragile|untested)$",
+      "title": "Overall Resilience",
+      "type": "string"
     },
     "failure_domains": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["domain", "type", "single_point_of_failure"],
-        "properties": {
-          "domain": { "type": "string", "minLength": 1 },
-          "type": {
-            "type": "string",
-            "enum": ["database", "cache", "queue", "api", "network", "disk", "compute"]
-          },
-          "single_point_of_failure": { "type": "boolean" },
-          "current_protections": { "type": "array", "items": { "type": "string" } },
-          "gaps": { "type": "array", "items": { "type": "string" } }
-        }
+        "$ref": "#/$defs/FailureDomain"
       },
-      "minItems": 1
+      "minItems": 1,
+      "title": "Failure Domains",
+      "type": "array"
     },
     "test_scenarios": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["id", "name", "category", "failure_injected", "affected_components", "expected_behavior", "severity_if_unhandled"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^CHAOS-\\d+$" },
-          "name": { "type": "string", "minLength": 1 },
-          "category": {
-            "type": "string",
-            "enum": ["dependency_down", "slow_dependency", "partial_failure", "resource_exhaustion", "data_corruption", "cascading_failure", "network_partition", "clock_skew"]
-          },
-          "failure_injected": { "type": "string", "minLength": 10 },
-          "affected_components": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
-          "expected_behavior": { "type": "string", "minLength": 10 },
-          "actual_behavior": { "type": "string" },
-          "severity_if_unhandled": { "type": "string", "enum": ["critical", "major", "minor"] },
-          "blast_radius": { "type": "string" },
-          "remediation": { "type": "string", "minLength": 1 }
-        }
+        "$ref": "#/$defs/ChaosTestScenario"
       },
-      "minItems": 1
+      "minItems": 1,
+      "title": "Test Scenarios",
+      "type": "array"
     },
     "missing_patterns": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["pattern", "location", "risk", "recommendation"],
-        "properties": {
-          "pattern": {
-            "type": "string",
-            "enum": ["circuit_breaker", "retry", "timeout", "bulkhead", "fallback", "health_check", "graceful_shutdown", "rate_limit", "backpressure"]
-          },
-          "location": { "type": "string", "minLength": 1 },
-          "risk": { "type": "string", "minLength": 1 },
-          "recommendation": { "type": "string", "minLength": 1 }
-        }
-      }
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Missing Patterns",
+      "type": "array"
     },
     "recovery_tests": {
-      "type": "array",
       "items": {
-        "type": "object",
-        "required": ["scenario", "expected_recovery", "verification"],
-        "properties": {
-          "scenario": { "type": "string", "minLength": 1 },
-          "expected_recovery": { "type": "string", "minLength": 1 },
-          "verification": { "type": "string", "minLength": 1 }
-        }
-      }
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Recovery Tests",
+      "type": "array"
     },
     "recommendations": {
-      "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Recommendations",
+      "type": "array"
     }
-  }
+  },
+  "required": [
+    "summary",
+    "overall_resilience",
+    "failure_domains",
+    "test_scenarios",
+    "recommendations"
+  ],
+  "title": "ResilienceTestPlan",
+  "type": "object"
 }

@@ -1,87 +1,144 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "DebatePosition",
-  "description": "A single agent's position in one round of debate",
-  "type": "object",
-  "required": ["agent_id", "agent_role", "round_number", "thesis", "evidence", "recommendations", "confidence"],
-  "properties": {
-    "agent_id": {
-      "type": "string",
-      "minLength": 1,
-      "description": "Unique agent identifier, e.g. researcher-1 or brainstormer-2"
-    },
-    "agent_role": {
-      "type": "string",
-      "enum": ["deep_researcher", "brainstormer"]
-    },
-    "round_number": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "thesis": {
-      "type": "string",
-      "minLength": 50,
-      "description": "Core argument (2-3 paragraphs)"
-    },
-    "evidence": {
-      "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1,
-      "description": "Supporting evidence and reasoning"
-    },
-    "risks_identified": {
-      "type": "array",
-      "items": { "type": "string" },
-      "default": [],
-      "description": "Risks and concerns identified"
-    },
-    "recommendations": {
-      "type": "array",
-      "items": { "type": "string" },
-      "minItems": 1,
-      "description": "Concrete recommendations"
-    },
-    "critiques_of_others": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["target_agent_id", "critique", "severity"],
-        "properties": {
-          "target_agent_id": { "type": "string", "minLength": 1 },
-          "critique": { "type": "string", "minLength": 10 },
-          "severity": { "type": "string", "enum": ["fundamental", "significant", "minor"] }
+  "$defs": {
+    "DebatePositionAgreement": {
+      "properties": {
+        "target_agent_id": {
+          "minLength": 1,
+          "title": "Target Agent Id",
+          "type": "string"
+        },
+        "point_of_agreement": {
+          "minLength": 10,
+          "title": "Point Of Agreement",
+          "type": "string"
         }
       },
-      "default": []
+      "required": [
+        "target_agent_id",
+        "point_of_agreement"
+      ],
+      "title": "DebatePositionAgreement",
+      "type": "object"
     },
-    "agreements_with_others": {
-      "type": "array",
-      "items": {
-        "type": "object",
-        "required": ["target_agent_id", "point_of_agreement"],
-        "properties": {
-          "target_agent_id": { "type": "string", "minLength": 1 },
-          "point_of_agreement": { "type": "string", "minLength": 10 }
+    "DebatePositionCritique": {
+      "properties": {
+        "target_agent_id": {
+          "minLength": 1,
+          "title": "Target Agent Id",
+          "type": "string"
+        },
+        "critique": {
+          "minLength": 10,
+          "title": "Critique",
+          "type": "string"
+        },
+        "severity": {
+          "pattern": "^(fundamental|significant|minor)$",
+          "title": "Severity",
+          "type": "string"
         }
       },
-      "default": []
-    },
-    "confidence": {
-      "type": "integer",
-      "minimum": 0,
-      "maximum": 100,
-      "description": "Confidence in own position (0-100)"
-    },
-    "evolved_from_previous": {
-      "type": "boolean",
-      "default": false,
-      "description": "Whether position changed from previous round"
-    },
-    "evolution_summary": {
-      "type": ["string", "null"],
-      "default": null,
-      "description": "What changed and why, if position evolved"
+      "required": [
+        "target_agent_id",
+        "critique",
+        "severity"
+      ],
+      "title": "DebatePositionCritique",
+      "type": "object"
     }
   },
-  "additionalProperties": false
+  "description": "A single agent's position in one round of debate.",
+  "properties": {
+    "agent_id": {
+      "minLength": 1,
+      "title": "Agent Id",
+      "type": "string"
+    },
+    "agent_role": {
+      "pattern": "^(deep_researcher|brainstormer)$",
+      "title": "Agent Role",
+      "type": "string"
+    },
+    "round_number": {
+      "minimum": 1,
+      "title": "Round Number",
+      "type": "integer"
+    },
+    "thesis": {
+      "minLength": 50,
+      "title": "Thesis",
+      "type": "string"
+    },
+    "evidence": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "risks_identified": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Risks Identified",
+      "type": "array"
+    },
+    "recommendations": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Recommendations",
+      "type": "array"
+    },
+    "critiques_of_others": {
+      "items": {
+        "$ref": "#/$defs/DebatePositionCritique"
+      },
+      "title": "Critiques Of Others",
+      "type": "array"
+    },
+    "agreements_with_others": {
+      "items": {
+        "$ref": "#/$defs/DebatePositionAgreement"
+      },
+      "title": "Agreements With Others",
+      "type": "array"
+    },
+    "confidence": {
+      "maximum": 100,
+      "minimum": 0,
+      "title": "Confidence",
+      "type": "integer"
+    },
+    "evolved_from_previous": {
+      "default": false,
+      "title": "Evolved From Previous",
+      "type": "boolean"
+    },
+    "evolution_summary": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Evolution Summary"
+    }
+  },
+  "required": [
+    "agent_id",
+    "agent_role",
+    "round_number",
+    "thesis",
+    "evidence",
+    "recommendations",
+    "confidence"
+  ],
+  "title": "DebatePosition",
+  "type": "object"
 }

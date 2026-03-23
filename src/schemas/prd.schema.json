@@ -1,66 +1,116 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "PRD",
-  "description": "Product Requirements Document produced by the PM agent",
-  "type": "object",
-  "required": ["title", "overview", "goals", "requirements", "constraints", "acceptance_criteria"],
+  "$defs": {
+    "AcceptanceCriterion": {
+      "properties": {
+        "id": {
+          "pattern": "^AC-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "criteria": {
+          "minLength": 1,
+          "title": "Criteria",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "criteria"
+      ],
+      "title": "AcceptanceCriterion",
+      "type": "object"
+    },
+    "Priority": {
+      "enum": [
+        "must",
+        "should",
+        "could"
+      ],
+      "title": "Priority",
+      "type": "string"
+    },
+    "Requirement": {
+      "properties": {
+        "id": {
+          "pattern": "^REQ-\\d+$",
+          "title": "Id",
+          "type": "string"
+        },
+        "description": {
+          "minLength": 1,
+          "title": "Description",
+          "type": "string"
+        },
+        "priority": {
+          "$ref": "#/$defs/Priority"
+        }
+      },
+      "required": [
+        "id",
+        "description",
+        "priority"
+      ],
+      "title": "Requirement",
+      "type": "object"
+    }
+  },
   "properties": {
     "title": {
-      "type": "string",
       "minLength": 1,
-      "description": "Feature title"
+      "title": "Title",
+      "type": "string"
     },
     "overview": {
-      "type": "string",
       "minLength": 50,
-      "description": "High-level description of the feature"
+      "title": "Overview",
+      "type": "string"
     },
     "goals": {
-      "type": "array",
-      "minItems": 1,
       "items": {
-        "type": "string",
-        "minLength": 1
+        "type": "string"
       },
-      "description": "What this feature aims to achieve"
+      "minItems": 1,
+      "title": "Goals",
+      "type": "array"
     },
     "requirements": {
-      "type": "array",
-      "minItems": 1,
       "items": {
-        "type": "object",
-        "required": ["id", "description", "priority"],
-        "properties": {
-          "id": { "type": "string", "pattern": "^REQ-\\d+$" },
-          "description": { "type": "string", "minLength": 1 },
-          "priority": { "type": "string", "enum": ["must", "should", "could"] }
-        }
-      }
+        "$ref": "#/$defs/Requirement"
+      },
+      "minItems": 1,
+      "title": "Requirements",
+      "type": "array"
     },
     "constraints": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Technical or business constraints"
+      "items": {
+        "type": "string"
+      },
+      "title": "Constraints",
+      "type": "array"
     },
     "acceptance_criteria": {
-      "type": "array",
-      "minItems": 1,
       "items": {
-        "oneOf": [
-          { "type": "string", "minLength": 1 },
+        "anyOf": [
           {
-            "type": "object",
-            "required": ["id", "criteria"],
-            "properties": {
-              "id": { "type": "string", "pattern": "^AC-\\d+$" },
-              "criteria": { "type": "string", "minLength": 1 }
-            },
-            "additionalProperties": false
+            "type": "string"
+          },
+          {
+            "$ref": "#/$defs/AcceptanceCriterion"
           }
         ]
       },
-      "description": "Conditions that must be true for the feature to be considered complete"
+      "minItems": 1,
+      "title": "Acceptance Criteria",
+      "type": "array"
     }
   },
-  "additionalProperties": false
+  "required": [
+    "title",
+    "overview",
+    "goals",
+    "requirements",
+    "acceptance_criteria"
+  ],
+  "title": "PRD",
+  "type": "object"
 }
