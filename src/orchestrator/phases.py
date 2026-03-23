@@ -1352,7 +1352,7 @@ Each task must have:
 - "task_id": "TASK-NNN"
 - "title": Short descriptive title
 - "description": What needs to be done (at least 10 characters)
-- "assigned_role": One of engineer, frontend_engineer, backend_engineer, database_engineer, etc.
+- "assigned_role": One of: engineer, frontend_engineer, backend_engineer, database_engineer, devops_engineer, automation_engineer, observability_engineer, documentation_engineer, migration_engineer, api_contract_designer, ux_specifier, designer, release_engineer, integration_test_engineer, accessibility_auditor, cicd_specialist, aws_specialist, azure_specialist, gcp_specialist, runpod_specialist, qa_engineer, qa_planner, qa_executor, security_engineer, mcp_server_engineer, mcp_integration_test_engineer, data_engineer, caching_performance_engineer. Use ux_specifier or designer for UI/UX work.
 - "dependencies": Array of task_ids this depends on
 - "acceptance_criteria": Array of testable conditions (at least 1)
 - "files_to_modify": Array of file paths
@@ -3221,7 +3221,7 @@ def get_engineer_tasks(workspace: Path) -> list[dict[str, Any]]:
                       "database_engineer", "caching_performance_engineer",
                       "automation_engineer", "devops_engineer", "observability_engineer",
                       "documentation_engineer", "migration_engineer",
-                      "api_contract_designer", "ux_specifier", "release_engineer",
+                      "api_contract_designer", "ux_specifier", "designer", "release_engineer",
                       "integration_test_engineer", "accessibility_auditor",
                       "cicd_specialist", "aws_specialist", "azure_specialist",
                       "gcp_specialist", "runpod_specialist",
@@ -3495,6 +3495,7 @@ PROMPT_BUILDERS: dict[AgentRole, Callable[..., str]] = {
     AgentRole.API_CONTRACT_DESIGNER: build_api_contract_designer_prompt,
     AgentRole.MIGRATION_ENGINEER: build_migration_engineer_prompt,
     AgentRole.UX_SPECIFIER: build_ux_specifier_prompt,
+    AgentRole.DESIGNER: build_ux_specifier_prompt,
     AgentRole.TECH_DEBT_ASSESSOR: build_tech_debt_assessor_prompt,
     AgentRole.RELEASE_ENGINEER: build_release_engineer_prompt,
     AgentRole.INCIDENT_ANALYST: build_incident_analyst_prompt,

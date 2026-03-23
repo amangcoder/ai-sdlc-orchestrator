@@ -88,6 +88,7 @@ ROLE_CATEGORY: dict[AgentRole, AgentCategory] = {
     AgentRole.USER_BEHAVIOR_PSYCHOLOGIST: AgentCategory.VERIFICATION,
     AgentRole.END_USER_SIMULATOR: AgentCategory.VERIFICATION,
     AgentRole.UX_SPECIFIER: AgentCategory.VERIFICATION,
+    AgentRole.DESIGNER: AgentCategory.VERIFICATION,
     # Lightweight
     AgentRole.DOCUMENTATION_ENGINEER: AgentCategory.LIGHTWEIGHT,
     AgentRole.GIT_MANAGER: AgentCategory.LIGHTWEIGHT,

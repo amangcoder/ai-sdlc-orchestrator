@@ -16,7 +16,7 @@ from rich.table import Table
 
 from orchestrator.config import load_config
 from orchestrator.engine import OrchestratorEngine
-from orchestrator.agents import AgentInvocation
+from orchestrator.agents import AgentInvocation, invoke_agent
 from orchestrator.models import ModelTier, PhaseStatus, WorkflowType
 from orchestrator.workspace_manager import WorkspaceManager
 
@@ -272,6 +272,8 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="With --analyze-logs: analyze the N most recent runs.")
     parser.add_argument("--json", action="store_true", dest="output_json",
                         help="With --analyze-logs: output report as JSON.")
+    parser.add_argument("--llm", action="store_true", default=False,
+                        help="With --analyze-logs: append AI-generated recommendations summary via Claude Haiku.")
     return parser
 
 
@@ -577,7 +579,28 @@ def _cmd_analyze_logs(
     if args.output_json:
         print(format_report_json(report))
     else:
-        print(format_report_text(report, log_dir))
+        report_text = format_report_text(report, log_dir)
+        print(report_text)
+
+        # Optional LLM narrative summary via --llm flag
+        if getattr(args, "llm", False) and not getattr(args, "output_json", False):
+            try:
+                invocation = AgentInvocation(
+                    agent_name="log-summarizer",
+                    model=ModelTier.HAIKU,
+                    prompt=report_text,
+                    max_turns=1,
+                )
+                result = asyncio.run(
+                    asyncio.wait_for(invoke_agent(invocation), timeout=30)
+                )
+                print("\n── AI NARRATIVE SUMMARY " + "─" * 46)
+                print(result.output if hasattr(result, "output") else str(result))
+            except Exception as exc:
+                print(
+                    f"[warning] LLM summary unavailable: {exc}",
+                    file=sys.stderr,
+                )
 
     sys.exit(0)
 

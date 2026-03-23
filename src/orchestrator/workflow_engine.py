@@ -105,7 +105,7 @@ _IMPLEMENTATION_ROLES = frozenset({
     "automation_engineer", "devops_engineer", "observability_engineer",
     "documentation_engineer",
     # Specialist implementation roles
-    "api_contract_designer", "migration_engineer", "ux_specifier",
+    "api_contract_designer", "migration_engineer", "ux_specifier", "designer",
     "release_engineer", "integration_test_engineer",
     "accessibility_auditor",
     # QA roles (tests are implementation work)

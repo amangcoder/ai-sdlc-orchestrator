@@ -16,6 +16,7 @@ Usage (CLI):
 from __future__ import annotations
 
 import json
+import re
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,6 +56,21 @@ class _AgentResult:
 
 
 @dataclass
+class _ToolUseEvent:
+    tool_name: str
+    tool_input: dict
+    agent: str
+    input_tokens: int
+
+
+@dataclass
+class _AgentInvokeEvent:
+    agent: str
+    prompt_excerpt: str
+    file_paths: list[str]
+
+
+@dataclass
 class _RunSummary:
     run_id: str
     feature_request: str = ""
@@ -63,6 +79,8 @@ class _RunSummary:
     task_invocations: list[_TaskInvocation] = field(default_factory=list)
     task_results: dict[str, _TaskResult] = field(default_factory=dict)
     agent_results: list[_AgentResult] = field(default_factory=list)
+    tool_use_events: list[_ToolUseEvent] = field(default_factory=list)
+    agent_invoke_events: list[_AgentInvokeEvent] = field(default_factory=list)
 
 
 @dataclass
@@ -89,6 +107,18 @@ class AnalysisReport:
     # Estimated waste from retried steps
     estimated_retry_cost_waste: float
     estimated_retry_token_waste: int
+
+    # Redundant file reads: same file read by 2+ distinct agents
+    redundant_file_reads: list[dict] = field(default_factory=list)
+
+    # Repeated tool calls: same (tool_name, normalized_args) used 2+ times
+    repeated_tool_calls: list[dict] = field(default_factory=list)
+
+    # Prompt bloat: 8-gram shingles shared across 3+ distinct agents
+    prompt_fragments: list[dict] = field(default_factory=list)
+
+    # Estimated token waste from duplicate file reads
+    estimated_duplicate_read_token_waste: int = field(default=0)
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +191,48 @@ def _load_run(log_path: Path) -> _RunSummary | None:
                         )
                     )
 
+                elif etype == "tool_use":
+                    try:
+                        # Normalize tool_input: use {} if absent or explicitly null
+                        tool_input = ev.get("tool_input") or {}
+                        if not isinstance(tool_input, dict):
+                            tool_input = {}
+                        summary.tool_use_events.append(
+                            _ToolUseEvent(
+                                tool_name=ev.get("tool_name", ""),
+                                tool_input=tool_input,
+                                agent=ev.get("agent", ""),
+                                input_tokens=ev.get("input_tokens", 0),
+                            )
+                        )
+                    except Exception:
+                        pass
+
+                elif etype == "agent_invoke":
+                    try:
+                        agent = ev.get("agent", "")
+                        prompt_excerpt = ev.get("prompt", "")[:2000]
+                        # Extract absolute file paths (e.g., /some/file.py)
+                        abs_paths = re.findall(r'/[^\s]+\.[a-zA-Z0-9]+', prompt_excerpt)
+                        # Extract relative file paths (e.g., src/foo.py, tests/bar.py)
+                        rel_paths = re.findall(r'(?:src|tests)/[^\s]+', prompt_excerpt)
+                        # Deduplicate while preserving order
+                        seen: set[str] = set()
+                        file_paths: list[str] = []
+                        for p in abs_paths + rel_paths:
+                            if p not in seen:
+                                seen.add(p)
+                                file_paths.append(p)
+                        summary.agent_invoke_events.append(
+                            _AgentInvokeEvent(
+                                agent=agent,
+                                prompt_excerpt=prompt_excerpt,
+                                file_paths=file_paths,
+                            )
+                        )
+                    except Exception:
+                        pass
+
     except OSError:
         return None
 
@@ -181,6 +253,132 @@ def _collect_logs(log_dir: Path, run_id: str | None, last_n: int | None) -> list
     if last_n:
         return all_logs[: last_n]
     return all_logs[:1]  # default: most recent run
+
+
+# ---------------------------------------------------------------------------
+# Analysis helpers
+# ---------------------------------------------------------------------------
+
+
+def _detect_redundant_file_reads(
+    runs: list[_RunSummary],
+) -> tuple[list[dict], int]:
+    """Detect files read by 2+ distinct agents across all runs.
+
+    Returns (top_10_entries, total_duplicate_token_waste).
+    """
+    _READ_TOOLS = {"Read", "Grep", "Glob"}
+
+    # path → {'agents': set(), 'tokens': list[int]}
+    path_data: dict[str, dict] = defaultdict(lambda: {"agents": set(), "tokens": []})
+
+    for run in runs:
+        for ev in run.tool_use_events:
+            if ev.tool_name not in _READ_TOOLS:
+                continue
+            path = ev.tool_input.get("file_path") or ev.tool_input.get("path", "")
+            if not path:
+                continue
+            path_data[path]["agents"].add(ev.agent)
+            path_data[path]["tokens"].append(ev.input_tokens)
+
+    entries: list[dict] = []
+    total_waste = 0
+
+    for file_path, data in path_data.items():
+        agents = data["agents"]
+        if len(agents) < 2:
+            continue
+        tokens = sorted(data["tokens"])
+        read_count = len(tokens)
+        # Waste = all tokens after the "first" read (approximated as min-token read)
+        waste = sum(tokens[1:]) if len(tokens) > 1 else 0
+        total_waste += waste
+        entries.append(
+            {
+                "file_path": file_path,
+                "read_count": read_count,
+                "agents": sorted(agents),
+                "estimated_token_cost": waste,
+            }
+        )
+
+    # Sort by read_count desc, then estimated_token_cost desc
+    entries.sort(key=lambda x: (x["read_count"], x["estimated_token_cost"]), reverse=True)
+    return entries[:10], total_waste
+
+
+def _detect_repeated_tool_calls(runs: list[_RunSummary]) -> list[dict]:
+    """Detect (tool_name, normalized_args) combinations used 2+ times across all runs."""
+    # key → {'count': int, 'agents': set(), 'input_tokens': list[int]}
+    groups: dict[tuple[str, str], dict] = defaultdict(
+        lambda: {"count": 0, "agents": set(), "input_tokens": []}
+    )
+
+    for run in runs:
+        for ev in run.tool_use_events:
+            try:
+                normalized_args = json.dumps(ev.tool_input, sort_keys=True)
+            except TypeError:
+                normalized_args = str(ev.tool_input)
+            key = (ev.tool_name, normalized_args)
+            groups[key]["count"] += 1
+            groups[key]["agents"].add(ev.agent)
+            groups[key]["input_tokens"].append(ev.input_tokens)
+
+    entries: list[dict] = []
+    for (tool_name, normalized_args), data in groups.items():
+        count = data["count"]
+        if count < 2:
+            continue
+        tokens = data["input_tokens"]
+        # Cost = tokens from all occurrences after the first
+        estimated_token_cost = sum(tokens[1:]) if len(tokens) > 1 else 0
+        entries.append(
+            {
+                "tool_name": tool_name,
+                "normalized_args": normalized_args,
+                "count": count,
+                "agents": list(data["agents"]),
+                "estimated_token_cost": estimated_token_cost,
+            }
+        )
+
+    entries.sort(key=lambda x: x["count"], reverse=True)
+    return entries
+
+
+def _detect_prompt_fragments(runs: list[_RunSummary]) -> list[dict]:
+    """Detect 8-gram shingles shared across 3+ distinct agents using stdlib only."""
+    all_invoke_events = [ev for run in runs for ev in run.agent_invoke_events]
+    if not all_invoke_events:
+        return []
+
+    # shingle (8-gram tuple) → set of agent names that have it
+    shingle_agents: dict[tuple[str, ...], set[str]] = defaultdict(set)
+
+    for ev in all_invoke_events:
+        words = ev.prompt_excerpt.split()
+        n = len(words)
+        for i in range(max(0, n - 7)):
+            shingle = tuple(words[i : i + 8])
+            if len(shingle) == 8:
+                shingle_agents[shingle].add(ev.agent)
+
+    entries: list[dict] = []
+    for shingle, agents in shingle_agents.items():
+        if len(agents) < 3:
+            continue
+        entries.append(
+            {
+                "fragment_text": " ".join(shingle)[:80],
+                "occurrence_count": len(agents),
+                "agents": sorted(agents),
+            }
+        )
+
+    entries.sort(key=lambda x: x["occurrence_count"], reverse=True)
+    return entries[:50]
 
 
 # ---------------------------------------------------------------------------
@@ -325,6 +523,13 @@ def _analyze(runs: list[_RunSummary]) -> AnalysisReport:
                 retry_cost_waste += ar.cost_usd
                 retry_token_waste += ar.input_tokens
 
+    # ------------------------------------------------------------------
+    # New analyses: redundant file reads, repeated tool calls, prompt fragments
+    # ------------------------------------------------------------------
+    redundant_file_reads, duplicate_read_token_waste = _detect_redundant_file_reads(runs)
+    repeated_tool_calls = _detect_repeated_tool_calls(runs)
+    prompt_fragments = _detect_prompt_fragments(runs)
+
     return AnalysisReport(
         run_ids=[r.run_id for r in runs],
         repeated_tasks=repeated_tasks,
@@ -334,6 +539,10 @@ def _analyze(runs: list[_RunSummary]) -> AnalysisReport:
         top_token_agents=top_token_agents,
         estimated_retry_cost_waste=retry_cost_waste,
         estimated_retry_token_waste=retry_token_waste,
+        redundant_file_reads=redundant_file_reads,
+        repeated_tool_calls=repeated_tool_calls,
+        prompt_fragments=prompt_fragments,
+        estimated_duplicate_read_token_waste=duplicate_read_token_waste,
     )
 
 
@@ -429,6 +638,29 @@ def format_report_text(report: AnalysisReport, log_dir: Path) -> str:
             "  (Run with --last N covering multiple runs to enable this analysis.)\n"
         )
 
+    if report.redundant_file_reads:
+        lines.append("Redundant file reads (same file read by 2+ distinct agents):\n")
+        for entry in report.redundant_file_reads[:10]:
+            agents_str = ", ".join(entry["agents"])
+            lines.append(f"  ● {entry['file_path']}")
+            lines.append(f"    read_count:{entry['read_count']}  agents:[{agents_str}]  "
+                         f"est_token_cost:{entry['estimated_token_cost']}")
+            lines.append("")
+
+    # ── PROMPT BLOAT ───────────────────────────────────────────────────
+    rule("PROMPT BLOAT")
+    lines.append("")
+
+    if report.prompt_fragments:
+        lines.append("Top repeated 8-gram phrases across agent prompts:\n")
+        for frag in report.prompt_fragments[:5]:
+            agents_str = ", ".join(frag["agents"])
+            lines.append(f"  ● \"{frag['fragment_text']}\"")
+            lines.append(f"    occurrence_count:{frag['occurrence_count']}  agents:[{agents_str}]")
+            lines.append("")
+    else:
+        lines.append("  No repeated prompt fragments detected.\n")
+
     # ── COST / TOKEN ANALYSIS ──────────────────────────────────────────
     rule("COST / TOKEN ANALYSIS")
     lines.append("")
@@ -456,6 +688,13 @@ def format_report_text(report: AnalysisReport, log_dir: Path) -> str:
         )
         lines.append("")
 
+    if report.estimated_duplicate_read_token_waste > 0:
+        lines.append(
+            f"Estimated duplicate read token waste: "
+            f"{report.estimated_duplicate_read_token_waste:,} input tokens"
+        )
+        lines.append("")
+
     # ── SUGGESTIONS ────────────────────────────────────────────────────
     rule("TOP RECOMMENDATIONS")
     lines.append("")
@@ -473,6 +712,16 @@ def format_report_text(report: AnalysisReport, log_dir: Path) -> str:
 
 def _build_suggestions(report: AnalysisReport) -> list[str]:
     suggestions: list[str] = []
+
+    # AICoder pre-indexing suggestion for redundant file reads (read_count >= 3)
+    if report.redundant_file_reads:
+        top_read = report.redundant_file_reads[0]
+        if top_read["read_count"] >= 3:
+            suggestions.append(
+                f"Pre-index '{top_read['file_path']}' with AICoder — "
+                f"read {top_read['read_count']}x by {len(top_read['agents'])} distinct agents, "
+                f"saving ~{top_read['estimated_token_cost']:,} tokens"
+            )
 
     if report.repeated_tasks:
         worst = report.repeated_tasks[0]
@@ -514,13 +763,16 @@ def format_report_json(report: AnalysisReport) -> str:
         },
         "indexable_data": {
             "cross_run_step_frequency": report.cross_run_step_freq,
+            "redundant_file_reads": report.redundant_file_reads,
         },
         "cost_analysis": {
             "top_cost_steps": report.top_cost_steps,
             "top_token_agents": report.top_token_agents,
             "estimated_retry_cost_waste_usd": round(report.estimated_retry_cost_waste, 6),
             "estimated_retry_token_waste": report.estimated_retry_token_waste,
+            "estimated_duplicate_read_token_waste": report.estimated_duplicate_read_token_waste,
         },
         "recommendations": _build_suggestions(report),
+        "prompt_bloat": report.prompt_fragments,
     }
     return json.dumps(data, indent=2)

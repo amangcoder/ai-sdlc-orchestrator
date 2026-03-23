@@ -128,6 +128,7 @@ class AgentRole(str, Enum):
     API_CONTRACT_DESIGNER = "api_contract_designer"
     MIGRATION_ENGINEER = "migration_engineer"
     UX_SPECIFIER = "ux_specifier"
+    DESIGNER = "designer"
     TECH_DEBT_ASSESSOR = "tech_debt_assessor"
     RELEASE_ENGINEER = "release_engineer"
     INCIDENT_ANALYST = "incident_analyst"
@@ -255,8 +256,8 @@ class Task(BaseModel):
     @classmethod
     def validate_assigned_role(cls, v: str) -> str:
         valid_roles = {role.value for role in AgentRole}
-        # Also accept legacy "engineer" and "qa" aliases
-        valid_roles.update({"engineer", "qa"})
+        # Also accept legacy "engineer" and "qa" aliases, and common LLM synonyms
+        valid_roles.update({"engineer", "qa", "designer"})
         if v not in valid_roles:
             raise ValueError(f"Invalid role '{v}'. Valid roles: {sorted(valid_roles)}")
         return v

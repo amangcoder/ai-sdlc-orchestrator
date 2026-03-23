@@ -168,6 +168,13 @@ ROLE_REGISTRY: dict[AgentRole, RoleDefinition] = {
         access=RoleAccess.READ_ONLY,
         agent_file="ux_specifier.md",
     ),
+    AgentRole.DESIGNER: RoleDefinition(
+        role=AgentRole.DESIGNER,
+        title="Designer",
+        responsibility="UI/UX design: visual design, component design, design system, prototypes",
+        access=RoleAccess.READ_ONLY,
+        agent_file="ux_specifier.md",
+    ),
     AgentRole.TECH_DEBT_ASSESSOR: RoleDefinition(
         role=AgentRole.TECH_DEBT_ASSESSOR,
         title="Tech Debt Assessor",
@@ -496,6 +503,7 @@ def role_to_legacy_agent_name(role: AgentRole) -> str:
         AgentRole.API_CONTRACT_DESIGNER: "api_contract_designer",
         AgentRole.MIGRATION_ENGINEER: "migration_engineer",
         AgentRole.UX_SPECIFIER: "ux_specifier",
+        AgentRole.DESIGNER: "ux_specifier",
         AgentRole.TECH_DEBT_ASSESSOR: "tech_debt_assessor",
         AgentRole.RELEASE_ENGINEER: "release_engineer",
         AgentRole.INCIDENT_ANALYST: "incident_analyst",
