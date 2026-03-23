@@ -357,6 +357,10 @@ _ROLE_MAP: dict[str, AgentRole] = {
     "migration engineer": AgentRole.MIGRATION_ENGINEER,
     "ux specifier": AgentRole.UX_SPECIFIER,
     "ux specialist": AgentRole.UX_SPECIFIER,
+    "ux auditor": AgentRole.UX_SPECIFIER,
+    "ux audit": AgentRole.UX_SPECIFIER,
+    "ux_auditor": AgentRole.UX_SPECIFIER,
+    "ux_audit": AgentRole.UX_SPECIFIER,
     "tech debt assessor": AgentRole.TECH_DEBT_ASSESSOR,
     "release engineer": AgentRole.RELEASE_ENGINEER,
     "incident analyst": AgentRole.INCIDENT_ANALYST,
@@ -397,10 +401,10 @@ def _resolve_role(agent_str: str, step_name: str) -> AgentRole:
     if role is not None:
         return role
 
-    # Normalize: strip punctuation and extra whitespace
+    # Normalize: lowercase, strip punctuation, collapse whitespace
     import string
-    normalized = agent_str.translate(str.maketrans("", "", string.punctuation)).strip()
-    normalized = " ".join(normalized.split())  # collapse whitespace
+    normalized = agent_str.lower().translate(str.maketrans("", "", string.punctuation)).strip()
+    normalized = " ".join(normalized.split())
     role = _ROLE_MAP.get(normalized)
     if role is not None:
         return role

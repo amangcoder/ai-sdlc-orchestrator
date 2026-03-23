@@ -1,77 +1,226 @@
 {
   "$defs": {
-    "MarketInsight": {
+    "MarketRisk": {
       "properties": {
-        "area": {
+        "risk": {
           "minLength": 1,
-          "title": "Area",
+          "title": "Risk",
           "type": "string"
         },
-        "finding": {
-          "minLength": 10,
-          "title": "Finding",
+        "severity": {
+          "default": "",
+          "title": "Severity",
           "type": "string"
         },
-        "confidence": {
-          "pattern": "^(low|medium|high)$",
-          "title": "Confidence",
+        "likelihood": {
+          "default": "",
+          "title": "Likelihood",
           "type": "string"
         },
-        "sources": {
-          "items": {
-            "type": "string"
-          },
-          "title": "Sources",
-          "type": "array"
+        "mitigation": {
+          "default": "",
+          "title": "Mitigation",
+          "type": "string"
         }
       },
       "required": [
-        "area",
-        "finding",
-        "confidence"
+        "risk"
       ],
-      "title": "MarketInsight",
+      "title": "MarketRisk",
+      "type": "object"
+    },
+    "MarketSize": {
+      "properties": {
+        "tam": {
+          "$ref": "#/$defs/MarketSizeEntry"
+        },
+        "sam": {
+          "$ref": "#/$defs/MarketSizeEntry"
+        },
+        "som": {
+          "$ref": "#/$defs/MarketSizeEntry"
+        }
+      },
+      "required": [
+        "tam",
+        "sam",
+        "som"
+      ],
+      "title": "MarketSize",
+      "type": "object"
+    },
+    "MarketSizeEntry": {
+      "properties": {
+        "value": {
+          "minLength": 1,
+          "title": "Value",
+          "type": "string"
+        },
+        "basis": {
+          "default": "",
+          "title": "Basis",
+          "type": "string"
+        }
+      },
+      "required": [
+        "value"
+      ],
+      "title": "MarketSizeEntry",
+      "type": "object"
+    },
+    "MarketTrend": {
+      "properties": {
+        "trend": {
+          "minLength": 1,
+          "title": "Trend",
+          "type": "string"
+        },
+        "direction": {
+          "default": "",
+          "title": "Direction",
+          "type": "string"
+        },
+        "strength": {
+          "default": "",
+          "title": "Strength",
+          "type": "string"
+        },
+        "impact": {
+          "default": "",
+          "title": "Impact",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trend"
+      ],
+      "title": "MarketTrend",
+      "type": "object"
+    },
+    "TargetSegment": {
+      "properties": {
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "size": {
+          "default": "",
+          "title": "Size",
+          "type": "string"
+        },
+        "pain_intensity": {
+          "default": "",
+          "title": "Pain Intensity",
+          "type": "string"
+        },
+        "willingness_to_pay": {
+          "default": "",
+          "title": "Willingness To Pay",
+          "type": "string"
+        },
+        "accessibility": {
+          "default": "",
+          "title": "Accessibility",
+          "type": "string"
+        },
+        "fit_score": {
+          "default": "",
+          "title": "Fit Score",
+          "type": "string"
+        },
+        "notes": {
+          "default": "",
+          "title": "Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "TargetSegment",
+      "type": "object"
+    },
+    "TimingAssessment": {
+      "properties": {
+        "market_stage": {
+          "default": "",
+          "title": "Market Stage",
+          "type": "string"
+        },
+        "readiness": {
+          "default": "",
+          "title": "Readiness",
+          "type": "string"
+        },
+        "enablers": {
+          "default": "",
+          "title": "Enablers",
+          "type": "string"
+        }
+      },
+      "title": "TimingAssessment",
       "type": "object"
     }
   },
   "properties": {
     "market_size": {
-      "minLength": 1,
-      "title": "Market Size",
+      "$ref": "#/$defs/MarketSize"
+    },
+    "approach": {
+      "default": "",
+      "title": "Approach",
       "type": "string"
+    },
+    "trends": {
+      "items": {
+        "$ref": "#/$defs/MarketTrend"
+      },
+      "title": "Trends",
+      "type": "array"
     },
     "target_segments": {
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/TargetSegment"
       },
       "minItems": 1,
       "title": "Target Segments",
       "type": "array"
     },
-    "insights": {
-      "items": {
-        "$ref": "#/$defs/MarketInsight"
-      },
-      "title": "Insights",
-      "type": "array"
+    "timing_assessment": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/TimingAssessment"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
     },
     "risks": {
       "items": {
-        "type": "string"
+        "$ref": "#/$defs/MarketRisk"
       },
       "title": "Risks",
       "type": "array"
     },
-    "summary": {
-      "minLength": 20,
-      "title": "Summary",
+    "recommendations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Recommendations",
+      "type": "array"
+    },
+    "sources": {
+      "default": "",
+      "title": "Sources",
       "type": "string"
     }
   },
   "required": [
     "market_size",
-    "target_segments",
-    "summary"
+    "target_segments"
   ],
   "title": "MarketResearch",
   "type": "object"

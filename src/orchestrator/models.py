@@ -1108,19 +1108,56 @@ class OrchestratorConfig(BaseModel):
 
 # --- Market Research Artifact ---
 
-class MarketInsight(BaseModel):
-    area: str = Field(min_length=1)
-    finding: str = Field(min_length=10)
-    confidence: str = Field(pattern=r"^(low|medium|high)$")
-    sources: list[str] = Field(default_factory=list)
+class MarketSizeEntry(BaseModel):
+    value: str = Field(min_length=1)
+    basis: str = Field(default="")
+
+
+class MarketSize(BaseModel):
+    tam: MarketSizeEntry
+    sam: MarketSizeEntry
+    som: MarketSizeEntry
+
+
+class MarketTrend(BaseModel):
+    trend: str = Field(min_length=1)
+    direction: str = Field(default="")   # tailwind | headwind
+    strength: str = Field(default="")   # strong | moderate | weak
+    impact: str = Field(default="")
+
+
+class TargetSegment(BaseModel):
+    name: str = Field(min_length=1)
+    size: str = Field(default="")
+    pain_intensity: str = Field(default="")   # hair_on_fire | significant | moderate | nice_to_have
+    willingness_to_pay: str = Field(default="")
+    accessibility: str = Field(default="")
+    fit_score: str = Field(default="")   # high | medium | low
+    notes: str = Field(default="")
+
+
+class TimingAssessment(BaseModel):
+    market_stage: str = Field(default="")   # emerging | growing | mature | declining
+    readiness: str = Field(default="")
+    enablers: str = Field(default="")
+
+
+class MarketRisk(BaseModel):
+    risk: str = Field(min_length=1)
+    severity: str = Field(default="")   # critical | major | minor
+    likelihood: str = Field(default="")  # high | medium | low
+    mitigation: str = Field(default="")
 
 
 class MarketResearch(BaseModel):
-    market_size: str = Field(min_length=1)
-    target_segments: list[str] = Field(min_length=1)
-    insights: list[MarketInsight] = Field(default_factory=list)
-    risks: list[str] = Field(default_factory=list)
-    summary: str = Field(min_length=20)
+    market_size: MarketSize
+    approach: str = Field(default="")
+    trends: list[MarketTrend] = Field(default_factory=list)
+    target_segments: list[TargetSegment] = Field(min_length=1)
+    timing_assessment: TimingAssessment | None = None
+    risks: list[MarketRisk] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    sources: str = Field(default="")
 
 
 # --- Competitor Research Artifact ---
