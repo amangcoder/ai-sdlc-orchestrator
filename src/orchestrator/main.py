@@ -264,6 +264,14 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Explicit run ID to use (used by Mobile API system orchestrate)")
     parser.add_argument("--feature-request", metavar="TEXT", dest="feature_request_flag", default=None,
                         help="Feature request as a flag (alternative to positional arg; used by Mobile API system orchestrate)")
+    # Log analysis
+    parser.add_argument("--analyze-logs", nargs="?", const="__last1__", metavar="RUN_ID",
+                        help="Analyze run logs. Omit RUN_ID to analyze the most recent run. "
+                             "Use --last to analyze multiple runs.")
+    parser.add_argument("--last", type=int, default=None, metavar="N",
+                        help="With --analyze-logs: analyze the N most recent runs.")
+    parser.add_argument("--json", action="store_true", dest="output_json",
+                        help="With --analyze-logs: output report as JSON.")
     return parser
 
 
@@ -536,6 +544,44 @@ def _print_orchestration_plan(plan, console: Console) -> None:
     console.print()
 
 
+def _cmd_analyze_logs(
+    args: argparse.Namespace,
+    config_path: Path | None,
+) -> None:
+    from orchestrator.log_analyzer import analyze_runs, format_report_json, format_report_text
+
+    config = load_config(config_path)
+    workspace_root = Path(config.workspace_root or config.workspace_dir).resolve()
+    project_name = args.workspace_name or config.project_name or Path.cwd().name
+    log_dir = workspace_root / project_name / "logs"
+
+    if not log_dir.exists():
+        # Fallback: look for logs next to workspace_root
+        alt = workspace_root / "logs"
+        if alt.exists():
+            log_dir = alt
+        else:
+            Console().print(f"[red]No log directory found at {log_dir}[/red]")
+            sys.exit(1)
+
+    run_id_arg = args.analyze_logs
+    run_id = None if run_id_arg == "__last1__" else run_id_arg
+    last_n = args.last
+
+    report = analyze_runs(log_dir, run_id=run_id, last_n=last_n)
+
+    if not report.run_ids:
+        Console().print(f"[yellow]No run logs found in {log_dir}[/yellow]")
+        sys.exit(0)
+
+    if args.output_json:
+        print(format_report_json(report))
+    else:
+        print(format_report_text(report, log_dir))
+
+    sys.exit(0)
+
+
 def _cmd_validate(artifacts_dir: Path) -> None:
     from orchestrator.models import ARTIFACT_MODELS
     from orchestrator.validation import validate_artifact_file
@@ -640,6 +686,12 @@ def main() -> None:
         if not args.validate_dir:
             parser.error("validate requires an artifacts directory")
         _cmd_validate(args.validate_dir)
+        return
+
+    # --analyze-logs: offline log analysis, exits after printing the report
+    if args.analyze_logs is not None:
+        _configure_structlog(json_logs=False)
+        _cmd_analyze_logs(args, args.config)
         return
 
     # --list-runs: show resumable runs and optionally pick one

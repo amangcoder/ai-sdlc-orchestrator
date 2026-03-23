@@ -456,6 +456,9 @@ def _parse_clarification(raw_output: str) -> dict:
 # ---------------------------------------------------------------------------
 
 _SELF_ORCHESTRATE_PROMPT = """\
+**IMPORTANT: Do NOT use any tools.** All context you need is provided in this prompt. \
+Output the JSON response directly without calling any tools.
+
 You are a **Pipeline Architect** — an expert at analyzing software tasks and designing \
 the optimal AI agent orchestration pipeline to accomplish them.
 
@@ -620,6 +623,9 @@ Respond with ONLY the JSON object. No markdown fences, no commentary."""
 
 
 _REVISE_PROMPT = """\
+**IMPORTANT: Do NOT use any tools.** All context you need is provided in this prompt. \
+Output the JSON response directly without calling any tools.
+
 You are a **Pipeline Architect** revising an orchestration plan based on user feedback.
 
 ## Original Feature Request
@@ -726,7 +732,7 @@ async def revise_plan(
         agent_name="architect",
         prompt=prompt,
         model=model_override or ModelTier.SONNET,
-        max_turns=2,
+        max_turns=5,
         project_root=str(project_root) if project_root else None,
     )
 
@@ -789,7 +795,7 @@ async def self_orchestrate(
         agent_name="architect",
         prompt=prompt,
         model=model_override or ModelTier.SONNET,
-        max_turns=2,
+        max_turns=5,
         project_root=str(project_root) if project_root else None,
     )
 
