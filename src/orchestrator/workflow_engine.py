@@ -373,6 +373,28 @@ def _rescue_artifacts_from_output(
     return rescued
 
 
+def _has_structural_errors(invalid_artifacts: dict[str, list[str]]) -> bool:
+    """Return True if any artifact has a top-level required-field error.
+
+    These errors mean the entire document structure is wrong — a repair agent
+    working with truncated content cannot fix them. Fast-path to full re-execution.
+
+    Matches messages like:
+      "Schema: 'flows' is a required property"
+      "Model: Field required (at flows)"
+    """
+    for errors in invalid_artifacts.values():
+        for err in errors:
+            # jsonschema: "Schema: 'X' is a required property" (no path = top-level)
+            if re.search(r"Schema: '.+' is a required property$", err):
+                return True
+            # pydantic: "Model: Field required (at X)" — single-segment path = top-level
+            m = re.match(r"Model: Field required \(at ([^.]+)\)$", err)
+            if m:
+                return True
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Phase 3 optimization: Fine-grained dynamic task scheduling
 # ---------------------------------------------------------------------------
@@ -834,6 +856,17 @@ class WorkflowEngine:
                 if not invalid_artifacts:
                     break  # All artifacts present and valid
 
+                # Structural errors (missing top-level required fields) cannot be fixed
+                # by a repair agent that only sees truncated content — skip repair and
+                # fast-path to full step re-execution immediately.
+                if _has_structural_errors(invalid_artifacts):
+                    logger.warning(
+                        f"Structural schema errors detected in {list(invalid_artifacts)} "
+                        f"(missing top-level required fields) — skipping repair retries, "
+                        f"triggering full step re-execution"
+                    )
+                    break
+
                 # Validation failed — try repair if we have retries left
                 if artifact_attempt < max_art_retries:
                     logger.info(
@@ -1156,7 +1189,16 @@ class WorkflowEngine:
                 current_content = ""
                 try:
                     raw = artifact_path.read_text()
-                    current_content = raw[:4000] + "..." if len(raw) > 4000 else raw
+                    # Use a larger window; for very large files instruct the agent
+                    # to Read the file directly rather than working from a truncated copy.
+                    if len(raw) > 8000:
+                        current_content = (
+                            f"(File is {len(raw)} bytes — too large to inline. "
+                            f"Use the Read tool to read the full file at {artifact_path} "
+                            f"before making any edits.)"
+                        )
+                    else:
+                        current_content = raw
                 except OSError:
                     pass
 

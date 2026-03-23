@@ -54,7 +54,9 @@ PM → Architect → ► YOU (UX Specifier, after architecture, before frontend 
 
 ## Output Format
 
-Write to `artifacts/ux_spec.json`:
+Write to `artifacts/ux_spec.json`. The `flows` field is **REQUIRED** — this is the ONLY field the schema mandates. You must always include it, regardless of task type (new feature, audit, or verification).
+
+**When auditing or verifying an existing app:** document the EXISTING flows as they currently behave. Use `alternate_flows` to record audit findings (broken paths, missing states, deviations from PRD). Any extra metadata (design tokens, enhancements, etc.) must be placed inside a flow's `steps[].ui_response` or `alternate_flows[].response` — not as top-level keys.
 
 ```json
 {
@@ -98,6 +100,8 @@ Write to `artifacts/ux_spec.json`:
   }
 }
 ```
+
+> **CRITICAL**: Do NOT add top-level keys outside of `flows`, `components`, and `responsive_behavior`. Keys like `meta`, `design_system_reference`, `site_wide_enhancements`, `audit_findings`, etc. will cause schema validation to fail. All findings must live inside flow steps or alternate_flows.
 
 ## State Matrix Template
 
