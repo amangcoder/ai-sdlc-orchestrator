@@ -61,7 +61,7 @@ You have access to pre-indexed knowledge about this codebase via MCP tools.
 | `get_artifact_schema` | JSON schema for artifact types (prd, architecture, tasks, etc.) | `get_artifact_schema(artifact_type="prd")` |
 | `get_artifact_store_path` | Filesystem path for artifact storage | `get_artifact_store_path(artifact_type="tasks")` |
 | `validate_artifact_draft` | Pre-validate artifact JSON against schema before writing | `validate_artifact_draft(artifact_type="prd", json_content="{...}")` |
-| `get_cumulative_context` | Digest of all artifacts from prior pipeline phases | `get_cumulative_context(phase="engineer")` |
+| `get_cumulative_context` | Digest of all artifacts from prior pipeline phases | `get_cumulative_context(phase="implementation")` |
 
 ### Directory, pattern & search tools
 
@@ -408,7 +408,7 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     "product_manager": (
         "- Call `get_feature_context(query=<feature>)` to understand existing feature boundaries\n"
         "- Use `semantic_search(query=<topic>, scope=\"features\")` to find related existing functionality\n"
-        "- Call `get_cumulative_context(phase=\"pm\")` if prior pipeline context exists\n"
+        "- Call `get_cumulative_context(phase=\"prd\")` if prior pipeline context exists\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "prd"),
 
     "software_architect": (
@@ -416,7 +416,7 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
         "- Use `explore_graph(start=<module>, edgeTypes=[\"depends_on\",\"imports\"])` to map existing dependency chains\n"
         "- Call `get_feature_context(query=<feature>)` to understand feature boundaries\n"
         "- Use `get_code_patterns()` to learn existing architectural patterns before proposing new ones\n"
-        "- Call `get_cumulative_context(phase=\"architect\")` to see PRD and any prior artifacts\n"
+        "- Call `get_cumulative_context(phase=\"architecture\")` to see PRD and any prior artifacts\n"
         "- Use `semantic_search(query=<component>)` for deep exploration of specific subsystems\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "architecture")
     + "\nAlso validate tasks: `validate_artifact_draft(artifact_type=\"tasks\", ...)`",
@@ -424,19 +424,19 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     "principal_engineer": (
         "- Call `explore_graph(start=<critical_module>, edgeTypes=[\"calls\",\"imports\",\"depends_on\"], maxDepth=3)` to understand blast radius\n"
         "- Use `get_code_patterns()` to identify patterns the implementation should follow\n"
-        "- Call `get_cumulative_context(phase=\"principal_engineer\")` to see all upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"engineering_plan\")` to see all upstream artifacts\n"
         "- Use `semantic_search(query=<risk_area>)` to investigate specific risk areas\n"
         "- Call `get_feature_context(query=<feature>)` to understand existing feature boundaries\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "engineering_plan"),
 
     "technical_project_manager": (
-        "- Call `get_cumulative_context(phase=\"tpm\")` to see all upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"task_breakdown\")` to see all upstream artifacts\n"
         "- Use `get_directory_tree()` to understand project structure for file assignment in tasks\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "tasks"),
 
     # --- Engineer roles ---
     "engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream decisions and context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream decisions and context\n"
         "- Use `get_directory_tree(path=<target_dir>)` before creating files to understand existing layout\n"
         "- Call `get_code_patterns(pattern_type=<relevant>)` to match existing conventions\n"
         "- Use `find_template_file(description=<what_you_are_building>)` to find similar files as starting templates\n"
@@ -445,7 +445,7 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ),
 
     "frontend_engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream decisions and context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream decisions and context\n"
         "- Use `get_directory_tree(path=<frontend_dir>)` before creating files\n"
         "- Call `get_code_patterns(pattern_type=\"component\")` to match existing component conventions\n"
         "- Use `find_template_file(description=<component_description>)` to find similar existing components\n"
@@ -454,7 +454,7 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ),
 
     "backend_engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream decisions and context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream decisions and context\n"
         "- Use `get_directory_tree(path=<backend_dir>)` before creating files\n"
         "- Call `get_code_patterns(pattern_type=\"data\")` for data access patterns\n"
         "- Call `get_code_patterns(pattern_type=\"routing\")` for API routing conventions\n"
@@ -464,7 +464,7 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ),
 
     "database_engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream decisions and context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream decisions and context\n"
         "- Use `get_directory_tree(path=<db_dir>)` to understand migration and schema file layout\n"
         "- Call `get_code_patterns(pattern_type=\"data\")` for existing data access patterns\n"
         "- Use `find_template_file(description=\"database migration\")` to match migration file conventions\n"
@@ -473,28 +473,28 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ),
 
     "caching_performance_engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
         "- Use `get_code_patterns(pattern_type=\"data\")` for existing data patterns\n"
         "- Call `find_template_file(description=\"caching layer\")` to find existing cache implementations\n"
         "- Use `semantic_search(query=\"cache\")` to find all caching-related code"
     ),
 
     "automation_engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
         "- Use `get_code_patterns(pattern_type=\"testing\")` to match existing test conventions\n"
         "- Call `find_template_file(description=<test_type>)` to find similar test files\n"
         "- Use `get_directory_tree(path=<test_dir>)` to understand test directory layout"
     ),
 
     "devops_engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
         "- Use `get_directory_tree()` to understand the full project layout for CI/CD config\n"
         "- Call `get_code_patterns()` to understand build and deployment patterns\n"
         "- Use `semantic_search(query=\"deployment\")` to find existing infra configuration"
     ),
 
     "migration_engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
         "- Use `get_directory_tree(path=<migrations_dir>)` to understand migration file layout\n"
         "- Call `get_code_patterns(pattern_type=\"data\")` for data access patterns\n"
         "- Use `find_template_file(description=\"migration script\")` to match existing migration conventions\n"
@@ -502,13 +502,13 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ),
 
     "observability_engineer": (
-        "- Call `get_cumulative_context(phase=\"engineer\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
         "- Use `get_code_patterns()` to understand existing logging and metrics patterns\n"
         "- Call `find_template_file(description=\"logging middleware\")` to find existing observability code"
     ),
 
     "documentation_engineer": (
-        "- Call `get_cumulative_context(phase=\"docs\")` to see all upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see all upstream artifacts\n"
         "- Use `get_directory_tree()` to understand project structure for documentation\n"
         "- Call `get_code_patterns()` to document code conventions"
     ),
@@ -519,27 +519,27 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
 
     # --- QA roles ---
     "qa_planner": (
-        "- Call `get_cumulative_context(phase=\"qa\")` to see all artifacts from prior phases\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see all artifacts from prior phases\n"
         "- Use `get_code_patterns(pattern_type=\"testing\")` to understand existing test conventions\n"
         "- Call `get_feature_context(query=<feature>)` to understand feature scope for test coverage\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "qa_plan"),
 
     "qa_executor": (
-        "- Call `get_cumulative_context(phase=\"qa\")` to see all artifacts from prior phases\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see all artifacts from prior phases\n"
         "- Use `get_code_patterns(pattern_type=\"testing\")` to understand test conventions\n"
         "- Call `semantic_search(query=<acceptance_criterion>)` to find code relevant to each criterion\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "qa_report"),
 
     # --- Reviewer roles ---
     "backend_code_reviewer": (
-        "- Call `get_cumulative_context(phase=\"review\")` to see all upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see all upstream artifacts\n"
         "- Use `get_code_patterns()` to understand expected code conventions\n"
         "- Call `explore_graph(start=<changed_module>, edgeTypes=[\"calls\",\"imports\",\"depends_on\"])` to understand blast radius\n"
         "- Use `semantic_search(query=<concern>)` to investigate specific patterns or anti-patterns\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "review"),
 
     "frontend_code_reviewer": (
-        "- Call `get_cumulative_context(phase=\"review\")` to see all upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see all upstream artifacts\n"
         "- Use `get_code_patterns(pattern_type=\"component\")` to verify component conventions\n"
         "- Call `explore_graph(start=<changed_component>, edgeTypes=[\"imports\",\"depends_on\"])` to trace component dependencies\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "review"),
@@ -549,7 +549,7 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
         "- Use `explore_graph(start=<auth_module>, edgeTypes=[\"calls\",\"imports\",\"depends_on\"], direction=\"both\")` to map security-critical call chains\n"
         "- Call `semantic_search(query=\"authentication\")` and `semantic_search(query=\"input validation\")` to find security-relevant code\n"
         "- Use `get_feature_context(query=<security_domain>)` to understand feature security boundaries\n"
-        "- Call `get_cumulative_context(phase=\"security\")` to see all upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see all upstream artifacts\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "threat_model")
     + "\nAlso validate: `validate_artifact_draft(artifact_type=\"vulnerability_report\", ...)`",
 
@@ -558,7 +558,7 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
         "- Use `explore_graph(start=<module>, edgeTypes=[\"depends_on\",\"imports\"], maxDepth=4)` to identify dependency tangles\n"
         "- Call `get_code_patterns()` to find pattern inconsistencies that indicate debt\n"
         "- Use `semantic_search(query=\"TODO FIXME HACK WORKAROUND\")` to find debt markers\n"
-        "- Call `get_cumulative_context(phase=\"tech_debt\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "tech_debt_inventory"),
 
     "incident_analyst": (
@@ -568,29 +568,29 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "incident_report"),
 
     "compliance_auditor": (
-        "- Call `get_cumulative_context(phase=\"compliance\")` to see upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream artifacts\n"
         "- Use `semantic_search(query=\"personal data PII user data\")` to find data handling code\n"
         "- Call `explore_graph(start=<data_module>, edgeTypes=[\"calls\",\"depends_on\"])` to trace data flows\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "compliance_report"),
 
     "dependency_auditor": (
-        "- Call `get_cumulative_context(phase=\"dependency_audit\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
         "- Use `get_static_data_schema()` to understand data file dependencies\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "dependency_audit"),
 
     "accessibility_auditor": (
-        "- Call `get_cumulative_context(phase=\"accessibility\")` to see upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream artifacts\n"
         "- Use `get_code_patterns(pattern_type=\"component\")` to understand component patterns\n"
         "- Call `semantic_search(query=\"aria accessibility a11y\")` to find accessibility-related code\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "accessibility_audit"),
 
     "legal_advisor": (
-        "- Call `get_cumulative_context(phase=\"legal\")` to see upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream artifacts\n"
         "- Use `semantic_search(query=\"license copyright terms\")` to find licensing information\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "legal_review"),
 
     "api_contract_designer": (
-        "- Call `get_cumulative_context(phase=\"api_contract\")` to see upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream artifacts\n"
         "- Use `get_code_patterns(pattern_type=\"routing\")` to understand existing API patterns\n"
         "- Call `semantic_search(query=\"endpoint route handler\")` to find existing API definitions\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "api_contract"),
@@ -601,16 +601,16 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "ux_spec"),
 
     "release_engineer": (
-        "- Call `get_cumulative_context(phase=\"release\")` to see all upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see all upstream artifacts\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "release_plan"),
 
     "load_test_engineer": (
-        "- Call `get_cumulative_context(phase=\"load_test\")` to see upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream artifacts\n"
         "- Use `semantic_search(query=\"performance latency throughput\")` to find performance-critical code\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "load_test_report"),
 
     "integration_test_engineer": (
-        "- Call `get_cumulative_context(phase=\"integration_test\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
         "- Use `get_code_patterns(pattern_type=\"testing\")` to match existing test conventions\n"
         "- Call `find_template_file(description=\"integration test\")` to find existing integration tests\n"
         "- Use `explore_graph(start=<boundary>, edgeTypes=[\"calls\",\"imports\"])` to identify integration points"
@@ -690,16 +690,16 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "data_pipeline_design"),
 
     "resilience_tester": (
-        "- Call `get_cumulative_context(phase=\"resilience\")` to see upstream context\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream context\n"
         "- Use `semantic_search(query=\"error handling retry circuit breaker\")` to find resilience patterns\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "resilience_test_plan"),
 
     "finops_estimator": (
-        "- Call `get_cumulative_context(phase=\"finops\")` to see upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream artifacts\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "cost_estimate"),
 
     "runbook_author": (
-        "- Call `get_cumulative_context(phase=\"runbook\")` to see upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream artifacts\n"
         "- Use `get_directory_tree()` to understand project structure for runbook references\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "runbook"),
 
@@ -722,7 +722,7 @@ _MCP_ROLE_GUIDANCE: dict[str, str] = {
     ),
 
     "mcp_protocol_reviewer": (
-        "- Call `get_cumulative_context(phase=\"mcp_review\")` to see upstream artifacts\n"
+        "- Call `get_cumulative_context(phase=\"implementation\")` to see upstream artifacts\n"
         "- Use `explore_graph(start=<mcp_module>, edgeTypes=[\"calls\",\"imports\"])` to understand MCP architecture\n"
     ) + _ARTIFACT_VALIDATION_BLOCK.replace("<your_artifact>", "review"),
 

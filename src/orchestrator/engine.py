@@ -17,6 +17,7 @@ from orchestrator.knowledge import (
     ensure_gitignore_entries,
     ensure_mcp_config,
     get_mcp_server_config,
+    map_phase_for_mcp,
     synthesize_brief,
     update_cumulative_context,
 )
@@ -576,7 +577,7 @@ class OrchestratorEngine:
                 and self.config.knowledge.enabled
                 and self.config.knowledge.cumulative_context
             ):
-                update_cumulative_context(workspace, phase_name)
+                update_cumulative_context(workspace, map_phase_for_mcp(phase_name))
 
             # Re-index knowledge after code-modifying phases
             if state.phases[phase_name].status == PhaseStatus.COMPLETED:

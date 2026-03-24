@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.7.0] - 2026-03-24
+
+### Fixed
+
+**MCP Phase Name Normalization**
+- `get_cumulative_context(phase=...)` calls across all 30+ agent roles in `phases.py` now use canonical phase names (`prd`, `architecture`, `engineering_plan`, `task_breakdown`, `implementation`, `qa`, `reviewer`) instead of legacy role-based names (`pm`, `architect`, `engineer`, etc.)
+- `update_cumulative_context()` in `knowledge.py` extended with canonical phase keys alongside legacy backward-compat aliases
+- `engine.py` routes phase names through `map_phase_for_mcp()` before calling `update_cumulative_context()`, ensuring the MCP server receives the correct phase identifier
+
+---
+
 ## [0.6.0] - 2026-03-23
 
 ### Added

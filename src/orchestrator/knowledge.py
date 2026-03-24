@@ -639,13 +639,20 @@ def update_cumulative_context(
     if not artifact_names:
         # Check what this phase produced
         phase_artifact_map = {
+            # Canonical keys (new contract)
+            "prd": ["prd"],
+            "architecture": ["architecture", "tasks"],
+            "engineering_plan": ["engineering_plan"],
+            "task_breakdown": ["tasks"],
+            "implementation": [],
+            "qa": ["qa_report"],
+            "reviewer": ["review"],
+            # Legacy keys — backward-compat aliases (REQ-008)
             "pm": ["prd"],
             "architect": ["architecture", "tasks"],
             "principal_engineer": ["engineering_plan"],
             "tpm": ["tasks"],
             "engineer": [],
-            "qa": ["qa_report"],
-            "reviewer": ["review"],
         }
         artifact_names = phase_artifact_map.get(phase_name, [])
 
