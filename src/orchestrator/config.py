@@ -118,6 +118,14 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
         workspace_root = raw.get("workspace_root")
         project_name = raw.get("project_name") or Path.cwd().name
 
+        # Parse allowed_directories list
+        from orchestrator.models import AllowedDirectoryConfig
+        allowed_dirs_raw = raw.get("allowed_directories", [])
+        allowed_directories = [
+            AllowedDirectoryConfig(**entry) if isinstance(entry, dict) else AllowedDirectoryConfig(path=str(entry))
+            for entry in allowed_dirs_raw
+        ]
+
         return OrchestratorConfig(
             workspace_dir=raw.get("workspace_dir", "workspace"),
             workspace_root=workspace_root,
@@ -134,6 +142,7 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             debate=debate_config,
             knowledge=knowledge_config,
             monitoring=raw.get("monitoring", {}),
+            allowed_directories=allowed_directories,
             # Dynamic directory browsing (new mobile API features)
             projects_root=raw.get("projects_root"),
             max_browse_depth=raw.get("max_browse_depth", 10),

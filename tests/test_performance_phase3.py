@@ -28,8 +28,8 @@ class TestTaskReadinessTracker:
     def test_init_all_tasks_pending(self):
         """Verify all tasks start as pending."""
         tasks = [
-            WorkflowTaskState(task_id="TASK-001", workflow_step="step1", description="t1", assigned_role="engineer", dependencies=[]),
-            WorkflowTaskState(task_id="TASK-002", workflow_step="step1", description="t2", assigned_role="engineer", dependencies=[]),
+            WorkflowTaskState(task_id="TASK-001", workflow_step="step1", description="t1", assigned_role="backend_engineer", dependencies=[]),
+            WorkflowTaskState(task_id="TASK-002", workflow_step="step1", description="t2", assigned_role="backend_engineer", dependencies=[]),
         ]
         tracker = TaskReadinessTracker(tasks)
         assert tracker.pending == {"TASK-001", "TASK-002"}
@@ -42,7 +42,7 @@ class TestTaskReadinessTracker:
             task_id="TASK-001",
             workflow_step="step1",
             description="test",
-            assigned_role="engineer",
+            assigned_role="backend_engineer",
             dependencies=[],
         )
         tracker = TaskReadinessTracker([task])
@@ -55,14 +55,14 @@ class TestTaskReadinessTracker:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-001"],
             ),
         ]
@@ -77,14 +77,14 @@ class TestTaskReadinessTracker:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-001"],
             ),
         ]
@@ -102,7 +102,7 @@ class TestTaskReadinessTracker:
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-001"],
             ),
         ]
@@ -116,21 +116,21 @@ class TestTaskReadinessTracker:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="TASK-003",
                 workflow_step="step1",
                 description="t3",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-001"],
             ),
         ]
@@ -146,7 +146,7 @@ class TestTaskReadinessTracker:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
         ]
@@ -164,7 +164,7 @@ class TestTaskReadinessTracker:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
         ]
@@ -183,7 +183,7 @@ class TestTaskReadinessTracker:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
         ]
@@ -197,7 +197,7 @@ class TestTaskReadinessTracker:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
         ]
@@ -214,21 +214,21 @@ class TestTaskReadinessTracker:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-001"],
             ),
             WorkflowTaskState(
                 task_id="TASK-003",
                 workflow_step="step1",
                 description="t3",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-002"],
             ),
         ]
@@ -262,7 +262,7 @@ class TestTaskScheduler:
                 task_id=f"TASK-{i:03d}",
                 workflow_step="step1",
                 description=f"task {i}",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             )
             for i in range(1, 4)
@@ -293,21 +293,21 @@ class TestTaskScheduler:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-001"],
             ),
             WorkflowTaskState(
                 task_id="TASK-003",
                 workflow_step="step1",
                 description="t3",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-002"],
             ),
         ]
@@ -338,7 +338,7 @@ class TestTaskScheduler:
                 task_id=f"TASK-{i:03d}",
                 workflow_step="step1",
                 description=f"task {i}",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             )
             for i in range(1, 6)
@@ -376,14 +376,14 @@ class TestTaskScheduler:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
         ]
@@ -418,14 +418,14 @@ class TestTaskScheduler:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-001"],
             ),
         ]
@@ -459,14 +459,14 @@ class TestTaskScheduler:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-002"],  # Depends on 002
             ),
             WorkflowTaskState(
                 task_id="TASK-002",
                 workflow_step="step1",
                 description="t2",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["TASK-001"],  # Depends on 001 (circular!)
             ),
         ]
@@ -495,7 +495,7 @@ class TestPhase3RegressionPrevention:
                 task_id="TASK-001",
                 workflow_step="step1",
                 description="t1",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
         ]
@@ -532,28 +532,28 @@ class TestPhase3PerformanceMetrics:
                 task_id="SLOW-TASK",
                 workflow_step="step1",
                 description="slow task (30ms)",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="FAST-TASK-1",
                 workflow_step="step1",
                 description="fast task 1 (5ms)",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="FAST-TASK-2",
                 workflow_step="step1",
                 description="fast task 2 (5ms)",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             ),
             WorkflowTaskState(
                 task_id="WAVE2-TASK",
                 workflow_step="step1",
                 description="wave 2 task (depends on fast)",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=["FAST-TASK-1"],
             ),
         ]
@@ -596,7 +596,7 @@ class TestPhase3PerformanceMetrics:
                 task_id=f"TASK-{i:03d}",
                 workflow_step="step1",
                 description=f"task {i}",
-                assigned_role="engineer",
+                assigned_role="backend_engineer",
                 dependencies=[],
             )
             for i in range(1, 11)  # 10 tasks

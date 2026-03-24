@@ -437,9 +437,9 @@ class TaskReadinessTracker:
 
     def mark_completed(self, task_id: str) -> None:
         """Mark a task as completed."""
-        if task_id in self.in_progress:
-            self.in_progress.discard(task_id)
-            self.completed.add(task_id)
+        self.pending.discard(task_id)
+        self.in_progress.discard(task_id)
+        self.completed.add(task_id)
 
     def has_pending(self) -> bool:
         """Check if there are any pending or in-progress tasks."""

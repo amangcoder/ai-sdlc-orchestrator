@@ -290,7 +290,7 @@ class TestSelfOrchestrateSpeedMode:
         from orchestrator.self_orchestrate import self_orchestrate
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=AsyncMock(return_value=mock_agent_result),
         ):
             plan = await self_orchestrate(
@@ -306,7 +306,7 @@ class TestSelfOrchestrateSpeedMode:
         from orchestrator.self_orchestrate import self_orchestrate
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=AsyncMock(return_value=mock_agent_result),
         ):
             plan = await self_orchestrate("Build a todo app")
@@ -325,7 +325,7 @@ class TestSelfOrchestrateSpeedMode:
             return mock_agent_result
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=capture_invocation,
         ):
             await self_orchestrate("Build a todo app")
@@ -347,7 +347,7 @@ class TestSelfOrchestrateSpeedMode:
             return mock_agent_result
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=capture_invocation,
         ):
             await self_orchestrate("Build a todo app", speed_mode=SpeedMode.TURBO)
@@ -366,7 +366,7 @@ class TestSelfOrchestrateSpeedMode:
         failed_result.error = "network timeout"
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=AsyncMock(return_value=failed_result),
         ):
             plan = await self_orchestrate(
@@ -401,7 +401,7 @@ class TestRevisePlanSpeedMode:
         )
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=AsyncMock(return_value=mock_agent_result),
         ):
             revised = await revise_plan(
@@ -430,7 +430,7 @@ class TestRevisePlanSpeedMode:
             return mock_agent_result
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=capture_invocation,
         ):
             await revise_plan(
@@ -461,7 +461,7 @@ class TestRevisePlanSpeedMode:
             return mock_agent_result
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=capture_invocation,
         ):
             await revise_plan(
@@ -491,7 +491,7 @@ class TestRevisePlanSpeedMode:
             return mock_agent_result
 
         with patch(
-            "orchestrator.self_orchestrate._invoke_via_sdk",
+            "orchestrator.agents._invoke_via_sdk",
             new=capture_invocation,
         ):
             await revise_plan(

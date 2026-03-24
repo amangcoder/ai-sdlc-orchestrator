@@ -107,7 +107,9 @@ class TestListRunsContract:
 
     async def test_empty_workspace_returns_empty_list(self, client):
         """Empty workspace (no JSONL logs) → [] response."""
-        response = await client.get("/api/v1/runs")
+        from unittest.mock import patch
+        with patch("orchestrator.run_registry.list_registered_runs", return_value=[]):
+            response = await client.get("/api/v1/runs")
         assert response.status_code == 200
         assert response.json() == []
 

@@ -120,7 +120,7 @@ class TestArtifactRepairBatching:
         # Create minimal mock objects
         step = MagicMock(spec=WorkflowStepDefinition)
         step.name = "test-step"
-        step.agent_role = "test-role"
+        step.agent_role = "backend_engineer"
         step.inputs = []
 
         workflow = MagicMock(spec=WorkflowDefinition)
@@ -146,7 +146,7 @@ class TestArtifactRepairBatching:
 
         step = MagicMock()
         step.name = "test-step"
-        step.agent_role = "test-role"
+        step.agent_role = "backend_engineer"
         step.inputs = []
 
         workflow = MagicMock()
@@ -179,7 +179,7 @@ class TestArtifactRepairBatching:
 
         step = MagicMock()
         step.name = "test-step"
-        step.agent_role = "test-role"
+        step.agent_role = "backend_engineer"
         step.inputs = []
 
         workflow = MagicMock()
@@ -192,7 +192,9 @@ class TestArtifactRepairBatching:
         engine._task_outputs = {}
 
         missing = ["prd", "architecture", "tasks"]
-        original_tasks = [MagicMock()]
+        original_task = MagicMock()
+        original_task.assigned_role = "backend_engineer"
+        original_tasks = [original_task]
 
         tasks = engine._create_artifact_writer_tasks(
             step, original_tasks, missing, Path("/tmp/workspace")
@@ -258,7 +260,7 @@ class TestRegressionPrevention:
 
         step = MagicMock()
         step.name = "test-step"
-        step.agent_role = "test-role"
+        step.agent_role = "backend_engineer"
         step.inputs = []
 
         workflow = MagicMock()
@@ -301,7 +303,7 @@ class TestRegressionPrevention:
 
         step = MagicMock()
         step.name = "test-step"
-        step.agent_role = "test-role"
+        step.agent_role = "backend_engineer"
         step.inputs = []
 
         workflow = MagicMock()
@@ -315,7 +317,9 @@ class TestRegressionPrevention:
         engine._task_outputs = {}
 
         missing = ["prd", "architecture", "engineering_plan"]
-        original_tasks = [MagicMock()]
+        original_task = MagicMock()
+        original_task.assigned_role = "backend_engineer"
+        original_tasks = [original_task]
 
         tasks = engine._create_artifact_writer_tasks(
             step, original_tasks, missing, Path("/tmp/workspace")

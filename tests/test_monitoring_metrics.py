@@ -33,7 +33,7 @@ def _port_in_use(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
-            s.bind(("127.0.0.1", port))
+            s.bind(("0.0.0.0", port))
             return False
         except OSError:
             return True
@@ -209,13 +209,16 @@ class TestMetricsManagerPortReuseIntegration:
         port = _free_port()
         mgr = MetricsManager(port=port)
 
+        # Give the background thread a moment to bind
+        time.sleep(0.1)
+
         # Port should be in use now (server started)
         assert _port_in_use(port), "expected port to be bound after MetricsManager init"
 
         mgr.shutdown()
 
         # Give the OS a moment to release the socket
-        time.sleep(0.05)
+        time.sleep(0.3)
 
         assert not _port_in_use(port), "expected port to be free after MetricsManager.shutdown()"
 
@@ -225,10 +228,11 @@ class TestMetricsManagerPortReuseIntegration:
 
         port = _free_port()
         mgr1 = MetricsManager(port=port)
+        time.sleep(0.1)
         assert _port_in_use(port)
 
         mgr1.shutdown()
-        time.sleep(0.05)
+        time.sleep(0.1)
 
         # Second manager on the same port should succeed without OSError
         mgr2 = MetricsManager(port=port)

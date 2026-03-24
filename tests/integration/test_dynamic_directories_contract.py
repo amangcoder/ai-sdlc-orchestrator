@@ -69,6 +69,8 @@ def _build_app_with_projects_root(
     # Build minimal config YAML
     lines = [
         f'workspace_dir: "{workspace}"',
+        f'workspace_root: "{workspace.parent}"',
+        f'project_name: "{workspace.name}"',
         "max_budget_usd: 50.0",
         "max_concurrent_agents: 5",
         f"max_browse_depth: {max_browse_depth}",

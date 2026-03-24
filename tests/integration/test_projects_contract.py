@@ -70,6 +70,8 @@ def mobile_app_projects(workspace_with_projects):
     config_path = workspace / "config.yaml"
     config_path.write_text(
         f'workspace_dir: "{workspace}"\n'
+        f'workspace_root: "{workspace.parent}"\n'
+        f'project_name: "{workspace.name}"\n'
         f'projects_root: "{projects_root}"\n'
         'default_model: claude-haiku-4-5\n'
     )
@@ -157,6 +159,8 @@ async def test_projects_empty_when_no_root(tmp_path):
     config_path = workspace / "config.yaml"
     config_path.write_text(
         f'workspace_dir: "{workspace}"\n'
+        f'workspace_root: "{workspace.parent}"\n'
+        f'project_name: "{workspace.name}"\n'
         'default_model: claude-haiku-4-5\n'
     )
 

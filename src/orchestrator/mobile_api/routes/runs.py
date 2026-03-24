@@ -157,8 +157,11 @@ async def list_runs(
                 except (json.JSONDecodeError, OSError):
                     pass
 
-    # Re-sort after merge (newest first by mtime)
-    runs_data.sort(key=lambda x: x.get("_mtime", 0), reverse=True)
+    # Re-sort after merge (newest first by start_time, then mtime as fallback)
+    runs_data.sort(
+        key=lambda x: (x.get("start_time") or "", x.get("_mtime", 0)),
+        reverse=True,
+    )
 
     results: list[RunSummaryResponse] = []
     for state in runs_data:
@@ -575,6 +578,17 @@ async def resume_run(run_id: str, request: Request):
     tracker = request.app.state.tracker
 
     if is_subprocess_run:
+        # Check for active-run conflict before starting subprocess resume
+        if tracker.active_run_ids():
+            active_id = tracker.active_run_ids()[0]
+            return JSONResponse(
+                status_code=409,
+                content={
+                    "error": "Run already active",
+                    "active_run_id": active_id,
+                },
+            )
+
         from orchestrator.mobile_api.system_runner import locate_binary, start_subprocess_run
 
         binary = locate_binary()

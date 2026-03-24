@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.8.0] - 2026-03-24
+
+### Added
+
+**12 New Specialist Agent Roles**
+- MCP Tool Designer, MCP Server Engineer, MCP Protocol Reviewer, MCP Integration Test Engineer
+- Chatbot Engineer, Social Media Integration Engineer, Data Engineer
+- Resilience Tester, Change Impact Analyzer, FinOps Estimator, Runbook Author, Refactoring Planner
+- Generic `_build_generic_specialist_prompt()` factory in `phases.py` for consistent prompt structure
+- All new roles registered in `PROMPT_BUILDERS` and `ROLE_CATEGORY` model routing map
+
+**Mobile API Hardening**
+- Auth middleware registered as Starlette HTTP middleware (fail-closed Bearer token validation)
+- Auth returns `JSONResponse(401)` instead of raising `HTTPException` — prevents FastAPI exception-handler leaks
+- Active-run conflict guard on `POST /runs/{id}/resume` returns `409` when another run is already active
+- Run listing sorted by `start_time` with `_mtime` fallback for more accurate ordering
+
+**Config & Workflow Fixes**
+- `allowed_directories` parsed from config YAML into typed `AllowedDirectoryConfig` objects
+- `TaskReadinessTracker.mark_completed()` now clears tasks from `pending` set (previously only cleared `in_progress`)
+- `build_cli_args()` uses `isinstance` check for `max_concurrent_agents` instead of truthy comparison
+
+---
+
 ## [0.7.0] - 2026-03-24
 
 ### Fixed

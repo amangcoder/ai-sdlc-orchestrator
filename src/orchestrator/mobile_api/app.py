@@ -214,6 +214,11 @@ def create_mobile_app(
 
     app.state.max_browse_depth = config.max_browse_depth
 
+    # ── Auth middleware (fail-closed Bearer token) ──────────────────────────
+    from orchestrator.mobile_api.auth import auth_middleware
+
+    app.middleware("http")(auth_middleware)
+
     # ── API routers ────────────────────────────────────────────────────────
     from orchestrator.mobile_api.routes.runs import router as runs_router
     from orchestrator.mobile_api.routes.websocket import router as ws_router

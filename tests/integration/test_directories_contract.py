@@ -90,6 +90,8 @@ def _build_app_with_dirs(workspace: Path, *extra_dirs: Path, config_path: Path |
         # Build config YAML content
         lines = [
             f'workspace_dir: "{workspace}"',
+            f'workspace_root: "{workspace.parent}"',
+            f'project_name: "{workspace.name}"',
             "default_model: claude-haiku-4-5",
             "max_budget_usd: 50.0",
             "max_concurrent_agents: 5",

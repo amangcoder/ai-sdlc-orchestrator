@@ -43,6 +43,8 @@ def _build_app(workspace: Path, projects_root: Path | None = None):
 
     lines = [
         f'workspace_dir: "{workspace}"',
+        f'workspace_root: "{workspace.parent}"',
+        f'project_name: "{workspace.name}"',
         "max_budget_usd: 50.0",
         "max_concurrent_agents: 5",
     ]
@@ -108,30 +110,28 @@ class TestLocateBinary:
 class TestBuildCliArgs:
     """Unit tests for build_cli_args()."""
 
-    def test_includes_workspace_arg(self, tmp_path: Path):
-        """(4a) build_cli_args() includes --workspace with absolute workspace path."""
+    def test_returns_valid_args_list(self, tmp_path: Path):
+        """(4a) build_cli_args() returns a valid args list with required flags.
+
+        Note: workspace is passed via cwd in start_subprocess_run(), not as
+        a CLI arg. build_cli_args() only maps request fields to CLI flags.
+        """
         from orchestrator.mobile_api.system_runner import build_cli_args
 
         workspace = tmp_path / "ws"
         workspace.mkdir()
 
-        request = MagicMock()
-        request.feature_request = "Add tests"
-        request.workflow_type = "feature_development"
-        request.phase = None
-        request.from_phase = None
-        request.mode = None
-        request.max_budget_usd = None
-        request.debate = False
-        request.knowledge = None
+        from orchestrator.mobile_api.models import RunStartRequest
+
+        request = RunStartRequest(feature_request="Add tests")
 
         args = build_cli_args(request, "/usr/bin/orchestrate", workspace, "testrunid")
 
-        assert "--workspace" in args, f"--workspace flag missing; args={args}"
-        ws_idx = args.index("--workspace")
-        assert args[ws_idx + 1] == str(workspace.resolve()), (
-            f"--workspace value should be resolved path; got {args[ws_idx+1]!r}"
-        )
+        assert args[0] == "/usr/bin/orchestrate"
+        assert "--feature-request" in args
+        assert "--run-id" in args
+        rid_idx = args.index("--run-id")
+        assert args[rid_idx + 1] == "testrunid"
 
     def test_maps_feature_request(self, tmp_path: Path):
         """(4b) build_cli_args() maps feature_request to --feature-request."""
@@ -140,15 +140,9 @@ class TestBuildCliArgs:
         workspace = tmp_path / "ws"
         workspace.mkdir()
 
-        request = MagicMock()
-        request.feature_request = "Implement dark mode"
-        request.workflow_type = "feature_development"
-        request.phase = None
-        request.from_phase = None
-        request.mode = None
-        request.max_budget_usd = None
-        request.debate = False
-        request.knowledge = None
+        from orchestrator.mobile_api.models import RunStartRequest
+
+        request = RunStartRequest(feature_request="Implement dark mode")
 
         args = build_cli_args(request, "/usr/bin/orchestrate", workspace, "runid123")
 
@@ -165,15 +159,9 @@ class TestBuildCliArgs:
         workspace = tmp_path / "ws"
         workspace.mkdir()
 
-        request = MagicMock()
-        request.feature_request = "Fix bug"
-        request.workflow_type = "bugfix"
-        request.phase = None
-        request.from_phase = None
-        request.mode = None
-        request.max_budget_usd = None
-        request.debate = False
-        request.knowledge = None
+        from orchestrator.mobile_api.models import RunStartRequest
+
+        request = RunStartRequest(feature_request="Fix bug", workflow_type="bugfix")
 
         args = build_cli_args(request, "/usr/bin/orchestrate", workspace, "runid")
 
@@ -188,15 +176,9 @@ class TestBuildCliArgs:
         workspace = tmp_path / "ws"
         workspace.mkdir()
 
-        request = MagicMock()
-        request.feature_request = "Test"
-        request.workflow_type = "bugfix"
-        request.phase = None
-        request.from_phase = None
-        request.mode = None
-        request.max_budget_usd = None
-        request.debate = False
-        request.knowledge = None
+        from orchestrator.mobile_api.models import RunStartRequest
+
+        request = RunStartRequest(feature_request="Test", workflow_type="bugfix")
 
         args = build_cli_args(request, "/usr/bin/orchestrate", workspace, "runid")
 
@@ -213,15 +195,17 @@ class TestBuildCliArgs:
         workspace = tmp_path / "ws"
         workspace.mkdir()
 
-        request = MagicMock()
-        request.feature_request = "Test"
-        request.workflow_type = "feature_development"
-        request.phase = "architect"
-        request.from_phase = None
-        request.mode = "balanced"
-        request.max_budget_usd = 25.0
-        request.debate = True
-        request.knowledge = True
+        from orchestrator.mobile_api.models import RunStartRequest
+
+        request = RunStartRequest(
+            feature_request="Test",
+            workflow_type="feature_development",
+            phase="architect",
+            mode="balanced",
+            max_budget_usd=25.0,
+            debate=True,
+            knowledge=True,
+        )
 
         args = build_cli_args(request, "/usr/bin/orchestrate", workspace, "runid")
 
@@ -233,9 +217,8 @@ class TestBuildCliArgs:
         m_idx = args.index("--mode")
         assert args[m_idx + 1] == "balanced"
 
-        assert "--max-budget" in args
-        mb_idx = args.index("--max-budget")
-        assert args[mb_idx + 1] == "25.0"
+        # max_budget_usd is NOT passed as a CLI arg (read from config file)
+        assert "--max-budget" not in args
 
         assert "--debate" in args
         assert "--knowledge" in args
@@ -247,15 +230,9 @@ class TestBuildCliArgs:
         workspace = tmp_path / "ws"
         workspace.mkdir()
 
-        request = MagicMock()
-        request.feature_request = "Test"
-        request.workflow_type = "feature_development"
-        request.phase = None
-        request.from_phase = None
-        request.mode = None
-        request.max_budget_usd = None
-        request.debate = False
-        request.knowledge = None
+        from orchestrator.mobile_api.models import RunStartRequest
+
+        request = RunStartRequest(feature_request="Test")
 
         binary = "/usr/local/bin/orchestrate"
         args = build_cli_args(request, binary, workspace, "runid")
@@ -518,6 +495,8 @@ class TestSshConfigEndpoint:
         # Configure a port that is definitely not open (use a high ephemeral port)
         lines = [
             f'workspace_dir: "{workspace}"',
+            f'workspace_root: "{workspace.parent}"',
+            f'project_name: "{workspace.name}"',
             "max_budget_usd: 50.0",
             "max_concurrent_agents: 5",
             "ssh_port: 19999",  # Unlikely to be open

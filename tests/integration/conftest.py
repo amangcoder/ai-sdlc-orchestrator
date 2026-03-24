@@ -178,6 +178,8 @@ def config_yaml(workspace: Path) -> Path:
     config_path = workspace / "config.yaml"
     config_path.write_text(
         f'workspace_dir: "{workspace}"\n'
+        f'workspace_root: "{workspace.parent}"\n'
+        f'project_name: "{workspace.name}"\n'
         'default_model: claude-haiku-4-5\n'
         'max_budget_usd: 50.0\n'
         'max_concurrent_agents: 5\n'
@@ -191,6 +193,8 @@ def config_yaml_with_secrets(workspace: Path) -> Path:
     config_path = workspace / "config.yaml"
     config_path.write_text(
         f'workspace_dir: "{workspace}"\n'
+        f'workspace_root: "{workspace.parent}"\n'
+        f'project_name: "{workspace.name}"\n'
         'default_model: claude-haiku-4-5\n'
         'max_budget_usd: 50.0\n'
         'api_key: "super-secret-api-key-12345"\n'

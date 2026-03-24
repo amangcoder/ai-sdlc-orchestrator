@@ -9,8 +9,8 @@ from __future__ import annotations
 import hmac
 import os
 
-from fastapi import Request, HTTPException
-from starlette.status import HTTP_401_UNAUTHORIZED
+from fastapi import Request
+from fastapi.responses import JSONResponse
 
 # ── Fail-closed key loading ────────────────────────────────────────────────
 
@@ -79,27 +79,23 @@ async def auth_middleware(request: Request, call_next):
     # Extract Authorization header
     auth_header = request.headers.get("Authorization", "")
 
+    _UNAUTHORIZED = JSONResponse(
+        status_code=401,
+        content={"error": "Unauthorized"},
+    )
+
     # Must be "Bearer <token>" — scheme-sensitive
     if not auth_header.startswith("Bearer "):
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
-        )
+        return _UNAUTHORIZED
 
     token = auth_header[7:]  # Strip "Bearer " prefix (7 chars)
 
     # Empty token is rejected
     if not token:
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
-        )
+        return _UNAUTHORIZED
 
     # Validate using timing-safe comparison
     if not verify_token(token):
-        raise HTTPException(
-            status_code=HTTP_401_UNAUTHORIZED,
-            detail="Unauthorized",
-        )
+        return _UNAUTHORIZED
 
     return await call_next(request)

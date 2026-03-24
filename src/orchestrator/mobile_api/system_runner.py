@@ -149,7 +149,7 @@ def build_cli_args(
 
     # Optional: max concurrent agents
     max_concurrent_agents = getattr(request, "max_concurrent_agents", None)
-    if max_concurrent_agents is not None and max_concurrent_agents > 0:
+    if isinstance(max_concurrent_agents, (int, float)) and max_concurrent_agents > 0:
         args += ["--max-concurrent-agents", str(max_concurrent_agents)]
 
     # Always use JSON log format for subprocess runs so the monitor can

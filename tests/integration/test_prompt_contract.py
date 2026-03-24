@@ -72,6 +72,8 @@ def mobile_app_with_prompt(workspace_with_prompt):
     config_path = workspace / "config.yaml"
     config_path.write_text(
         f'workspace_dir: "{workspace}"\n'
+        f'workspace_root: "{workspace.parent}"\n'
+        f'project_name: "{workspace.name}"\n'
         'default_model: claude-haiku-4-5\n'
     )
 
@@ -227,6 +229,12 @@ async def test_respond_410_inactive_run(client_with_prompt):
     app = client._transport.app  # type: ignore[attr-defined]
     app.state.tracker.is_active.side_effect = None
     app.state.tracker.is_active.return_value = False
+    # Also update the state file so the filesystem fallback agrees
+    import json as _json
+    state_file = workspace / f"state-{run_id}.json"
+    state_data = _json.loads(state_file.read_text())
+    state_data["status"] = "completed"
+    state_file.write_text(_json.dumps(state_data))
 
     resp = await client.post(
         f"/api/v1/runs/{run_id}/respond",
