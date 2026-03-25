@@ -53,6 +53,7 @@ dev = [
 
 [project.scripts]
 orchestrate = "orchestrator.main:main"
+orchestrate-container = "orchestrator.containerized_main:main"
 orchestrate-watchdog = "orchestrator.watchdog:main"
 orchestrate-dashboard = "orchestrator.dashboard.cli:main"
 orchestrator-mobile-api = "orchestrator.mobile_api.server:main"

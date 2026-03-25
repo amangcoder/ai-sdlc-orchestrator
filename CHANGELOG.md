@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-03-25
+
+### Added
+
+**Containerized Orchestration (opt-in)**
+- New `orchestrate-container` CLI entrypoint — runs each orchestration in an ephemeral, isolated Docker container
+- `ContainerRuntime` manages full container lifecycle: argument assembly, output streaming, signal forwarding, and post-exit artifact validation
+- `ArtifactBridgeVolume` manages the run-specific bind-mount with TOCTOU-safe path validation
+- Security hardening: read-only rootfs, `--cap-drop ALL`, seccomp profile, AppArmor (Linux), PID/memory/CPU limits, no-new-privileges
+- Network isolation via `orchestrator-net` Docker network with iptables egress rules limiting outbound traffic to `api.anthropic.com:443`
+- DNS injection via `--add-host` to allow API access when container DNS (port 53) is blocked
+- Forbidden-file scanner checks bind-mounted output for suspicious files (`.bashrc`, `.ssh`, `.gitconfig`, etc.) after container exit
+- `ContainerConfig` Pydantic model in `models.py` with full validation (image name, network mode, tmpfs path allowlist)
+- `container` section added to `config/default.yaml` (disabled by default — set `enabled: true` to activate)
+- Infrastructure: `infra/docker/Dockerfile`, `seccomp-profile.json`, `apparmor-profile`, `docker-compose.yml`
+- Scripts: `build-image.sh`, `run-containerized.sh`, `setup-network-policy.sh`, `load-apparmor-profile.sh`, `install-iptables-restore-service.sh`
+- CI workflow (`.github/workflows/ci.yml`) and `Makefile` with standard dev targets
+- Comprehensive test coverage: `test_container_config.py`, `test_container_runner.py`
+
+---
+
 ## [0.8.0] - 2026-03-24
 
 ### Added

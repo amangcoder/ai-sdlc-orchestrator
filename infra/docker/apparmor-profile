@@ -1,0 +1,112 @@
+# AppArmor profile for the AI SDLC Orchestrator container.
+#
+# LOADING (Linux only, requires AppArmor kernel module):
+#   sudo bash infra/scripts/load-apparmor-profile.sh
+#
+# VERIFYING:
+#   sudo apparmor_status | grep ai-sdlc-orchestrator
+#
+# APPLYING (docker run):
+#   docker run --security-opt apparmor=ai-sdlc-orchestrator ...
+#
+# DESIGN GOALS:
+#   - Allow the Python orchestrator process to run and write to its workspace
+#   - Deny access to all host paths outside the container filesystem
+#   - Deny raw socket creation (prevents crafting arbitrary network packets)
+#   - Deny ptrace (prevents attaching to other processes)
+#   - Deny all mount operations (no filesystem remounting)
+#   - Deny capability escalation paths (no setuid/setgid execution)
+
+#include <tunables/global>
+
+profile ai-sdlc-orchestrator flags=(attach_disconnected, mediate_deleted) {
+
+  # ── Include base abstractions ──────────────────────────────────────────────
+  #include <abstractions/base>
+  #include <abstractions/nameservice>
+  #include <abstractions/python>
+  #include <abstractions/ssl_certs>
+
+  # ── Deny host-escape capabilities ─────────────────────────────────────────
+  deny capability sys_ptrace,       # no ptrace
+  deny capability sys_admin,        # no admin operations
+  deny capability sys_module,       # no kernel module loading
+  deny capability net_raw,          # no raw socket creation
+  deny capability net_admin,        # no network device administration
+  deny capability sys_rawio,        # no direct hardware I/O
+  deny capability mknod,            # no device node creation
+  deny capability setuid,           # no SUID escalation
+  deny capability setgid,           # no SGID escalation
+  deny capability dac_override,     # no DAC bypass
+
+  # ── Allow minimum capabilities ────────────────────────────────────────────
+  # Note: net_bind_service (bind to port < 1024) is intentionally omitted.
+  # The orchestrator is a pure outbound-only HTTPS client; it never opens a
+  # listening socket. Granting net_bind_service would allow malicious agent
+  # code to open a privileged listener for reverse-shell or SSRF purposes.
+  capability chown,
+  capability dac_read_search,
+  capability fowner,
+  capability fsetid,
+  capability kill,
+  capability setpcap,
+
+  # ── Filesystem rules ──────────────────────────────────────────────────────
+
+  # Container root (read-only in practice via --read-only flag)
+  / r,
+  /** r,
+
+  # Writable tmpfs paths (mounted as tmpfs by ContainerRuntime)
+  /tmp/** rwk,
+  /home/orchestrator/.config/** rwk,
+
+  # Workspace bind-mount (run artifacts — read/write by the orchestrator)
+  /workspace/runs/** rwkl,
+
+  # Python runtime needs
+  /usr/local/lib/python3.11/** r,
+  /usr/local/bin/python3.11 rix,
+  /usr/local/bin/orchestrate rix,
+  /usr/local/bin/orchestrate-container rix,
+
+  # App config directory (read-only at runtime)
+  /app/config/** r,
+
+  # Proc filesystem (read-only, needed by Python runtime)
+  /proc/*/status r,
+  /proc/*/maps   r,
+  /proc/cpuinfo  r,
+  /proc/meminfo  r,
+  /proc/*/fd/    r,
+  /proc/*/task/  r,
+
+  # Deny all write access to host paths that container shouldn't touch
+  deny /etc/passwd   w,
+  deny /etc/shadow   w,
+  deny /etc/sudoers  w,
+  deny /etc/hosts    w,
+  deny /root/**      rw,
+  deny /home/*/.ssh/ rw,
+  deny /home/*/.bashrc w,
+  deny /home/*/.profile w,
+  deny /var/run/docker.sock rw,   # no Docker socket access from inside container
+
+  # ── Network rules ──────────────────────────────────────────────────────────
+  network tcp,           # HTTPS outbound to api.anthropic.com (filtered by iptables)
+  network udp,           # DNS queries to Docker's embedded resolver only
+  deny network raw,      # no raw sockets
+  deny network packet,   # no packet-level network access
+
+  # ── Signal rules ──────────────────────────────────────────────────────────
+  signal (send, receive) set=(term, kill, int, hup, quit) peer=ai-sdlc-orchestrator,
+
+  # ── Deny ptrace entirely ───────────────────────────────────────────────────
+  deny ptrace (read, readby, trace, tracedby),
+
+  # ── Deny mount operations ──────────────────────────────────────────────────
+  deny mount,
+  deny umount,
+  deny pivot_root,
+
+}

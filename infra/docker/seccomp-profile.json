@@ -1,0 +1,195 @@
+{
+  "defaultAction": "SCMP_ACT_ALLOW",
+  "architectures": [
+    "SCMP_ARCH_X86_64",
+    "SCMP_ARCH_X86",
+    "SCMP_ARCH_X32",
+    "SCMP_ARCH_AARCH64"
+  ],
+  "syscalls": [
+    {
+      "names": ["ptrace"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny process tracing — prevents agents attaching to other processes (container escape vector)"
+    },
+    {
+      "names": ["mount"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny filesystem mount operations"
+    },
+    {
+      "names": ["mknod", "mknodat"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny device node creation — prevents /dev/mem, /dev/kmem, raw disk access"
+    },
+    {
+      "names": ["init_module", "finit_module", "delete_module"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny kernel module loading/unloading — prevents arbitrary kernel code insertion"
+    },
+    {
+      "names": ["kexec_load", "kexec_file_load"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny kernel replacement via kexec"
+    },
+    {
+      "names": ["pivot_root"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny pivot_root — classic container escape technique"
+    },
+    {
+      "names": ["chroot"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny chroot — prerequisite step for classic container escape; the orchestrator has no legitimate use for this syscall"
+    },
+    {
+      "names": ["unshare"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny namespace creation via unshare — used in user namespace privilege escalation"
+    },
+    {
+      "names": ["setns"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny joining existing namespaces — prevents escaping to host network/mount namespace"
+    },
+    {
+      "names": ["clone"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "args": [
+        {
+          "index": 0,
+          "value": 2114060288,
+          "op": "SCMP_CMP_MASKED_EQ",
+          "valueTwo": 2114060288
+        }
+      ],
+      "comment": "Deny clone() calls requesting any new namespace. Mask 0x7E020000 is CLONE_NEWNS|CLONE_NEWUTS|CLONE_NEWIPC|CLONE_NEWUSER|CLONE_NEWPID|CLONE_NEWNET combined. Normal thread/process clone() is unaffected (Python asyncio subprocess works)."
+    },
+    {
+      "names": ["clone3"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 38,
+      "comment": "Deny clone3 unconditionally — Linux 5.3+ equivalent of clone. Python 3.11 subprocess falls back to clone() when clone3 returns ENOSYS (errnoRet 38), so this is safe."
+    },
+    {
+      "names": ["perf_event_open"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny perf events — side-channel risk (Spectre/Meltdown class attacks)"
+    },
+    {
+      "names": ["add_key", "request_key", "keyctl"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny kernel keyring access — prevents credential theft from keyring"
+    },
+    {
+      "names": ["bpf"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny eBPF program loading — can read arbitrary kernel memory, intercept syscalls"
+    },
+    {
+      "names": ["userfaultfd"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny userfaultfd — used in certain use-after-free kernel exploits"
+    },
+    {
+      "names": ["syslog"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny kernel syslog (dmesg) access — may contain sensitive host information"
+    },
+    {
+      "names": ["process_vm_readv", "process_vm_writev"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny cross-process memory read/write — analogous to ptrace for data access; closes the gap where ptrace is denied but process_vm_* is not"
+    },
+    {
+      "names": ["memfd_create"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny anonymous in-memory file creation — used to construct fileless payloads; not required by Python 3.11 asyncio"
+    },
+    {
+      "names": ["shmget", "shmat", "shmdt", "shmctl"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny System V shared memory — prevents inter-container communication via shared kernel IPC namespace; Python asyncio does not use SysV IPC"
+    },
+    {
+      "names": ["semget", "semop", "semtimedop", "semctl"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny System V semaphores — not used by Python asyncio; eliminates cross-container IPC attack surface"
+    },
+    {
+      "names": ["msgget", "msgsnd", "msgrcv", "msgctl"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny System V message queues — not used by Python asyncio; eliminates cross-container IPC attack surface"
+    },
+    {
+      "names": ["fanotify_init", "fanotify_mark"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny fanotify filesystem event monitoring — prevents observing host-level file access patterns through the shared kernel subsystem"
+    },
+    {
+      "names": ["socket"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "args": [
+        {
+          "index": 0,
+          "value": 16,
+          "op": "SCMP_CMP_EQ"
+        }
+      ],
+      "comment": "Deny AF_NETLINK sockets (family=16) — prevents reading host routing tables and interface info; normal TCP/UDP (AF_INET=2, AF_INET6=10) are unaffected"
+    },
+    {
+      "names": ["socket"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "args": [
+        {
+          "index": 0,
+          "value": 17,
+          "op": "SCMP_CMP_EQ"
+        }
+      ],
+      "comment": "Deny AF_PACKET raw sockets (family=17) — prevents bypassing iptables FORWARD rules by sending layer-2 frames directly; CAP_NET_RAW is already dropped, this adds defence-in-depth"
+    },
+    {
+      "names": ["open_by_handle_at"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny open_by_handle_at — exploited in CVE-2019-5736 (runc container escape) to re-open /proc/self/exe and overwrite the host runc binary. Python orchestrator has no legitimate use for file handles obtained via name_to_handle_at."
+    },
+    {
+      "names": ["name_to_handle_at"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny name_to_handle_at — prerequisite to open_by_handle_at; denying both closes the CVE-2019-5736 / Leaky Vessels class of container escape."
+    },
+    {
+      "names": ["io_uring_setup", "io_uring_enter", "io_uring_register"],
+      "action": "SCMP_ACT_ERRNO",
+      "errnoRet": 1,
+      "comment": "Deny io_uring — multiple privilege escalation CVEs (CVE-2022-29582, CVE-2023-2598, CVE-2024-0582) exist in the io_uring subsystem. Python 3.11 asyncio does not use io_uring; the event loop falls back to epoll transparently."
+    }
+  ]
+}

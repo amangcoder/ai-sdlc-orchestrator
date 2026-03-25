@@ -1,0 +1,69 @@
+# ── Version control ───────────────────────────────────────────────────────────
+# Exclude .git to keep image lean. The VERSION build-arg in Dockerfile
+# bypasses hatch-vcs so the build does not require .git to be present.
+.git/
+.gitignore
+.gitattributes
+
+# ── Workspace & run state ─────────────────────────────────────────────────────
+# Never bake workspace state, run artifacts, or logs into the image.
+workspace/
+test/
+.claude/worktrees/
+
+# ── Tests ─────────────────────────────────────────────────────────────────────
+tests/
+.pytest_cache/
+.mcp-test-runner-cache.json
+
+# ── Documentation ─────────────────────────────────────────────────────────────
+docs/
+*.md
+!README.md
+
+# ── Mobile app ────────────────────────────────────────────────────────────────
+mobile/
+
+# ── Python build artifacts ────────────────────────────────────────────────────
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+.tox/
+.venv/
+venv/
+env/
+
+# ── Secrets — NEVER bake into image ──────────────────────────────────────────
+*.env
+.env*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+*_secret*
+*_secrets*
+*credentials*
+
+# ── IDE / OS artifacts ────────────────────────────────────────────────────────
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+Thumbs.db
+
+# ── CI/CD artifacts ───────────────────────────────────────────────────────────
+.github/
+coverage.xml
+.coverage
+htmlcov/
+
+# ── Infra scripts (not needed inside image) ───────────────────────────────────
+infra/scripts/

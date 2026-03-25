@@ -1017,6 +1017,25 @@ class AllowedDirectoryConfig(BaseModel):
     name: str | None = None
 
 
+class ContainerConfig(BaseModel):
+    """Configuration for containerized orchestration runs.
+
+    When enabled=True, each orchestration run is executed inside an ephemeral
+    Docker container with resource limits and security hardening applied.
+    """
+
+    enabled: bool = False
+    image: str = "ai-sdlc-orchestrator:latest"
+    memory_limit: str = "8g"
+    cpu_limit: float = 4.0
+    pids_limit: int = 500
+    network_mode: str = "orchestrator-net"
+    seccomp_profile_path: str | None = None
+    apparmor_profile: str | None = None
+    env_file: Path | None = None
+    extra_tmpfs: list[str] = Field(default_factory=list)
+
+
 class OrchestratorConfig(BaseModel):
     workspace_dir: str = "workspace"
     workspace_root: str | None = None
@@ -1038,6 +1057,7 @@ class OrchestratorConfig(BaseModel):
     spawn: SpawnConfig = Field(default_factory=SpawnConfig)
     debate: DebateConfig = Field(default_factory=DebateConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
+    container: ContainerConfig = Field(default_factory=ContainerConfig)
     knowledge_context: KnowledgeContext | None = None
     test_runner: TestRunnerConfig = Field(default_factory=TestRunnerConfig)
     monitoring: dict[str, Any] = Field(default_factory=dict)

@@ -9,12 +9,15 @@ from pydantic import ValidationError
 
 from orchestrator.models import (
     AgentConfig,
+    ContainerConfig,
     DebateConfig,
+    ExplorationConfig,
     KnowledgeConfig,
     ModelTier,
     OrchestratorConfig,
     PhaseConfig,
     SpawnConfig,
+    TestRunnerConfig,
     WorkflowType,
 )
 from orchestrator.monitoring.errors import ConfigurationError
@@ -114,6 +117,27 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
     except ValidationError as exc:
         raise ConfigurationError(_format_validation_error("spawn", exc)) from exc
 
+    # Parse exploration config (was previously silently dropped)
+    exploration_raw = raw.get("exploration", {})
+    try:
+        exploration_config = ExplorationConfig(**exploration_raw) if exploration_raw else ExplorationConfig()
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("exploration", exc)) from exc
+
+    # Parse test_runner config (was previously silently dropped)
+    test_runner_raw = raw.get("test_runner", {})
+    try:
+        test_runner_config = TestRunnerConfig(**test_runner_raw) if test_runner_raw else TestRunnerConfig()
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("test_runner", exc)) from exc
+
+    # Parse container config
+    container_raw = raw.get("container", {})
+    try:
+        container_config = ContainerConfig(**container_raw) if container_raw else ContainerConfig()
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("container", exc)) from exc
+
     try:
         workspace_root = raw.get("workspace_root")
         project_name = raw.get("project_name") or Path.cwd().name
@@ -133,6 +157,7 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             max_review_cycles=raw.get("max_review_cycles", 3),
             max_budget_usd=raw.get("max_budget_usd", 50.0),
             default_workflow=default_workflow,
+            confirm=raw.get("confirm", False),
             checklist_verify=raw.get("checklist_verify", True),
             tech_stack_confirmation=raw.get("tech_stack_confirmation", True),
             max_concurrent_agents=raw.get("max_concurrent_agents", 0),
@@ -141,6 +166,9 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             spawn=spawn_config,
             debate=debate_config,
             knowledge=knowledge_config,
+            exploration=exploration_config,
+            test_runner=test_runner_config,
+            container=container_config,
             monitoring=raw.get("monitoring", {}),
             allowed_directories=allowed_directories,
             # Dynamic directory browsing (new mobile API features)

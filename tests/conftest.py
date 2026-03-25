@@ -5,6 +5,29 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+import structlog
+
+
+@pytest.fixture(autouse=True)
+def configure_structlog_for_stdlib():
+    """Route structlog through Python stdlib logging so pytest's caplog can capture it.
+
+    Without this, structlog uses PrintLoggerFactory (writes to stdout) and
+    caplog.records stays empty for any structlog-emitted warnings/errors.
+    """
+    structlog.configure(
+        processors=[
+            structlog.stdlib.add_log_level,
+            structlog.processors.StackInfoRenderer(),
+            structlog.dev.ConsoleRenderer(colors=False),
+        ],
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        wrapper_class=structlog.stdlib.BoundLogger,
+        cache_logger_on_first_use=False,
+    )
+    yield
+    structlog.reset_defaults()
 
 
 @pytest.fixture

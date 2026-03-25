@@ -1,0 +1,28 @@
+# Git attributes — line endings and file modes.
+# eol=lf ensures shell scripts keep Unix line endings on all platforms.
+
+# ── Shell scripts — always Unix line endings + executable ─────────────────────
+*.sh   eol=lf
+*.sh   text eol=lf
+
+# Infra scripts must be executable so users can run them directly.
+# If the execute bit is lost, restore with:
+#   chmod +x infra/scripts/*.sh
+infra/scripts/build-image.sh            eol=lf
+infra/scripts/run-containerized.sh      eol=lf
+infra/scripts/setup-network-policy.sh   eol=lf
+infra/scripts/load-apparmor-profile.sh  eol=lf
+
+# ── Python / YAML — Unix line endings ────────────────────────────────────────
+*.py   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf
+
+# ── Binary / generated — no line-ending conversion ───────────────────────────
+*.png  binary
+*.jpg  binary
+*.pdf  binary
+*.gz   binary
+*.tar  binary
+*.zip  binary

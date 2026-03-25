@@ -1,0 +1,478 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Cancel the in-progress run for the same ref when a newer push arrives.
+# This prevents queue build-up on rapid-fire commits to a PR branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Job 1: Python unit + container-unit tests ─────────────────────────────
+  #
+  # Runs on Python 3.11 and 3.12 (matrix).  All Docker calls inside the
+  # container-runner tests are mocked via unittest.mock.patch, so Docker
+  # Engine is NOT required here.
+  #
+  # Coverage is enforced by pyproject.toml [tool.coverage.report] fail_under=80;
+  # pytest-cov raises a non-zero exit code when the threshold is not met.
+  test:
+    name: Unit Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false          # let both Python versions complete so we see all failures
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          # "pip" cache mode caches the pip download cache (~/.cache/pip).
+          # Do NOT use --no-cache-dir when installing; let pip read from cache.
+          cache: pip
+
+      - name: Install package + dev dependencies
+        # -e installs in editable mode so src/orchestrator is importable without
+        # a PYTHONPATH override; [dev] pulls pytest, pytest-asyncio, pytest-cov.
+        run: pip install -e ".[dev]"
+
+      - name: Run general pytest suite with coverage
+        # --cov-report=xml is consumed by upload-artifact; the terminal report is
+        # printed by --cov-report=term-missing.  fail_under=80 is declared in
+        # pyproject.toml and is enforced by pytest-cov automatically.
+        run: |
+          pytest \
+            --cov=src/orchestrator \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --ignore=tests/integration \
+            --ignore=tests/test_container_runner.py \
+            --ignore=tests/test_container_config.py \
+            -q
+
+      # Run the container-unit tests as a separate, explicit step so their
+      # pass/fail is immediately visible in the GitHub Actions UI without
+      # digging into the combined log.  No Docker Engine needed — all
+      # subprocess/docker calls are patched with unittest.mock.
+      - name: Run container-unit tests (Docker calls mocked)
+        run: |
+          pytest \
+            tests/test_container_runner.py \
+            tests/test_container_config.py \
+            -v --tb=short
+
+      - name: Upload coverage XML (3.11 only to avoid duplicate artifacts)
+        if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ── Job 2: Lint (ruff — supersedes flake8, ships as a single binary) ───────
+  #
+  # ruff is installed separately so a missing ruff binary never blocks tests.
+  # If ruff is not listed in [dev] dependencies this step still works because
+  # it installs it here.  Treat lint failures as blocking (exit-code: 1).
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install ruff
+        # Install ruff independently — it is a fast Rust binary and does not
+        # need the full dev dependency tree installed.
+        run: pip install ruff
+
+      - name: Run ruff check
+        # E/F = pycodestyle/pyflakes errors (hard failures).
+        # W = warnings (reported but not blocking — remove --exit-zero to make
+        # them blocking too).
+        # --output-format=github emits ::error annotations in the PR diff view.
+        run: ruff check src/ tests/ --output-format=github
+
+  # ── Job 3: Validate seccomp profile JSON ───────────────────────────────────
+  #
+  # The seccomp profile is NOT applied in CI (GitHub Actions runners do not
+  # expose the seccomp syscall to nested containers).  We only verify the JSON
+  # is syntactically valid and contains the required deny rules.
+  validate-seccomp:
+    name: Validate Seccomp Profile
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate JSON syntax
+        run: |
+          python3 -c "
+          import json, sys
+          json.load(open('infra/docker/seccomp-profile.json'))
+          print('OK: seccomp-profile.json is valid JSON')
+          "
+
+      - name: Verify required deny rules are present
+        # All syscalls below must be explicitly denied to block known
+        # container-escape and privilege-escalation techniques.
+        # - ptrace, mount, bpf, init_module, kexec_load: original escape vectors
+        # - open_by_handle_at, name_to_handle_at: CVE-2019-5736 (runc escape)
+        # - io_uring_setup: multiple kernel privesc CVEs (2022-2024)
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+
+          REQUIRED_DENIES = [
+              "ptrace",             # process injection / container escape
+              "mount",              # filesystem remounting
+              "kexec_load",         # kernel replacement
+              "bpf",                # arbitrary kernel memory read via eBPF
+              "init_module",        # kernel module loading
+              "open_by_handle_at",  # CVE-2019-5736 runc escape vector
+              "name_to_handle_at",  # prerequisite to open_by_handle_at
+              "io_uring_setup",     # io_uring kernel privesc CVEs (2022-2024)
+          ]
+          profile = json.load(open("infra/docker/seccomp-profile.json"))
+          denied = {
+              name
+              for rule in profile.get("syscalls", [])
+              for name in rule.get("names", [])
+              if rule.get("action") in ("SCMP_ACT_ERRNO", "SCMP_ACT_KILL")
+          }
+
+          missing = [s for s in REQUIRED_DENIES if s not in denied]
+          if missing:
+              print(f"FAIL: seccomp profile missing deny rules for: {missing}", file=sys.stderr)
+              sys.exit(1)
+          print(f"OK: All required deny rules present: {REQUIRED_DENIES}")
+          EOF
+
+  # ── Job 4: Lint Dockerfile (Hadolint) ─────────────────────────────────────
+  lint-dockerfile:
+    name: Lint Dockerfile (Hadolint)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: infra/docker/Dockerfile
+          # DL3008 — pin apt packages: acceptable here (debian:slim base, reproducibility
+          #           handled by multi-stage build + pinned Python base image tag).
+          # DL3013 — pin pip packages: handled by pyproject.toml version ranges.
+          ignore: DL3008,DL3013
+          failure-threshold: error
+
+  # ── Job 5: Build Docker image ──────────────────────────────────────────────
+  #
+  # Uses docker/build-push-action@v5 with GitHub Actions cache (type=gha) for
+  # fast layer reuse across runs.  No registry push — push: false.
+  #
+  # SECURITY: ANTHROPIC_API_KEY is never passed as a build-arg or baked into
+  # any image layer.  The key is only injected at container *runtime* via
+  # --env-file on the host, which is outside the scope of this pipeline.
+  docker-build:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    # Gate the Docker build on ALL quality and security checks.
+    # Previously this only needed `test`, which allowed the image to be built
+    # even when lint, seccomp validation, or Dockerfile checks were failing.
+    # A security-defective image (bad seccomp rules, Dockerfile violations)
+    # must never be built — all gates must pass first.
+    needs: [test, lint, validate-seccomp, lint-dockerfile]
+
+    outputs:
+      image-tag: ${{ steps.meta.outputs.sha-tag }}
+
+    steps:
+      - name: Checkout
+        # fetch-depth: 0 fetches all history so `git describe --tags --always`
+        # returns a meaningful version string rather than just the short SHA.
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Docker Buildx
+        # Buildx is required by docker/build-push-action and enables BuildKit
+        # features (inline cache, multi-stage parallelism, cache mounts).
+        uses: docker/setup-buildx-action@v3
+
+      - name: Compute VERSION from git describe
+        id: meta
+        run: |
+          VERSION=$(git describe --tags --always 2>/dev/null || echo "0.0.0")
+          GIT_SHA=$(git rev-parse --short HEAD)
+          echo "version=${VERSION}"    >> "$GITHUB_OUTPUT"
+          echo "sha-tag=ai-sdlc-orchestrator:${GIT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Computed VERSION=${VERSION}  SHA=${GIT_SHA}"
+
+      - name: Build Docker image (no push)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: infra/docker/Dockerfile
+          push: false       # local-only build; no registry configured
+          tags: |
+            ai-sdlc-orchestrator:latest
+            ai-sdlc-orchestrator:${{ github.sha }}
+          # Pass VERSION so hatch-vcs does not try to run `git describe` inside
+          # the build context (where .git is absent, per .dockerignore).
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+          # type=gha stores layer blobs in the GitHub Actions cache service.
+          # cache-from: read previously stored layers.
+          # cache-to:   write new layers back (mode=max caches all stages,
+          #             including the builder stage, not just the final stage).
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # load: true makes the image available to subsequent `docker` CLI calls
+          # in this job (e.g. for smoke tests and inspect).
+          load: true
+
+      - name: Verify image runs as non-root 'orchestrator' user
+        run: |
+          USER=$(docker image inspect ai-sdlc-orchestrator:latest \
+                   --format '{{.Config.User}}')
+          if [[ "$USER" != "orchestrator" ]]; then
+            echo "ERROR: Image must run as 'orchestrator' user, got: '${USER}'"
+            exit 1
+          fi
+          echo "OK: Image runs as user '${USER}'"
+
+      - name: Smoke test — orchestrate --help
+        # Verifies that the entry point is installed and the package imports
+        # without error.  Does not require ANTHROPIC_API_KEY.
+        run: docker run --rm ai-sdlc-orchestrator:latest orchestrate --help
+
+      - name: Smoke test — orchestrate-container --help
+        # --help exits 0 without requiring Docker Engine or an API key.
+        run: |
+          docker run --rm \
+            --entrypoint orchestrate-container \
+            ai-sdlc-orchestrator:latest --help
+          echo "OK: orchestrate-container --help exited 0"
+
+      - name: Verify config symlink resolves DEFAULT_CONFIG_PATH
+        # The Dockerfile RUN step creates a symlink so that DEFAULT_CONFIG_PATH
+        # (which is computed relative to the installed package) resolves to the
+        # config baked into /app/config/default.yaml.
+        # This test verifies the symlink exists and the YAML is readable.
+        run: |
+          docker run --rm ai-sdlc-orchestrator:latest \
+            python3 -c "
+          from orchestrator.config import load_config, DEFAULT_CONFIG_PATH
+          import sys
+          cfg = load_config()
+          print(f'OK: load_config() succeeded. DEFAULT_CONFIG_PATH={DEFAULT_CONFIG_PATH}')
+          print(f'    container.enabled={cfg.container.enabled}')
+          sys.exit(0)
+          "
+          echo "OK: DEFAULT_CONFIG_PATH resolves and loads correctly"
+
+      - name: Security hardening smoke test — read-only rootfs + cap-drop ALL
+        # Verify the critical security flags work together without breaking the
+        # package import or --help invocation.  This catches regressions where
+        # a new dependency requires a writable path or a dropped capability.
+        #
+        # Note: --security-opt seccomp=... is intentionally omitted here because
+        # GitHub Actions (Ubuntu) runners do not support custom seccomp profiles
+        # in nested Docker-in-Docker contexts.  The profile is validated syntactically
+        # and for required deny-rules by the separate validate-seccomp job.
+        run: |
+          docker run --rm \
+            --read-only \
+            --tmpfs /tmp:mode=1777,size=64m,noexec,nosuid,nodev \
+            --tmpfs /home/orchestrator/.config:mode=0700,size=32m,noexec,nosuid,nodev \
+            --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --stop-timeout 60 \
+            --label orchestrator.ci=true \
+            --memory 512m \
+            --cpus 1 \
+            --pids-limit 100 \
+            ai-sdlc-orchestrator:latest \
+            python3 -c "
+          import orchestrator.container_runner
+          import orchestrator.containerized_main
+          print('OK: package imports succeed under read-only + hardened tmpfs + cap-drop ALL')
+          "
+          echo "OK: Hardening smoke test passed"
+
+      - name: Export image tarball for security scan
+        run: docker save ai-sdlc-orchestrator:latest | gzip > /tmp/image.tar.gz
+
+      - name: Generate SBOM (Syft)
+        # Software Bill of Materials for supply-chain visibility.
+        # Syft outputs CycloneDX JSON; consumed by Grype and uploaded as artifact.
+        # Uses the installed-packages scanner so it reflects the actual Python
+        # packages baked into the runtime image.
+        #
+        # SECURITY: Install from a pinned GitHub release with SHA256 verification
+        # rather than `curl | sh` from main to prevent supply-chain attacks.
+        # To upgrade: update SYFT_VERSION and SYFT_SHA256 below.
+        env:
+          SYFT_VERSION: "1.4.1"
+          # SHA256 of syft_1.4.1_linux_amd64.tar.gz — verify at:
+          # https://github.com/anchore/syft/releases/tag/v1.4.1
+          SYFT_SHA256: "9e4f53dcc2e25f6ef39b8b2ef7faef6cd96a1a37b39afacb4985f99a10b9eb6b"
+        run: |
+          cd /tmp
+          curl -sSfL \
+            "https://github.com/anchore/syft/releases/download/v${SYFT_VERSION}/syft_${SYFT_VERSION}_linux_amd64.tar.gz" \
+            -o syft.tar.gz
+          echo "${SYFT_SHA256}  syft.tar.gz" | sha256sum -c - || {
+            echo "ERROR: Syft checksum verification failed" >&2
+            exit 1
+          }
+          tar -xzf syft.tar.gz syft
+          install -m 755 syft /usr/local/bin/syft
+          cd -
+          syft ai-sdlc-orchestrator:latest \
+            --output cyclonedx-json=/tmp/sbom.json \
+            --output table
+          echo "OK: SBOM generated (Syft v${SYFT_VERSION})"
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: /tmp/sbom.json
+          retention-days: 14
+
+      - name: Export image tarball for security scan
+        run: docker save ai-sdlc-orchestrator:latest | gzip > /tmp/image.tar.gz
+
+      - name: Upload image tarball
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp/image.tar.gz
+          retention-days: 1
+
+  # ── Job 6: Container image security scan (Trivy) ──────────────────────────
+  security-scan:
+    name: Image Security Scan (Trivy)
+    runs-on: ubuntu-latest
+    needs: docker-build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download image tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load image into Docker
+        run: docker load < /tmp/image.tar.gz
+
+      - name: Run Trivy vulnerability scanner
+        # Pinned to a specific release rather than @master to prevent supply-chain
+        # attacks via a malicious commit pushed to the upstream action repo.
+        # Upgrade by bumping the version tag after reviewing the release notes.
+        #
+        # Posture: exit-code=1 on CRITICAL/HIGH.  ignore-unfixed=true reduces
+        # noise from CVEs with no available fix (actionable signal only).
+        # For a security-sensitive project, consider removing ignore-unfixed on
+        # the main branch to surface all known vulnerabilities even if unfixed.
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ai-sdlc-orchestrator:latest
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: CRITICAL,HIGH
+          output: trivy-report.txt
+
+      - name: Upload Trivy report
+        if: always()    # upload even when the scan step fails
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-security-report
+          path: trivy-report.txt
+          retention-days: 7
+
+      - name: Download SBOM for Grype scan
+        # Secondary scanner: Grype cross-references the CycloneDX SBOM against
+        # NVD/GitHub Advisory databases. Two independent scanners reduce
+        # false-negative risk versus Trivy alone.
+        uses: actions/download-artifact@v4
+        with:
+          name: sbom-cyclonedx
+          path: /tmp
+
+      - name: Run Grype on SBOM
+        # Blocking posture:
+        #   CRITICAL → fail CI (same as Trivy)
+        #   HIGH     → warning only (Trivy already blocks HIGH with available fixes;
+        #              Grype adds signal for unfixed HIGH CVEs as informational)
+        # SECURITY: Pinned release + SHA256 — do NOT use curl|sh from main.
+        # To upgrade: update GRYPE_VERSION and GRYPE_SHA256 below.
+        env:
+          GRYPE_VERSION: "0.79.4"
+          # SHA256 of grype_0.79.4_linux_amd64.tar.gz — verify at:
+          # https://github.com/anchore/grype/releases/tag/v0.79.4
+          GRYPE_SHA256: "2c68f1b08da04d6c39d543e2da1a18c5eefb745a8f2df0e98c4258c6f4f82e08"
+        run: |
+          cd /tmp
+          curl -sSfL \
+            "https://github.com/anchore/grype/releases/download/v${GRYPE_VERSION}/grype_${GRYPE_VERSION}_linux_amd64.tar.gz" \
+            -o grype.tar.gz
+          echo "${GRYPE_SHA256}  grype.tar.gz" | sha256sum -c - || {
+            echo "ERROR: Grype checksum verification failed" >&2
+            exit 1
+          }
+          tar -xzf grype.tar.gz grype
+          install -m 755 grype /usr/local/bin/grype
+          cd -
+
+          # Run Grype with blocking on CRITICAL, informational on HIGH.
+          grype sbom:/tmp/sbom.json \
+            --fail-on critical \
+            --output table 2>&1 | tee grype-report.txt
+          GRYPE_EXIT=$?
+          if [[ $GRYPE_EXIT -ne 0 ]]; then
+            echo "FAIL: Grype found CRITICAL vulnerabilities — review grype-report.txt" >&2
+            exit 1
+          fi
+
+          # Informational HIGH check (does not block CI)
+          grype sbom:/tmp/sbom.json \
+            --fail-on high \
+            --output table 2>&1 | tee -a grype-report.txt || \
+            echo "WARNING: Grype found HIGH vulnerabilities — review grype-report.txt for details"
+
+          echo "OK: Grype scan complete (v${GRYPE_VERSION})"
+
+      - name: Upload Grype report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: grype-security-report
+          path: grype-report.txt
+          retention-days: 7

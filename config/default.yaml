@@ -20,6 +20,19 @@ checklist_verify: false            # use --no-checklist-verify to skip post-writ
 tech_stack_confirmation: true      # pause after Architecture to review proposed tech stack before implementation
 max_concurrent_agents: 100         # max parallel agents; set to 2-4 on low-resource machines
 
+# --- Containerized orchestration (ephemeral Docker isolation per run) ---
+container:
+  enabled: false                     # set to true to run each orchestration in an isolated Docker container
+  image: ai-sdlc-orchestrator:latest # Docker image to use; rebuild with infra/scripts/build-image.sh after code changes
+  memory_limit: 8g                   # container memory limit (Docker format: 512m, 4g, 8g)
+  cpu_limit: 4.0                     # container CPU limit (fractional cores)
+  pids_limit: 500                    # max processes/threads inside the container
+  network_mode: orchestrator-net     # Docker network; use 'bridge' with --no-network-isolation for unrestricted access
+  # seccomp_profile_path:            # absolute path to seccomp JSON; e.g. /abs/path/to/infra/docker/seccomp-profile.json
+  # apparmor_profile: ai-sdlc-orchestrator  # AppArmor profile name (Linux only; load first: sudo bash infra/scripts/load-apparmor-profile.sh)
+  # env_file:                        # path to .env file injected into the container; e.g. ~/.orchestrator.env
+  # extra_tmpfs: []                  # additional tmpfs mounts inside the container (e.g. [/var/tmp])
+
 # --- Exploration depth (how much codebase exploration agents perform) ---
 exploration:
   exploration_depth: normal          # none | minimal | normal | deep

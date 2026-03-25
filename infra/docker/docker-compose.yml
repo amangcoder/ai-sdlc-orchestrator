@@ -1,0 +1,106 @@
+# docker-compose.yml — Local development and testing configuration for the
+# containerized AI SDLC Orchestrator.
+#
+# USAGE:
+#   1. Create ~/.orchestrator.env with your API key:
+#        echo "ANTHROPIC_API_KEY=sk-ant-..." > ~/.orchestrator.env
+#        chmod 600 ~/.orchestrator.env
+#
+#   2. Run setup-network-policy.sh ONCE to create orchestrator-net + iptables rules:
+#        sudo bash infra/scripts/setup-network-policy.sh
+#
+#   3. Build the image:
+#        bash infra/scripts/build-image.sh
+#
+#   4. Run a containerized orchestration:
+#        docker compose run --rm orchestrator orchestrate "Build a todo app"
+#
+# NOTE: This file is for LOCAL DEV ONLY. Production deployments should use
+# orchestrate-container CLI or infra/scripts/run-containerized.sh.
+#
+# The `version:` top-level key is intentionally absent — it was deprecated in
+# Docker Compose v2 (docker compose plugin >= 2.0) and is ignored. Removing it
+# eliminates the deprecation warning emitted by modern Docker Desktop / Engine.
+
+networks:
+  # Custom bridge network with host iptables egress filtering.
+  # setup-network-policy.sh must be run once to apply iptables rules that
+  # restrict container egress to api.anthropic.com:443 only.
+  orchestrator-net:
+    external: true   # Created by setup-network-policy.sh, not managed here.
+    name: orchestrator-net
+
+services:
+  orchestrator:
+    image: ai-sdlc-orchestrator:latest
+
+    # ── Network isolation ──────────────────────────────────────────────────
+    networks:
+      - orchestrator-net
+
+    # ── Secrets — NEVER hardcode; use an env file outside the project root ──
+    # Create ~/.orchestrator.env containing: ANTHROPIC_API_KEY=sk-ant-...
+    # Then: chmod 600 ~/.orchestrator.env
+    env_file:
+      - path: ~/.orchestrator.env
+        required: true   # Fail fast if the secrets file is missing
+
+    # ── Resource limits ────────────────────────────────────────────────────
+    # These mirror the ContainerRuntime.build_run_args() defaults.
+    mem_limit: "8g"
+    memswap_limit: "8g"   # disables swap (memswap_limit == mem_limit → swap = 0)
+    cpus: 4
+    pids_limit: 500
+
+    # ── Security hardening ────────────────────────────────────────────────
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+      # Custom seccomp profile — blocks dangerous syscalls (ptrace, mount, bpf, kexec, etc.)
+      # IMPORTANT: Docker daemon resolves this path relative to the host CWD where
+      # `docker compose` is run, NOT relative to this file. The ${PWD} expansion
+      # produces an absolute path, which is unambiguous. Always run `docker compose`
+      # from the project root (where pyproject.toml lives).
+      - seccomp:${PWD}/infra/docker/seccomp-profile.json
+      # AppArmor profile (Linux only). Load with: sudo bash infra/scripts/load-apparmor-profile.sh
+      # After loading, uncomment the line below:
+      # - apparmor:ai-sdlc-orchestrator
+
+    # ── In-memory ephemeral mounts ────────────────────────────────────────
+    # All writable paths are tmpfs — destroyed on container exit.
+    # The bind-mount for run artifacts is configured per-run by ContainerRuntime.
+    #
+    # Security notes on mount options:
+    #   noexec — prevents executing binaries placed in tmpfs (defense against
+    #            fileless payload execution; orchestrator does not execute
+    #            binaries from /tmp or ~/.config).
+    #   nosuid — prevents setuid/setgid binaries from escalating privileges
+    #            (defense-in-depth alongside --cap-drop ALL).
+    #   nodev  — prevents device file creation in tmpfs (defense-in-depth
+    #            alongside the seccomp mknod denial).
+    tmpfs:
+      - /tmp:mode=1777,size=512m,noexec,nosuid,nodev
+      - /home/orchestrator/.config:mode=0700,size=64m,noexec,nosuid,nodev
+
+    # ── Logging ───────────────────────────────────────────────────────────
+    # Use the local log driver with a capped file size.  Logs are already
+    # streamed to host stdout; this prevents Docker's default json-file driver
+    # from accumulating unbounded log data on disk for long orchestration runs.
+    logging:
+      driver: "local"
+      options:
+        max-size: "50m"
+        max-file: "3"
+
+    # ── Init process ──────────────────────────────────────────────────────
+    # Ensures zombie processes from subprocesses inside the container are reaped.
+    init: true
+
+    # ── Graceful shutdown ─────────────────────────────────────────────────
+    # Give the orchestrator 60s to flush in-flight LLM API calls and artifact
+    # writes before Docker sends SIGKILL.  Mirrors --stop-timeout in build_run_args.
+    stop_grace_period: 60s
+
+    # ── Default command override ──────────────────────────────────────────
+    # Override at run time: docker compose run orchestrator orchestrate "..."
+    command: ["orchestrate", "--help"]
