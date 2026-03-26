@@ -38,6 +38,7 @@ _CRASH_SIGNALS = "SIGKILL, SIGSEGV, SIGABRT, SIGBUS"
 def _validate_state_file(workspace_dir: str = "workspace") -> bool:
     """Validate that the state file exists and contains valid JSON.
 
+    Also checks for crash indicators and logs diagnostic info if crash detected.
     Returns True if the state file is valid and resumable, False otherwise.
     """
     from pathlib import Path
@@ -52,6 +53,26 @@ def _validate_state_file(workspace_dir: str = "workspace") -> bool:
         if not isinstance(data, dict):
             logger.warning(f"State file is not a JSON object: {state_path}")
             return False
+
+        # Check for crash indicators
+        try:
+            from orchestrator.models import RunState
+            from orchestrator.crash_recovery import detect_crash
+
+            state = RunState.model_validate(data)
+            crash = detect_crash(state)
+            if crash:
+                logger.warning(
+                    f"Crash detected in saved state: "
+                    f"step='{crash.step_at_crash}', "
+                    f"tasks_in_progress={len(crash.tasks_in_progress)}, "
+                    f"cost_at_crash=${crash.cost_at_crash:.4f}"
+                )
+                if crash.last_heartbeat:
+                    logger.info(f"Last heartbeat: {crash.last_heartbeat.isoformat()}")
+        except Exception as exc:
+            logger.debug(f"Could not analyze crash state: {exc}")
+
         return True
     except (json.JSONDecodeError, OSError) as exc:
         logger.warning(f"State file is corrupt or unreadable: {state_path} — {exc}")

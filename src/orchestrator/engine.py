@@ -33,6 +33,11 @@ from orchestrator.research_cache import (
     get_research_mcp_config,
     save_entry,
 )
+from orchestrator.crash_recovery import (
+    CrashRecoveryManager,
+    detect_crash,
+    recover_from_crash,
+)
 from orchestrator.models import (
     EngTaskState,
     Finding,
@@ -182,7 +187,18 @@ class OrchestratorEngine:
                 )
         else:
             state = None
+        _crash_recovered = False
         if state:
+            # Detect and recover from crash before resuming
+            crash = detect_crash(state)
+            if crash:
+                logger.warning(
+                    f"Crash detected for run {state.run_id}: "
+                    f"PID {crash.crashed_pid} died at step '{crash.step_at_crash}' "
+                    f"with {len(crash.tasks_in_progress)} tasks in progress"
+                )
+                recover_from_crash(state, self.project_root)
+                _crash_recovered = True
             logger.info(f"Resuming run {state.run_id} — skipping completed phases: "
                         f"{[p for p, s in state.phases.items() if s.status == PhaseStatus.COMPLETED]}")
         else:
@@ -206,6 +222,11 @@ class OrchestratorEngine:
             (workspace / "artifacts").mkdir(exist_ok=True)
             (workspace / "logs").mkdir(exist_ok=True)
 
+        # Save recovered state now that workspace is resolved
+        if _crash_recovered:
+            from orchestrator.persistence import save_run_state
+            save_run_state(state, workspace)
+
         # Detect config changes between runs
         current_hash = hashlib.md5(
             json.dumps(self.config.model_dump(), sort_keys=True, default=str).encode()
@@ -215,6 +236,10 @@ class OrchestratorEngine:
         state.config_hash = current_hash
 
         self.run_logger = RunLogger(workspace / "logs", state.run_id)
+
+        # Activate crash recovery: PID tracking, heartbeat, signal handlers
+        self._crash_manager = CrashRecoveryManager(state, workspace, self.run_logger)
+        self._crash_manager.activate()
 
         # Register in global registry so the mobile API can discover this run
         # regardless of whether it was started from CLI, IDE, or mobile app.
@@ -358,6 +383,9 @@ class OrchestratorEngine:
             "workflow_type": state.workflow_type.value,
         })
 
+        # Start heartbeat loop for crash detection
+        await self._crash_manager.start_heartbeat()
+
         from orchestrator.models import RunStatus
 
         # Optional debate phase — runs before the main pipeline
@@ -409,6 +437,10 @@ class OrchestratorEngine:
             await self._run_legacy(state, workspace, feature_request, single_phase, from_phase, resume)
         else:
             await self._run_workflow(state, workspace, feature_request, custom_workflow)
+
+        # Stop heartbeat and clear crash-recovery fields on clean completion
+        await self._crash_manager.stop_heartbeat()
+        self._crash_manager.deactivate()
 
         self.run_logger.log_event("run_complete", {
             "total_cost_usd": state.total_cost_usd,
@@ -481,6 +513,7 @@ class OrchestratorEngine:
             dry_run=self.dry_run,
             interrupt_manager=self.interrupt_manager,
             confirm_callback=self.confirm_callback,
+            crash_manager=self._crash_manager,
         )
 
         await engine.execute()
