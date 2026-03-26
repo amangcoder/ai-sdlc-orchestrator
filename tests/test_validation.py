@@ -88,6 +88,72 @@ class TestValidateArtifactFile:
         assert reloaded["verdict"] == "reject"
 
 
+class TestFixInvalidJsonEscapes:
+    """Verify _fix_invalid_json_escapes handles edge cases correctly."""
+
+    def test_simple_invalid_escape(self):
+        from orchestrator.validation import _fix_invalid_json_escapes
+        raw = r'{"desc": "the \escape"}'
+        assert json.loads(_fix_invalid_json_escapes(raw))["desc"] == "the \\escape"
+
+    def test_valid_double_backslash_not_corrupted(self):
+        from orchestrator.validation import _fix_invalid_json_escapes
+        raw = r'{"path": "src\\orchestrator\\phases.py"}'
+        fixed = _fix_invalid_json_escapes(raw)
+        parsed = json.loads(fixed)
+        assert parsed["path"] == "src\\orchestrator\\phases.py"
+
+    def test_mixed_valid_and_invalid_escapes(self):
+        from orchestrator.validation import _fix_invalid_json_escapes
+        raw = r'{"desc": "C:\\src\escape"}'
+        fixed = _fix_invalid_json_escapes(raw)
+        parsed = json.loads(fixed)
+        assert parsed["desc"] == "C:\\src\\escape"
+
+    def test_valid_escapes_preserved(self):
+        from orchestrator.validation import _fix_invalid_json_escapes
+        raw = r'{"desc": "line1\nline2\ttab"}'
+        fixed = _fix_invalid_json_escapes(raw)
+        parsed = json.loads(fixed)
+        assert parsed["desc"] == "line1\nline2\ttab"
+
+    def test_unicode_escape_preserved(self):
+        from orchestrator.validation import _fix_invalid_json_escapes
+        raw = r'{"desc": "\u0041"}'
+        fixed = _fix_invalid_json_escapes(raw)
+        assert json.loads(fixed)["desc"] == "A"
+
+    def test_invalid_unicode_like_escape_fixed(self):
+        from orchestrator.validation import _fix_invalid_json_escapes
+        raw = r'{"desc": "\users/admin"}'
+        fixed = _fix_invalid_json_escapes(raw)
+        parsed = json.loads(fixed)
+        assert parsed["desc"] == "\\users/admin"
+
+    def test_already_valid_json_unchanged(self):
+        from orchestrator.validation import _fix_invalid_json_escapes
+        raw = '{"desc": "hello world"}'
+        assert _fix_invalid_json_escapes(raw) == raw
+
+    def test_multiple_invalid_escapes(self):
+        from orchestrator.validation import _fix_invalid_json_escapes
+        raw = r'{"a": "\escape \path \something"}'
+        fixed = _fix_invalid_json_escapes(raw)
+        parsed = json.loads(fixed)
+        assert "\\escape" in parsed["a"]
+
+    def test_auto_fix_during_validation(self, tmp_workspace):
+        """validate_artifact_file should auto-fix invalid escapes on disk."""
+        path = tmp_workspace / "artifacts" / "review.json"
+        # Write JSON with an invalid \e escape
+        path.write_text(
+            '{"verdict": "approve", "issues": [], '
+            '"summary": "Looks good, no \\escapes needed in this codebase."}'
+        )
+        result = validate_artifact_file(path, "review")
+        assert result.valid, result.errors
+
+
 class TestSchemaDrift:
     """Ensure on-disk JSON schemas match Pydantic models.
 

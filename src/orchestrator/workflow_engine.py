@@ -37,7 +37,7 @@ from orchestrator.research_cache import (
 from orchestrator.observability import RunLogger
 from orchestrator.progress import ProgressTracker
 from orchestrator.roles import get_role, role_to_legacy_agent_name, validate_role_access
-from orchestrator.validation import validate_artifact_file
+from orchestrator.validation import _fix_invalid_json_escapes, validate_artifact_file
 
 logger = logging.getLogger(__name__)
 
@@ -363,7 +363,11 @@ def _rescue_artifacts_from_output(
         try:
             data = json.loads(block)
         except json.JSONDecodeError:
-            continue
+            # Try fixing invalid escape sequences before giving up
+            try:
+                data = json.loads(_fix_invalid_json_escapes(block))
+            except json.JSONDecodeError:
+                continue
         if not isinstance(data, dict):
             continue
         match = _match_json_to_artifact(data, remaining)

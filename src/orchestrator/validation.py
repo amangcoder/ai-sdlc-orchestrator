@@ -54,14 +54,23 @@ def normalize_artifact_keys(data: Any) -> Any:
 
 
 def _fix_invalid_json_escapes(raw: str) -> str:
-    """Fix invalid backslash escape sequences in JSON strings.
+    r"""Fix invalid backslash escape sequences in JSON strings.
 
-    LLMs sometimes produce escapes like \\e, \\s, \\a etc. that are not
-    valid in JSON.  This replaces them with double-backslash so that the
-    literal character is preserved (e.g. \\e → \\\\e).
+    LLMs sometimes produce escapes like ``\e``, ``\s``, ``\a`` etc. that
+    are not valid in JSON.  This doubles the backslash so the literal
+    character is preserved (e.g. ``\e`` → ``\\e``).
+
+    The regex consumes *valid* escape sequences first (``\\``, ``\n``,
+    ``\uXXXX``, etc.) so that already-doubled backslashes are not
+    corrupted.  Without this two-alternative approach the naïve regex
+    ``\\(?![...])`` would match the second backslash in a ``\\s``
+    sequence and turn it into ``\\\s`` (still invalid).
     """
-    # Valid JSON escapes: \", \\, \/, \b, \f, \n, \r, \t, \uXXXX
-    return re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', raw)
+    return re.sub(
+        r'\\(\\|["\\/bfnrt]|u[0-9a-fA-F]{4})|\\(.)',
+        lambda m: m.group(0) if m.group(1) is not None else '\\\\' + m.group(2),
+        raw,
+    )
 
 
 def _normalize_artifact_values(data: dict, artifact_name: str) -> dict:
