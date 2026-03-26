@@ -88,7 +88,10 @@ class InterruptManager:
         self._reason = None
 
     def setup_signal_handler(self) -> None:
-        """Register SIGINT handler on the current asyncio event loop.
+        """Register SIGINT and SIGTERM handlers on the current asyncio event loop.
+
+        SIGINT (Ctrl+C) triggers graceful interrupt. SIGTERM (docker stop, kill -TERM)
+        also triggers interrupt for graceful shutdown before crash handler takes over.
 
         Must be called from within a running event loop (i.e., inside an async function).
         Falls back to signal.signal() if no event loop is available.
@@ -96,18 +99,21 @@ class InterruptManager:
         try:
             loop = asyncio.get_running_loop()
             loop.add_signal_handler(signal.SIGINT, self.request_interrupt)
-            logger.info("Interrupt handler registered (asyncio)")
+            loop.add_signal_handler(signal.SIGTERM, lambda: self.request_interrupt(reason="sigterm"))
+            logger.info("Interrupt handler registered (asyncio: SIGINT, SIGTERM)")
         except RuntimeError:
             # No running loop — use traditional signal handler
             self._original_handler = signal.getsignal(signal.SIGINT)
             signal.signal(signal.SIGINT, lambda *_: self.request_interrupt())
-            logger.info("Interrupt handler registered (signal)")
+            signal.signal(signal.SIGTERM, lambda *_: self.request_interrupt(reason="sigterm"))
+            logger.info("Interrupt handler registered (signal: SIGINT, SIGTERM)")
 
     def restore_signal_handler(self) -> None:
-        """Restore the original SIGINT handler."""
+        """Restore the original SIGINT and SIGTERM handlers."""
         try:
             loop = asyncio.get_running_loop()
             loop.remove_signal_handler(signal.SIGINT)
+            loop.remove_signal_handler(signal.SIGTERM)
         except (RuntimeError, ValueError):
             pass
         if self._original_handler is not None:

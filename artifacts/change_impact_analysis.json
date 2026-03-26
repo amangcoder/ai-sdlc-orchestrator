@@ -1,0 +1,306 @@
+{
+  "summary": "Adding a two-tier persistent research cache feature that touches 14+ files across 5 modules: new Pydantic models in models.py (consumed by 33+ callers of OrchestratorConfig), new research_cache.py module mirroring test_runner.py, engine integration in engine.py and workflow_engine.py (_mcp_servers property change affects all agent invocations), prompt injection in phases.py (affects 3 phase prompt builders), config loading via default.yaml, a new Node.js MCP server, and 4 agent definition file updates. The change is architecturally additive (new optional fields with safe defaults, graceful degradation) but the blast radius spans the entire agent invocation path. The pre-existing WorkflowEngine._mcp_servers asymmetry (knowledge-only, missing test_runner) compounds the risk — fixing it as part of this feature changes MCP tool availability for all workflow-mode agents.",
+  "overall_risk": "medium",
+  "change_surface": [
+    {
+      "module": "src/orchestrator/models.py",
+      "change_type": "additive",
+      "description": "Add 5 new Pydantic BaseModel classes (ResearchCacheConfig, ResearchCacheContext, ResearchEntry, Finding, ResearchCache) and 2 new fields to OrchestratorConfig (research_cache, research_cache_context). All have safe defaults — OrchestratorConfig() with no args continues to work. Models.py has 153 exports and is imported by virtually every module in the codebase."
+    },
+    {
+      "module": "config/default.yaml",
+      "change_type": "additive",
+      "description": "Add research_cache YAML section with 11 keys after the test_runner block. Additive-only — no existing keys are modified. Affects config loading path: load_config() → OrchestratorConfig validation."
+    },
+    {
+      "module": "src/orchestrator/research_cache.py",
+      "change_type": "additive",
+      "description": "New file — implements MCP integration functions (get_research_mcp_config, ensure_research_mcp_config, cleanup_research_mcp_config), cache operations (load_cache, lookup, save_entry, extract_research_from_artifact), and findings accumulator (flag_finding, format_recommendations). Mirrors test_runner.py pattern exactly. No existing files modified — pure addition."
+    },
+    {
+      "module": "../sdlc-mcp-servers/research-cache/",
+      "change_type": "additive",
+      "description": "New Node.js MCP server directory — package.json, index.js, README.md. Exposes 4 tools: lookup_research, save_research, flag_finding, get_run_recommendations. External to main codebase. Writes to ~/.orchestrator/research/ (global) and .knowledge/research/ (project) directories."
+    },
+    {
+      "module": "src/orchestrator/engine.py",
+      "change_type": "behavioral_change",
+      "description": "Add research cache lifecycle to OrchestratorEngine: (1) new self._research_mcp_config instance var in __init__, (2) initialization after test_runner setup in run(), (3) merge into _mcp_servers property, (4) post-phase artifact extraction when auto_extract=True, (5) end-of-run recommendations output, (6) cleanup in finally block. engine.py's run() method (275 lines) gains ~30 lines of research cache integration code. The _mcp_servers property change affects ALL agent invocations in both legacy and workflow mode."
+    },
+    {
+      "module": "src/orchestrator/workflow_engine.py",
+      "change_type": "behavioral_change",
+      "description": "Expand _mcp_servers property (line 635) to merge research-cache config AND fix pre-existing asymmetry by also merging test_runner config. This is both a new feature integration and a bug fix — workflow-mode agents will now have access to test_runner AND research-cache MCP tools that they previously lacked. Also adds post-phase extraction in task completion path and cleanup in teardown."
+    },
+    {
+      "module": "src/orchestrator/main.py",
+      "change_type": "additive",
+      "description": "Add recommendations printing after _print_summary when research_cache_context.findings is non-empty. Guarded by null check — no behavioral change when feature is disabled."
+    },
+    {
+      "module": "src/orchestrator/phases.py",
+      "change_type": "behavioral_change",
+      "description": "Add _inject_research_context() function and update _inject_mcp_role_guidance() to include research-cache tools (lookup_research, save_research, flag_finding) in MCP tool table. Affects prompt content for 3 roles: pm, architect, principal_engineer. Prompt content changes for all runs where research cache is enabled (default: true)."
+    },
+    {
+      "module": ".claude/agents/deep_researcher.md",
+      "change_type": "additive",
+      "description": "Add Research Cache usage section instructing agent to call lookup_research before researching, save_research after fresh research, flag_finding for actionable issues."
+    },
+    {
+      "module": ".claude/agents/market_researcher.md",
+      "change_type": "additive",
+      "description": "Add Research Cache usage section with project-tier guidance for market/competitor data."
+    },
+    {
+      "module": ".claude/agents/competitor_researcher.md",
+      "change_type": "additive",
+      "description": "Add Research Cache usage section with project-tier guidance."
+    },
+    {
+      "module": ".claude/agents/architect.md",
+      "change_type": "additive",
+      "description": "Add Research Cache usage section with global-tier guidance for tech decisions and architecture patterns."
+    }
+  ],
+  "downstream_impacts": [
+    {
+      "id": "IMPACT-001",
+      "affected_module": "All agent invocations (via _mcp_servers property)",
+      "risk_level": "high",
+      "impact_type": "behavioral_change",
+      "description": "The _mcp_servers property in both engine.py and workflow_engine.py is read by EVERY agent invocation to determine available MCP tools. Adding 'research-cache' to this dict means all agents (not just the 3 targeted roles) will have access to lookup_research, save_research, flag_finding, and get_run_recommendations tools. While only pm/architect/principal_engineer receive prompt injection encouraging cache use, any agent could discover and call these tools. The WorkflowEngine fix also adds test_runner tools to workflow-mode agents for the first time.",
+      "requires_update": false,
+      "migration_steps": [
+        "Verify _mcp_servers merge uses null-guard pattern: only merge when config.research_cache_context and config.research_cache_context.mcp_server_config is not None",
+        "Verify workflow-mode test suite passes with new test_runner merge (pre-existing gap being fixed)",
+        "Verify agent invocations handle gracefully when MCP server binary is absent (tools not available)"
+      ]
+    },
+    {
+      "id": "IMPACT-002",
+      "affected_module": "tests/test_models.py — OrchestratorConfig tests",
+      "risk_level": "medium",
+      "impact_type": "behavioral_change",
+      "description": "OrchestratorConfig gains two new fields (research_cache: ResearchCacheConfig, research_cache_context: ResearchCacheContext | None). Any test that instantiates OrchestratorConfig() and asserts on its field list, serialized output, or model_dump() keys will see new fields. Tests that use _make_config() pattern are safe since they pass explicit kwargs. Tests that assert config.model_dump() == expected_dict will fail unless updated. The existing TestOrchestratorConfigDefaults already has test_research_cache_config_defaults and test_research_cache_context_is_none_by_default tests present, suggesting models.py has already been partially updated.",
+      "requires_update": true,
+      "migration_steps": [
+        "Verify existing OrchestratorConfig tests pass with new default fields (additive change should be safe)",
+        "Update any tests that assert exact field sets or model_dump() equality to include new fields",
+        "Confirm _make_config() pattern works without needing research_cache kwarg"
+      ]
+    },
+    {
+      "id": "IMPACT-003",
+      "affected_module": "src/orchestrator/config.py (load_config function)",
+      "risk_level": "medium",
+      "impact_type": "behavioral_change",
+      "description": "load_config() reads YAML and constructs OrchestratorConfig. Adding research_cache section to default.yaml means load_config now parses 11 additional keys. If the YAML section has type mismatches (e.g., string instead of int for base_ttl_days), Pydantic validation will raise ConfigurationError. The load_config function is called by 31+ callers including main.py, dashboard/runner.py, mobile_api/app.py, and 20+ test fixtures.",
+      "requires_update": false,
+      "migration_steps": [
+        "Verify default.yaml values exactly match ResearchCacheConfig field defaults and types",
+        "Run existing config loading tests to confirm no regressions",
+        "Verify load_config handles missing research_cache section gracefully (uses Pydantic defaults)"
+      ]
+    },
+    {
+      "id": "IMPACT-004",
+      "affected_module": "tests/test_config.py — config loading tests",
+      "risk_level": "low",
+      "impact_type": "behavioral_change",
+      "description": "TestLoadConfig* test classes use load_config() with YAML fixtures. If any test provides a YAML string that is parsed by the updated config model, the new research_cache defaults will be present in the resulting config object. Tests that assert specific field values (not exhaustive equality) are safe. 30+ test methods in this file.",
+      "requires_update": false,
+      "migration_steps": [
+        "Run tests/test_config.py and verify all pass without modification",
+        "If any test uses exact dict comparison on config output, add research_cache to expected output"
+      ]
+    },
+    {
+      "id": "IMPACT-005",
+      "affected_module": "tests/test_engine.py — engine initialization tests",
+      "risk_level": "medium",
+      "impact_type": "behavioral_change",
+      "description": "Engine tests create OrchestratorEngine instances with mock configs. The new __init__ code adds self._research_mcp_config = None. Tests that mock or inspect engine internals may need to account for the new attribute. The _mcp_servers property change affects any test that verifies MCP server availability. 27+ callers of engine.run() in tests.",
+      "requires_update": false,
+      "migration_steps": [
+        "Verify existing engine tests pass — new code paths are guarded by config.research_cache.enabled check",
+        "Tests with research_cache.enabled=True (default) and no MCP binary should see graceful degradation log",
+        "Tests that mock _mcp_servers may need updating if they assert exact server dict contents"
+      ]
+    },
+    {
+      "id": "IMPACT-006",
+      "affected_module": "tests/test_phases.py — prompt builder tests",
+      "risk_level": "medium",
+      "impact_type": "behavioral_change",
+      "description": "Prompt builder tests verify output content of build_pm_prompt(), build_architect_prompt(), build_principal_engineer_prompt(). With research cache enabled by default (and mcp_configured dependent on runtime state), these prompts may now include research cache sections with 'lookup_research' text. Tests that assert exact prompt content or check for absence of unexpected sections may need updates.",
+      "requires_update": true,
+      "migration_steps": [
+        "Run tests/test_phases.py and check for failures in prompt content assertions",
+        "Update prompt tests to account for optional research cache section (present when mcp_configured=True)",
+        "Verify _inject_research_context returns empty string when research_cache_context is None (default in tests)"
+      ]
+    },
+    {
+      "id": "IMPACT-007",
+      "affected_module": "src/orchestrator/mobile_api/app.py — Mobile API server",
+      "risk_level": "low",
+      "impact_type": "behavioral_change",
+      "description": "Mobile API creates OrchestratorConfig via load_config(). The config object now includes research_cache fields. If the Mobile API serializes config to JSON for API responses (e.g., GET /config endpoint), the response payload will include new research_cache fields. This is additive but may affect mobile clients that strictly validate response schemas.",
+      "requires_update": false,
+      "migration_steps": [
+        "Check if mobile API exposes OrchestratorConfig in any endpoint response",
+        "If so, verify mobile client (Flutter app) handles unknown fields gracefully",
+        "No action needed if config is only used server-side for orchestration"
+      ]
+    },
+    {
+      "id": "IMPACT-008",
+      "affected_module": "src/orchestrator/dashboard/runner.py — Dashboard runner",
+      "risk_level": "low",
+      "impact_type": "behavioral_change",
+      "description": "Dashboard runner uses load_config() and creates OrchestratorEngine. Research cache lifecycle will execute during dashboard-initiated runs. When MCP binary is absent, a warning log will appear. The RunTracker may surface new research-related status information.",
+      "requires_update": false,
+      "migration_steps": [
+        "Verify dashboard runs complete without error when research cache MCP binary is absent",
+        "Confirm warning log appears in dashboard log output (not as user-facing error)"
+      ]
+    },
+    {
+      "id": "IMPACT-009",
+      "affected_module": "Filesystem: ~/.orchestrator/research/ and .knowledge/research/",
+      "risk_level": "medium",
+      "impact_type": "data_integrity",
+      "description": "New directories and JSON files created on the filesystem. Global tier writes to user home directory (~/.orchestrator/research/index.json, entries/*.json). Project tier writes to project directory (.knowledge/research/). Both the Python-side save_entry() and Node.js MCP server write to these same files, creating a dual-writer scenario. Index.json corruption is possible under concurrent access from both writers, though Python-side writes only occur between phases (sequential).",
+      "requires_update": false,
+      "migration_steps": [
+        "Ensure .knowledge/ is in .gitignore (project-tier cache should not be committed)",
+        "Verify atomic write pattern (write to .tmp then rename) in both Python and Node.js implementations",
+        "Document dual-writer constraint: Python-side save_entry() must not run during parallel agent execution"
+      ]
+    },
+    {
+      "id": "IMPACT-010",
+      "affected_module": "Project .mcp.json file",
+      "risk_level": "medium",
+      "impact_type": "data_integrity",
+      "description": "ensure_research_mcp_config() writes 'research-cache' entry to project's .mcp.json, and cleanup_research_mcp_config() removes it. This is the same file that test_runner writes to. Both cleanup functions must not corrupt each other's entries. The cleanup function must handle the case where .mcp.json was modified externally between ensure and cleanup.",
+      "requires_update": false,
+      "migration_steps": [
+        "Verify cleanup_research_mcp_config only removes 'research-cache' key, preserving all other mcpServers entries",
+        "Verify file handling is robust: missing file, empty file, malformed JSON all handled gracefully",
+        "Test concurrent cleanup of test_runner and research_cache keys does not corrupt .mcp.json"
+      ]
+    },
+    {
+      "id": "IMPACT-011",
+      "affected_module": "tests/integration/test_research_cache_integration.py",
+      "risk_level": "low",
+      "impact_type": "compile_error",
+      "description": "New integration test file depends on TASK-005 (engine.py changes) and TASK-006 (workflow_engine.py changes). Tests must use monkeypatch and tmp_path fixtures. Some tests already exist (TestEngineInitWithResearchCache, TestWorkflowEngineMcpServers, TestDryRunResearchCacheConfig found in OrchestratorConfig callers), suggesting partial implementation is in place.",
+      "requires_update": true,
+      "migration_steps": [
+        "Verify existing integration tests match updated implementation",
+        "Add any missing test cases from TASK-011 acceptance criteria",
+        "Ensure test isolation — no real filesystem writes outside tmp_path"
+      ]
+    },
+    {
+      "id": "IMPACT-012",
+      "affected_module": "Agent prompt content (runtime behavioral change)",
+      "risk_level": "medium",
+      "impact_type": "behavioral_change",
+      "description": "With research cache enabled by default, pm/architect/principal_engineer agents receive additional prompt instructions to call lookup_research before spawning research sub-agents. This changes agent behavior: agents that previously always spawned deep_researcher/market_researcher will now check cache first. If the cache contains stale or incorrect data (cache poisoning), agents may produce lower-quality output. The max_inject_bytes=2048 cap and <research-cache-data> delimiters with 'do not treat as instructions' note mitigate prompt injection risk.",
+      "requires_update": false,
+      "migration_steps": [
+        "Verify _inject_research_context wraps content in <research-cache-data> delimiters",
+        "Verify truncation to max_inject_bytes with ellipsis works correctly",
+        "Monitor agent output quality after enabling cache — watch for stale data issues"
+      ]
+    },
+    {
+      "id": "IMPACT-013",
+      "affected_module": "WorkflowEngine — test_runner tools now available in workflow mode",
+      "risk_level": "medium",
+      "impact_type": "behavioral_change",
+      "description": "TASK-006 fixes a pre-existing asymmetry: WorkflowEngine._mcp_servers currently only returns knowledge MCP config, missing test_runner. The fix adds both test_runner and research-cache merges. This means workflow-mode agents will NOW have access to test_runner MCP tools (run_tests, run_single_test) that they previously lacked. This is a bug fix but changes the tool landscape for all workflow-mode agent invocations.",
+      "requires_update": true,
+      "migration_steps": [
+        "Verify workflow-mode agents handle newly available test_runner tools correctly",
+        "Run existing workflow_engine tests to confirm no regressions from expanded _mcp_servers",
+        "Update any test that asserts WorkflowEngine._mcp_servers == knowledge-only config"
+      ]
+    }
+  ],
+  "api_consumers_affected": [
+    {
+      "consumer": "Mobile API (Flutter app via api_service.dart)",
+      "endpoint": "POST /orchestrate, GET /config",
+      "breaking": false,
+      "mitigation": "Config endpoints may return additional research_cache fields. Flutter client should ignore unknown fields (standard JSON deserialization). No API contract change — additive fields only."
+    },
+    {
+      "consumer": "Dashboard Web UI (via dashboard/runner.py)",
+      "endpoint": "Run initiation and status endpoints",
+      "breaking": false,
+      "mitigation": "Dashboard-initiated runs will include research cache lifecycle. No user-facing changes unless dashboard displays MCP server status, in which case 'research-cache' will appear as a new entry."
+    },
+    {
+      "consumer": "CLI (main.py orchestrate command)",
+      "endpoint": "orchestrate --dry-run, orchestrate <feature>",
+      "breaking": false,
+      "mitigation": "CLI output will include 'Recommendations:' section at end of run when findings exist. --dry-run will show research-cache in merged MCP config. Both are additive output changes."
+    }
+  ],
+  "deployment_constraints": {
+    "atomic_changes": [
+      ["src/orchestrator/models.py", "config/default.yaml"],
+      ["src/orchestrator/engine.py", "src/orchestrator/research_cache.py"],
+      ["src/orchestrator/workflow_engine.py", "src/orchestrator/research_cache.py"],
+      ["src/orchestrator/phases.py", "src/orchestrator/models.py"]
+    ],
+    "migration_order": [
+      "1. Deploy models.py + default.yaml (data foundation — additive, zero blast radius)",
+      "2. Deploy research_cache.py (new module — no callers yet, safe to deploy independently)",
+      "3. Build and deploy Node.js MCP server at ../sdlc-mcp-servers/research-cache/ (npm install && npm run build)",
+      "4. Deploy engine.py + workflow_engine.py changes (wires up research cache lifecycle)",
+      "5. Deploy phases.py changes (enables prompt injection for pm/architect/principal_engineer)",
+      "6. Deploy main.py changes (enables end-of-run recommendations output)",
+      "7. Deploy agent .md file updates (enables agent-side cache-first behavior)",
+      "8. Deploy test files (verification layer)"
+    ],
+    "rollback_plan": "The feature is designed for safe rollback at any stage: (1) Set research_cache.enabled=false in default.yaml to disable entirely without code changes — all code paths null-guard on research_cache_context. (2) If models.py changes cause issues, revert models.py + default.yaml together. (3) If engine.py changes cause issues, revert engine.py — the null-guard pattern means missing research_cache_context causes silent skip. (4) The Node.js MCP server is external — removing it causes graceful degradation (warning log, no crash). (5) Cache data in ~/.orchestrator/research/ and .knowledge/research/ is inert when feature is disabled — no cleanup needed. (6) .mcp.json entries are cleaned up by cleanup_research_mcp_config; if cleanup didn't run, manually remove 'research-cache' key from .mcp.json.",
+    "feature_flags_needed": [
+      "research_cache.enabled (bool, default true) — master kill switch for entire feature, already built into ResearchCacheConfig",
+      "research_cache.auto_extract (bool, default true) — controls post-phase artifact extraction independently",
+      "research_cache.cleanup_mcp_config (bool, default true) — controls .mcp.json cleanup independently"
+    ]
+  },
+  "coordination_needed": [
+    {
+      "team_or_service": "Node.js MCP server build pipeline",
+      "reason": "The research-cache MCP server at ../sdlc-mcp-servers/research-cache/ must be built (npm install && npm run build) before the Python orchestrator can use it. Without the built dist/index.js, the feature silently degrades.",
+      "action_required": "Add research-cache to CI/CD build pipeline alongside existing test-runner MCP server. Ensure npm install && npm run build runs in the sdlc-mcp-servers/research-cache/ directory."
+    },
+    {
+      "team_or_service": "Mobile API consumers (Flutter app)",
+      "reason": "OrchestratorConfig now includes research_cache fields. If the mobile API exposes config objects in responses, the Flutter client will see new fields.",
+      "action_required": "Verify Flutter app's JSON deserialization ignores unknown fields (standard behavior for most JSON libraries). No code change expected unless strict schema validation is used."
+    },
+    {
+      "team_or_service": "Existing test suite maintenance",
+      "reason": "33+ callers of OrchestratorConfig, 27+ callers of engine.run(), and 30+ config loading tests may be affected by new default fields. Tests with _make_config() pattern are safe; tests with exact equality checks need updates.",
+      "action_required": "Run full test suite (pytest) after models.py changes to identify any tests that need updating for new default fields. Priority: tests/test_models.py, tests/test_config.py, tests/test_engine.py, tests/test_phases.py."
+    }
+  ],
+  "recommendations": [
+    "1. [HIGH] Run full test suite after TASK-001 (models.py changes) to catch any OrchestratorConfig equality assertions that break with new fields — this is the highest-risk additive change since OrchestratorConfig has 33+ callers across the codebase.",
+    "2. [HIGH] Implement TASK-006 (workflow_engine.py) carefully — it fixes a pre-existing _mcp_servers asymmetry that changes tool availability for ALL workflow-mode agents. Run workflow_engine tests before and after to compare behavior.",
+    "3. [HIGH] Verify dual-writer safety: Python-side save_entry() (post-phase extraction) and Node.js MCP server save_research both write to the same index.json files. Ensure Python-side writes only occur between phases (not during parallel agent execution).",
+    "4. [MEDIUM] Test graceful degradation paths thoroughly: research_cache.enabled=false, MCP binary missing, research_cache_context=None. Every code path that accesses research_cache_context must null-guard. Missing guards cause AttributeError at runtime.",
+    "5. [MEDIUM] Verify .mcp.json multi-writer safety: both test_runner and research_cache cleanup functions modify the same .mcp.json file. Test that concurrent cleanup of both keys preserves file integrity.",
+    "6. [MEDIUM] Monitor prompt size impact: _inject_research_context adds up to max_inject_bytes=2048 bytes to phase prompts. Combined with existing knowledge context and MCP guidance injections, verify total prompt size stays within Claude context limits.",
+    "7. [LOW] Add .knowledge/research/ to .gitignore template if not already present — project-tier cache files should not be committed to version control.",
+    "8. [LOW] Consider adding a 'cache clear' CLI command (orchestrate --clear-research-cache) for when users discover bad entries — currently there's no way to invalidate cache entries except waiting for TTL expiry or manually deleting files."
+  ]
+}

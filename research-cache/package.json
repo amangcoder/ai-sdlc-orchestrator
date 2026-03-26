@@ -1,0 +1,23 @@
+{
+  "name": "research-cache-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for two-tier persistent research cache — lookup, save, flag_finding, and get_run_recommendations tools",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.10.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "license": "MIT"
+}

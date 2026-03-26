@@ -611,6 +611,7 @@ class WorkflowEngine:
         approval_callback: Any | None = None,
         interrupt_manager: Any | None = None,
         confirm_callback: Any | None = None,
+        crash_manager: Any | None = None,
     ) -> None:
         self.workflow = workflow
         self.state = state
@@ -621,6 +622,7 @@ class WorkflowEngine:
         self.approval_callback = approval_callback
         self.interrupt_manager = interrupt_manager
         self.confirm_callback = confirm_callback
+        self.crash_manager = crash_manager
         self.progress = ProgressTracker(workflow, state)
         self._step_start_times: dict[str, float] = {}
         self._knowledge_watcher: KnowledgeWatcher | None = None
@@ -1614,7 +1616,7 @@ class WorkflowEngine:
                     raise KeyboardInterrupt("User aborted at confirmation")
                 invocation = confirmed
 
-            result = await invoke_agent(invocation)
+            result = await invoke_agent(invocation, run_state=self.state)
 
             if self.run_logger:
                 self.run_logger.log_event("task_result", {
@@ -1625,6 +1627,10 @@ class WorkflowEngine:
                 })
 
             self.state.total_cost_usd += result.cost_usd
+            # Per-task cost tracking for crash recovery
+            task.cost_usd += result.cost_usd
+            task.input_tokens += result.input_tokens
+            task.output_tokens += result.output_tokens
 
             if result.success:
                 # Run dynamic spawn loop if enabled
@@ -1954,7 +1960,7 @@ class WorkflowEngine:
             self.state.phases[phase_key].status = PhaseStatus.COMPLETED
             return True
 
-        result = await invoke_agent(invocation)
+        result = await invoke_agent(invocation, run_state=self.state)
         self.state.total_cost_usd += result.cost_usd
         self.state.total_input_tokens += result.input_tokens
         self.state.total_output_tokens += result.output_tokens
@@ -2187,6 +2193,24 @@ class WorkflowEngine:
 
         spawn_section = _inject_spawn_instructions(self.config, task.assigned_role.value)
 
+        # Inject partial output from prior crash attempt if available
+        prior_context = ""
+        partial_path = artifacts_dir / ".partial" / f"{task.task_id}_output.txt"
+        if partial_path.exists():
+            try:
+                prior_output = partial_path.read_text()
+                prior_context = f"""## Prior Attempt Context
+
+A previous attempt on this task was interrupted. Here is the partial output from that attempt (use it as context; do not repeat completed work):
+
+```
+{prior_output}
+```
+
+"""
+            except OSError:
+                pass
+
         return f"""You are the {role_def.title} for this project.
 
 {knowledge_section}## Task
@@ -2200,7 +2224,7 @@ class WorkflowEngine:
 ## Your Role
 
 {role_def.responsibility}
-{input_section}{output_section}{cumulative_section}{artifact_digest_section}
+{input_section}{output_section}{cumulative_section}{artifact_digest_section}{prior_context}
 ## Instructions
 
 1. Read all input artifacts listed above

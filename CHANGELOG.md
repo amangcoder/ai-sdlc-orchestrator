@@ -2,6 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.11.0] - 2026-03-26
+
+### Added
+
+**Crash Recovery & Resilience**
+- New `crash_recovery` module (`src/orchestrator/crash_recovery.py`) — heartbeat-based crash detection, SIGTERM/atexit emergency flush, and automatic recovery on resume
+- `CrashRecoveryManager` maintains a 10-second heartbeat loop, installs SIGTERM and atexit handlers, and performs emergency state flush on unexpected termination
+- `detect_crash()` determines if a loaded `RunState` represents a crashed run via PID liveness check and heartbeat staleness (>30s threshold)
+- `recover_from_crash()` resets CRASHED/IN_PROGRESS tasks to PENDING, cleans orphaned worktrees, and prepares state for re-execution
+- `cleanup_orphaned_worktrees()` force-removes registered worktrees and prunes stale git references
+- `WorktreeRecord` and `CrashEvent` Pydantic models in `models.py` for structured crash tracking
+- `CRASHED` status added to both `RunStatus` and `TaskStatus` enums
+- Per-task cost tracking (`cost_usd`, `input_tokens`, `output_tokens`) on `WorkflowTaskState` for crash-recovery cost accounting
+- `RunState` extended with `pid`, `last_heartbeat_at`, `crash_count`, `active_worktrees`, and `crash_history` fields
+- Partial agent output saved to `.partial/` directory for crash recovery context injection on retry
+- Prior-attempt context automatically injected into agent prompts when resuming crashed tasks
+- Worktree lifecycle tracked in `RunState.active_worktrees` for reliable cleanup after crashes
+- `InterruptManager` now handles SIGTERM in addition to SIGINT for graceful container shutdown
+- Watchdog `_validate_state_file()` detects and logs crash indicators in saved state
+
+### Tests
+- MCP protocol compliance integration tests (`tests/integration/test_mcp_protocol_compliance.py`)
+- Main recommendations test suite (`tests/test_main_recommendations.py`)
+- Config validation script (`validate_config.py`)
+
+---
+
 ## [0.10.0] - 2026-03-26
 
 ### Added

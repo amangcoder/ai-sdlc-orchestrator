@@ -16,7 +16,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from orchestrator.models import ModelTier
+from orchestrator.models import ModelTier, RunState
 
 logger = logging.getLogger(__name__)
 
@@ -202,10 +202,14 @@ async def _cleanup_worktree_async(project_root: Path, worktree_dir: Path, branch
             logger.warning(f"Cleanup subprocess {i} failed: {result}")
 
 
-async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
+async def invoke_agent(
+    invocation: AgentInvocation,
+    run_state: RunState | None = None,
+) -> AgentResult:
     """Invoke a Claude Code sub-agent via the SDK.
 
     Uses claude_agent_sdk.query() when available, falls back to CLI subprocess.
+    If run_state is provided, worktrees are tracked for crash recovery cleanup.
     """
     # Defense-in-depth: even though AgentInvocation.agent_name is validated by
     # Pydantic to match ^[\w-]+$, verify the resolved path stays within AGENTS_DIR.
@@ -233,6 +237,16 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
             worktree_dir, branch_name = await _create_worktree_async(project_root, suffix)
             invocation.project_root = str(worktree_dir)
             logger.info(f"Created worktree for {invocation.agent_name}: {worktree_dir}")
+            # Register worktree in state for crash recovery cleanup
+            if run_state is not None:
+                from orchestrator.models import WorktreeRecord
+                from datetime import datetime, timezone
+                run_state.active_worktrees.append(WorktreeRecord(
+                    worktree_dir=str(worktree_dir),
+                    branch_name=branch_name,
+                    task_id=invocation.display_name or invocation.agent_name,
+                    created_at=datetime.now(timezone.utc),
+                ))
         except (subprocess.CalledProcessError, Exception) as e:
             logger.warning(f"Failed to create worktree: {e}. Running without isolation.")
             worktree_dir = None
@@ -249,6 +263,14 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
         except Exception as e:
             logger.error("Unexpected error invoking agent %s: %s", invocation.agent_name, e)
             result = AgentResult(success=False, error=str(e))
+
+        # Save partial output for crash recovery context
+        if invocation.workspace_dir and result.output:
+            _save_partial_output(
+                workspace=Path(invocation.workspace_dir),
+                task_name=invocation.display_name or invocation.agent_name,
+                output=result.output,
+            )
     finally:
         # Merge and cleanup worktree
         if worktree_dir and project_root and branch_name:
@@ -271,8 +293,32 @@ async def invoke_agent(invocation: AgentInvocation) -> AgentResult:
             finally:
                 # Phase 2 optimization: use async cleanup
                 await _cleanup_worktree_async(project_root, worktree_dir, branch_name)
+                # Unregister worktree from state after cleanup
+                if run_state is not None:
+                    run_state.active_worktrees = [
+                        wt for wt in run_state.active_worktrees
+                        if wt.worktree_dir != str(worktree_dir)
+                    ]
 
     return result
+
+
+def _save_partial_output(workspace: Path, task_name: str, output: str) -> None:
+    """Save truncated agent output for crash recovery context.
+
+    On resume after crash, the retried agent can use this as context
+    to avoid redoing completed analysis.
+    """
+    try:
+        partial_dir = workspace / "artifacts" / ".partial"
+        partial_dir.mkdir(parents=True, exist_ok=True)
+        # Sanitize task name for filesystem
+        safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in task_name)
+        partial_path = partial_dir / f"{safe_name}_output.txt"
+        # Truncate to last 4000 chars to bound file size
+        partial_path.write_text(output[-4000:])
+    except OSError as exc:
+        logger.debug(f"Failed to save partial output for {task_name}: {exc}")
 
 
 class AgentActivityTracker:

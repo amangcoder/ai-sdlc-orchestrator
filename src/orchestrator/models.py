@@ -70,6 +70,7 @@ class RunStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     SKIPPED = "skipped"
+    CRASHED = "crashed"
 
 
 class TaskStatus(str, Enum):
@@ -80,6 +81,7 @@ class TaskStatus(str, Enum):
     COMPLETED = "completed"
     BLOCKED = "blocked"
     FAILED = "failed"
+    CRASHED = "crashed"
 
 
 class ModelTier(str, Enum):
@@ -852,6 +854,31 @@ class WorkflowTaskState(BaseModel):
     completed_at: datetime | None = None
     error: str | None = None
     error_code: str | None = None
+    # Crash recovery fields
+    last_agent_output_path: str | None = None
+    cost_usd: float = 0.0
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+# --- Crash Recovery ---
+
+class WorktreeRecord(BaseModel):
+    """Tracks an active git worktree for crash recovery cleanup."""
+    worktree_dir: str
+    branch_name: str
+    task_id: str
+    created_at: datetime
+
+
+class CrashEvent(BaseModel):
+    """Records a detected crash for diagnostics."""
+    detected_at: datetime
+    crashed_pid: int | None = None
+    last_heartbeat: datetime | None = None
+    step_at_crash: str | None = None
+    tasks_in_progress: list[str] = Field(default_factory=list)
+    cost_at_crash: float = 0.0
 
 
 # --- Orchestrator State ---
@@ -905,6 +932,12 @@ class RunState(BaseModel):
     config_hash: str = ""
     spawn_history: list[SpawnRecord] = Field(default_factory=list)
     custom_workflow_definition: str | None = None
+    # Crash recovery fields
+    pid: int | None = None
+    last_heartbeat_at: datetime | None = None
+    crash_count: int = 0
+    active_worktrees: list[WorktreeRecord] = Field(default_factory=list)
+    crash_history: list[CrashEvent] = Field(default_factory=list)
 
 
 # --- Agent Configuration ---
