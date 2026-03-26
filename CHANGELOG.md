@@ -2,6 +2,32 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.10.0] - 2026-03-26
+
+### Added
+
+**Two-Tier Research Cache**
+- New `research_cache` module (`src/orchestrator/research_cache.py`) — persistent two-tier (global + per-project) research cache to reduce redundant agent research across pipeline runs
+- `ResearchCacheConfig`, `ResearchCacheContext`, `ResearchEntry`, `ResearchCache`, and `Finding` Pydantic models in `models.py`
+- MCP server integration: `lookup_research`, `save_research`, and `flag_finding` tools injected into PM, Architect, and Principal Engineer prompts
+- Automatic research extraction from phase artifacts via `extract_research_from_artifact()` with configurable TTLs (90 days stable, 7 days volatile)
+- End-of-run findings summary printed when actionable issues are flagged during pipeline execution
+- `_inject_research_context()` in `phases.py` — cache-first protocol instructions wrapped in `<research-cache-data>` delimiters with byte-level truncation
+- `_inject_mcp_role_guidance()` extended with Research Cache tool rows for eligible roles
+- `research_cache` config section in `config/default.yaml` with all tuning knobs (TTL, max entries, inject phases, auto-extract)
+- Research cache MCP config cleanup on pipeline completion (mirrors test-runner cleanup pattern)
+- `WorkflowEngine._mcp_servers` now merges knowledge + test-runner + research-cache configs (parity with `engine.py`)
+
+### Fixed
+- `self_orchestrate.py`: zero-division guard in language stats when `total_lines` is 0
+
+### Tests
+- Comprehensive unit tests for `_inject_research_context()` and `_inject_mcp_role_guidance()` with research cache
+- Unit tests for `ResearchCacheConfig`, `ResearchCacheContext`, `ResearchEntry`, `Finding` models
+- Integration tests for MCP protocol compliance and research cache lifecycle
+
+---
+
 ## [0.9.0] - 2026-03-25
 
 ### Added

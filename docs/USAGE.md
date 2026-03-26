@@ -15,14 +15,15 @@
 9. [Parallel Execution & DAG Scheduling](#9-parallel-execution--dag-scheduling)
 10. [Artifact Pipeline](#10-artifact-pipeline)
 11. [Configuration](#11-configuration)
-12. [State Management & Resume](#12-state-management--resume)
-13. [Review Feedback Loop](#13-review-feedback-loop)
-14. [Budget & Cost Tracking](#14-budget--cost-tracking)
-15. [Observability & Logging](#15-observability--logging)
-16. [Progress Tracking](#16-progress-tracking)
-17. [Workspace Layout](#17-workspace-layout)
-18. [Common Recipes](#18-common-recipes)
-19. [Troubleshooting](#19-troubleshooting)
+12. [Research Cache](#12-research-cache)
+13. [State Management & Resume](#13-state-management--resume)
+14. [Review Feedback Loop](#14-review-feedback-loop)
+15. [Budget & Cost Tracking](#15-budget--cost-tracking)
+16. [Observability & Logging](#16-observability--logging)
+17. [Progress Tracking](#17-progress-tracking)
+18. [Workspace Layout](#18-workspace-layout)
+19. [Common Recipes](#19-common-recipes)
+20. [Troubleshooting](#20-troubleshooting)
 
 ---
 

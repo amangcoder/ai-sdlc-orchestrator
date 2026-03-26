@@ -26,13 +26,22 @@ from orchestrator.test_runner import (
     ensure_test_runner_mcp_config,
     get_test_runner_mcp_config,
 )
+from orchestrator.research_cache import (
+    cleanup_research_mcp_config,
+    extract_research_from_artifact,
+    format_recommendations,
+    get_research_mcp_config,
+    save_entry,
+)
 from orchestrator.models import (
     EngTaskState,
+    Finding,
     KnowledgeContext,
     ModelTier,
     OrchestratorConfig,
     PhaseState,
     PhaseStatus,
+    ResearchCacheContext,
     ReviewVerdict,
     RunState,
     SpawnRecord,
@@ -111,6 +120,7 @@ class OrchestratorEngine:
         self.confirm_callback = confirm_callback
         self.run_logger: RunLogger | None = None
         self._test_runner_mcp_config: dict[str, Any] | None = None
+        self._research_mcp_config: dict[str, Any] | None = None
 
     @property
     def _mcp_servers(self) -> dict[str, Any] | None:
@@ -121,6 +131,9 @@ class OrchestratorEngine:
             servers.update(kc.mcp_server_config)
         if self._test_runner_mcp_config:
             servers.update(self._test_runner_mcp_config)
+        rc = self.config.research_cache_context
+        if rc and rc.mcp_server_config:
+            servers.update(rc.mcp_server_config.get("mcpServers", {}))
         return servers or None
 
     async def run(
@@ -286,6 +299,36 @@ class OrchestratorEngine:
             else:
                 logger.info("Test-runner MCP server not found — QA agents will run tests via Bash")
 
+        # Configure research cache MCP server (two-tier persistent research cache)
+        if self.config.research_cache.enabled:
+            rc_config = get_research_mcp_config(
+                server_path=self.config.research_cache.server_path,
+                project_root=self.project_root,
+            )
+            if rc_config is not None:
+                self._research_mcp_config = rc_config
+                self.config.research_cache_context = ResearchCacheContext(
+                    cache_loaded=True,
+                    mcp_configured=True,
+                    mcp_server_config=rc_config,
+                    global_entry_count=0,
+                    local_entry_count=0,
+                    findings=[],
+                )
+                logger.info("Research cache MCP server configured")
+            else:
+                self.config.research_cache_context = ResearchCacheContext(
+                    cache_loaded=False,
+                    mcp_configured=False,
+                    mcp_server_config=None,
+                    global_entry_count=0,
+                    local_entry_count=0,
+                    findings=[],
+                )
+                logger.warning(
+                    "Research cache MCP server not found — agents will perform fresh research each run"
+                )
+
         # Initialize monitoring stack (opt-in)
         self._monitoring = None
         monitoring_raw = self.config.monitoring
@@ -390,6 +433,23 @@ class OrchestratorEngine:
             and self._test_runner_mcp_config
         ):
             cleanup_test_runner_mcp_config(self.project_root)
+
+        # Print end-of-run research recommendations if any findings were flagged
+        rc = self.config.research_cache_context
+        if rc and rc.findings:
+            findings_objs = [
+                Finding(**f) if isinstance(f, dict) else f
+                for f in rc.findings
+            ]
+            print(format_recommendations([f.model_dump() for f in findings_objs]))
+
+        # Clean up research-cache MCP config from project
+        if (
+            self.config.research_cache.enabled
+            and self.config.research_cache.cleanup_mcp_config
+            and self.config.research_cache_context
+        ):
+            cleanup_research_mcp_config(self.project_root)
 
         self._save_state(state, workspace)
 
@@ -582,6 +642,40 @@ class OrchestratorEngine:
             # Re-index knowledge after code-modifying phases
             if state.phases[phase_name].status == PhaseStatus.COMPLETED:
                 await self._refresh_knowledge(phase_name)
+
+            # Post-phase research extraction (populate research cache from artifacts)
+            if (
+                state.phases[phase_name].status == PhaseStatus.COMPLETED
+                and self.config.research_cache.enabled
+                and self.config.research_cache.auto_extract
+                and self.config.research_cache_context
+                and self.config.research_cache_context.mcp_configured
+            ):
+                artifacts_dir = workspace / "artifacts"
+                # Derive artifact path from phase name
+                phase_to_artifact = {
+                    "architect": "architecture",
+                    "principal_engineer": "engineering_plan",
+                }
+                artifact_stem = phase_to_artifact.get(phase_name, phase_name)
+                artifact_path = artifacts_dir / f"{artifact_stem}.json"
+                if artifact_path.exists():
+                    from orchestrator.models import ResearchCache
+                    global_dir = Path(self.config.research_cache.global_dir).expanduser()
+                    local_dir = self.project_root / self.config.research_cache.local_dir
+                    rc_cache = ResearchCache()
+                    extracted = extract_research_from_artifact(artifact_path, phase_name, state.run_id)
+                    for entry in extracted:
+                        try:
+                            save_entry(
+                                rc_cache,
+                                entry,
+                                global_dir=global_dir,
+                                local_dir=local_dir,
+                                max_entries=self.config.research_cache.max_entries,
+                            )
+                        except Exception as e:
+                            logger.debug(f"Failed to save research entry: {e}")
 
             self._save_state(state, workspace)
 

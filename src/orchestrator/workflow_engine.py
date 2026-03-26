@@ -21,12 +21,18 @@ from orchestrator.models import (
     OrchestratorConfig,
     PhaseState,
     PhaseStatus,
+    ResearchCache,
     RunState,
     SpawnRecord,
     TaskStatus,
     WorkflowDefinition,
     WorkflowStepDefinition,
     WorkflowTaskState,
+)
+from orchestrator.research_cache import (
+    cleanup_research_mcp_config,
+    extract_research_from_artifact,
+    save_entry,
 )
 from orchestrator.observability import RunLogger
 from orchestrator.progress import ProgressTracker
@@ -627,9 +633,38 @@ class WorkflowEngine:
 
     @property
     def _mcp_servers(self) -> dict[str, Any] | None:
-        """Return MCP server config for agent invocations, if available."""
+        """Return merged MCP server config for agent invocations.
+
+        Merges knowledge MCP config + test_runner config + research-cache config
+        to match engine.py parity.
+        """
+        servers: dict[str, Any] = {}
+
+        # Knowledge MCP servers
         kc = self.config.knowledge_context
-        return kc.mcp_server_config if kc else None
+        if kc and kc.mcp_server_config:
+            servers.update(kc.mcp_server_config)
+
+        # Test-runner MCP server (fixes pre-existing asymmetry with engine.py)
+        try:
+            from orchestrator.test_runner import get_test_runner_mcp_config
+            if self.config.test_runner.enabled:
+                project_root = self.project_root or Path.cwd()
+                tr_config = get_test_runner_mcp_config(
+                    server_path=self.config.test_runner.server_path,
+                    project_root=project_root,
+                )
+                if tr_config:
+                    servers.update(tr_config)
+        except Exception:
+            pass  # test_runner optional — never crash agent invocation
+
+        # Research-cache MCP server
+        rc = self.config.research_cache_context
+        if rc and rc.mcp_server_config:
+            servers.update(rc.mcp_server_config.get("mcpServers", {}))
+
+        return servers or None
 
     def _checkpoint_state(self) -> None:
         """Persist RunState to disk after each task completes (sub-task-level checkpointing).
@@ -691,6 +726,16 @@ class WorkflowEngine:
 
         self.state.current_step = None
         self.progress.show("workflow_complete")
+
+        # Clean up research-cache MCP config from project
+        if (
+            self.config.research_cache.enabled
+            and self.config.research_cache.cleanup_mcp_config
+            and self.config.research_cache_context
+        ):
+            project_root = self.project_root or Path.cwd()
+            cleanup_research_mcp_config(project_root)
+
         return self.state
 
     async def _execute_step(self, step: WorkflowStepDefinition) -> str:
@@ -1588,6 +1633,47 @@ class WorkflowEngine:
                     str(workspace),
                 )
                 self._apply_result(task, result)
+
+                # Post-task research extraction (populate research cache from artifacts)
+                if (
+                    task.status == TaskStatus.COMPLETED
+                    and self.config.research_cache.enabled
+                    and self.config.research_cache.auto_extract
+                    and self.config.research_cache_context
+                    and self.config.research_cache_context.mcp_configured
+                ):
+                    project_root = self.project_root or Path.cwd()
+                    global_dir = Path(self.config.research_cache.global_dir).expanduser()
+                    local_dir = project_root / self.config.research_cache.local_dir
+                    # Map role to artifact stem
+                    role_to_artifact = {
+                        "architect": "architecture",
+                        "principal_engineer": "engineering_plan",
+                        "market_researcher": "market_research",
+                        "competitor_researcher": "competitor_research",
+                        "security_engineer": "threat_model",
+                        "caching_engineer": "benchmark_report",
+                    }
+                    phase_name = task.assigned_role.value if hasattr(task.assigned_role, "value") else str(task.assigned_role)
+                    artifact_stem = role_to_artifact.get(phase_name, phase_name)
+                    artifact_path = workspace / "artifacts" / f"{artifact_stem}.json"
+                    if artifact_path.exists():
+                        rc_cache = ResearchCache()
+                        extracted = extract_research_from_artifact(
+                            artifact_path, phase_name, self.state.run_id
+                        )
+                        for entry in extracted:
+                            try:
+                                save_entry(
+                                    rc_cache,
+                                    entry,
+                                    global_dir=global_dir,
+                                    local_dir=local_dir,
+                                    max_entries=self.config.research_cache.max_entries,
+                                )
+                            except Exception as e:
+                                logger.debug(f"Failed to save research entry: {e}")
+
                 return
 
             # If interrupted by SIGINT, don't retry — mark as interrupted and bail

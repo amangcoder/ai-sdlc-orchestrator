@@ -163,7 +163,7 @@ def _assess_codebase(project_root: Path | None) -> str:
         sorted_langs = sorted(lang_lines.items(), key=lambda x: -x[1])
         total_lines = sum(lang_lines.values())
         lang_summary = ", ".join(
-            f"{lang} ({lines:,} lines, {lines*100//total_lines}%)"
+            f"{lang} ({lines:,} lines, {lines*100//total_lines}%)" if total_lines else f"{lang} ({lines:,} lines)"
             for lang, lines in sorted_langs[:6]
         )
         parts.append(f"- **Languages**: {lang_summary}")
