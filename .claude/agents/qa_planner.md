@@ -18,6 +18,12 @@ PM → Architect → Principal Engineer → TPM → ► YOU (QA Planner, runs in
 - `artifacts/architecture.json` — Component boundaries, interfaces, data flow
 - `artifacts/tasks.json` — Task breakdown (to understand implementation boundaries)
 
+Before designing the test plan, use MCP tools to understand the codebase:
+- **`mcp__ai-code-knowledge__get_project_overview`** — Identify the test framework in use (pytest/jest/vitest), test directory layout, and existing test patterns
+- **`mcp__ai-code-knowledge__get_code_patterns`** with `pattern_type: "testing"` — See how existing tests are structured so your plan follows established conventions
+- **`mcp__ai-code-knowledge__get_cumulative_context`** with `phase: "implementation"` — Get the full prior-phase digest (PRD, architecture, tasks) in one call instead of reading each artifact separately
+- **`mcp__ai-code-knowledge__semantic_search`** with `scope: "files"` — Find existing test files covering similar functionality to avoid duplication
+
 **Downstream:**
 - **QA Executor** — will execute the test cases you design
 - **Engineers** — may reference your test plan for acceptance criteria clarification

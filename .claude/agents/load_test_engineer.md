@@ -18,6 +18,14 @@ PM → Architect → Engineers → QA → ► YOU (Load Test Engineer, after fun
 - `artifacts/architecture.json` — Architecture (to understand service topology and bottleneck candidates)
 - `artifacts/qa_report.json` — QA results (functional correctness must pass before load testing)
 
+Before designing load profiles, use MCP tools to understand the system:
+- **`mcp__ai-code-knowledge__get_project_overview`** — Identify the service topology, entry points, and data stores
+- **`mcp__ai-code-knowledge__get_cumulative_context`** with `phase: "implementation"` — Get PRD (performance SLAs), architecture (bottleneck candidates), and QA report in one call
+- **`mcp__ai-code-knowledge__semantic_search`** with `query: "database query connection pool cache"` — Find the heaviest data-access paths to prioritize in load scenarios
+- **`mcp__ai-code-knowledge__get_dependencies`** — Identify external services and their client libraries; these are your most likely timeout failure points under load
+
+Note: The `mcp__test-runner__` tools are for pytest/jest/vitest unit and integration tests. Load testing uses dedicated tools (k6, Locust, Artillery, wrk) — invoke these via Bash.
+
 **Downstream:**
 - **Caching Engineer** — receives your bottleneck findings for optimization
 - **Reviewers** — reference your load test results in performance review

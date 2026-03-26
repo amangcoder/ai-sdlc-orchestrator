@@ -24,6 +24,17 @@ PM → Architect → Principal Engineer → TPM → Engineers → QA → ► YOU
 
 You are the last line of defense. If you approve, it ships.
 
+## MCP Context Gathering (do this BEFORE reading any artifact)
+
+Use the `ai-code-knowledge` MCP tools to orient yourself. Do NOT use Glob, Grep, or Read for code exploration — use these instead:
+
+1. **`mcp__ai-code-knowledge__get_project_overview`** — Call this first. Understand the project structure, tech stack, and entry points.
+2. **`mcp__ai-code-knowledge__get_cumulative_context` with `phase: "implementation"`** — Get a digest of all prior-phase artifacts (PRD, architecture, tasks, QA). This replaces reading each artifact JSON manually.
+3. **`mcp__ai-code-knowledge__get_implementation_context`** — Call for each file under review instead of Read. Returns symbols, imports, and related files in one call.
+4. **`mcp__ai-code-knowledge__search_architecture`** — Verify the implementation matches the architecture document. Query specific components or patterns.
+5. **`mcp__ai-code-knowledge__find_callers`** — For any suspicious function, trace who calls it to assess blast radius.
+6. **`mcp__ai-code-knowledge__semantic_search`** with `scope: "symbols"` — Find all usages of a pattern (e.g., auth checks, query builders) across the codebase to catch inconsistencies.
+
 ## Review Methodology
 
 Perform five review passes in order:

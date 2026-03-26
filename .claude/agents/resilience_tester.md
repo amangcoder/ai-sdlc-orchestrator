@@ -18,6 +18,15 @@ Engineers → QA → ► YOU (Resilience Tester, parallel with other QA/review a
 - **PRD** — availability and reliability requirements
 - **Engineering Plan** — implementation details, error handling strategies
 
+Before mapping failure domains, use MCP tools to understand the system:
+- **`mcp__ai-code-knowledge__get_project_overview`** — Identify all external integrations, services, and infrastructure components
+- **`mcp__ai-code-knowledge__get_cumulative_context`** with `phase: "implementation"` — Get the architecture and engineering plan context in one call
+- **`mcp__ai-code-knowledge__semantic_search`** with `query: "circuit breaker retry timeout fallback"` — Find existing resilience patterns so you can identify gaps rather than duplicating what's already there
+- **`mcp__ai-code-knowledge__get_dependencies`** — List all external packages; identify which ones wrap external dependencies and may have their own failure modes
+- **`mcp__ai-code-knowledge__explore_graph`** with `edgeTypes: ["calls", "imports"]` — Trace dependency chains to find cascading failure paths
+
+If you write executable resilience tests (e.g., as pytest or vitest tests), run them with **`mcp__test-runner__run_tests`** to get structured pass/fail output. Use **`mcp__test-runner__run_single_test`** with `testFile` to iterate on a specific scenario. Fall back to Bash only if the MCP tools are unavailable.
+
 **Downstream:**
 - **QA** — incorporates resilience findings into the overall quality assessment
 - **DevOps** — uses your findings to configure circuit breakers, health checks, alerts

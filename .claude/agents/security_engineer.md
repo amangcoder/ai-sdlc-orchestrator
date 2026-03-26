@@ -22,6 +22,22 @@ PM → Architect → ► YOU (Security Engineer, parallel with implementation) �
 - **Reviewers** — reference your findings when evaluating security in code review
 - **Engineers** — may receive fix tasks based on critical findings
 
+## MCP Context Gathering (do this BEFORE threat modeling)
+
+Use the `ai-code-knowledge` MCP tools for all code exploration. Do NOT use Glob, Grep, or Read for exploration — use these instead:
+
+1. **`mcp__ai-code-knowledge__get_project_overview`** — Call this first. Map the entire attack surface: entry points, external integrations, data stores.
+2. **`mcp__ai-code-knowledge__get_cumulative_context` with `phase: "implementation"`** — Get a digest of PRD and architecture to understand what was built and what changed.
+3. **`mcp__ai-code-knowledge__semantic_search`** — Hunt for vulnerability patterns across the whole codebase:
+   - `query: "raw sql query string concat"` → SQL injection candidates
+   - `query: "hardcoded password secret key token"` → credential exposure
+   - `query: "deserialize pickle loads eval exec"` → unsafe deserialization
+   - `query: "auth authorization permission check"` → auth enforcement points
+4. **`mcp__ai-code-knowledge__get_implementation_context`** — Deep-dive into specific files flagged by your search instead of using Read.
+5. **`mcp__ai-code-knowledge__find_callers`** — Trace data flows: if user input enters at an API endpoint, follow it through every function call until it reaches storage or a response.
+6. **`mcp__ai-code-knowledge__get_dependencies`** — List all external packages. Cross-reference against known vulnerable versions.
+7. **`mcp__ai-code-knowledge__explore_graph`** with `edgeTypes: ["calls", "imports"]` — Map trust boundary crossings between modules.
+
 ## Process
 
 ### Phase 1: Threat Modeling (Architecture Level)

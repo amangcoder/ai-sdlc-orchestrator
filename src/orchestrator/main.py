@@ -254,11 +254,11 @@ def _build_parser() -> argparse.ArgumentParser:
                         help="Skip post-write quality checklist verification in planning agents")
     parser.add_argument("--mode",
                         choices=["fast", "superhaiku", "supersonnet", "balanced", "overkill"],
-                        default=None, metavar="MODE",
-                        help="Model routing mode: fast (haiku-heavy), superhaiku, supersonnet, balanced, overkill (opus everywhere)")
+                        default="balanced", metavar="MODE",
+                        help="Model routing mode: fast (haiku-heavy), superhaiku, supersonnet, balanced (default), overkill (opus everywhere)")
     parser.add_argument("--speed",
                         choices=["turbo", "standard", "thorough", "paranoid", "auto"],
-                        default=None, metavar="SPEED",
+                        default="auto", metavar="SPEED",
                         help="Pipeline depth mode: turbo (4 steps), standard (6), thorough (8+), paranoid (10+), auto (default: intelligent selection)")
     parser.add_argument("--run-id", metavar="RUN_ID", dest="run_id", default=None,
                         help="Explicit run ID to use (used by Mobile API system orchestrate)")
