@@ -998,5 +998,18 @@ def main() -> None:
     _ring_alarm()
     _print_summary(state, console)
 
+    # Print end-of-run research recommendations if any findings were flagged
+    if (
+        config.research_cache_context is not None
+        and config.research_cache_context.findings
+    ):
+        from orchestrator.research_cache import format_recommendations
+        from orchestrator.models import Finding
+        findings = [
+            Finding(**f) if isinstance(f, dict) else f
+            for f in config.research_cache_context.findings
+        ]
+        print(format_recommendations([f.model_dump() for f in findings]))
+
     if any(p.status == PhaseStatus.FAILED for p in state.phases.values()):
         sys.exit(1)

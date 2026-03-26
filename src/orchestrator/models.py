@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -966,6 +966,59 @@ class TestRunnerConfig(BaseModel):
     cleanup_mcp_config: bool = True
 
 
+class ResearchCacheConfig(BaseModel):
+    """Configuration for the two-tier persistent research cache."""
+    enabled: bool = True
+    global_dir: str = "~/.orchestrator/research"
+    local_dir: str = ".knowledge/research"
+    server_path: str = ""            # empty = auto-detect from sibling dirs
+    base_ttl_days: int = 90
+    volatile_ttl_days: int = 7
+    max_entries: int = 500
+    max_inject_bytes: int = 2048
+    inject_into_phases: list[str] = Field(default_factory=lambda: ["pm", "architect", "principal_engineer"])
+    auto_extract: bool = True
+    cleanup_mcp_config: bool = True
+
+
+class ResearchCacheContext(BaseModel):
+    """Runtime research cache context populated after initialization."""
+    cache_loaded: bool
+    mcp_configured: bool
+    mcp_server_config: dict[str, Any] | None = None
+    global_entry_count: int
+    local_entry_count: int
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ResearchEntry(BaseModel):
+    """A single cached research entry."""
+    topic: str
+    content: str
+    tags: list[str] = Field(default_factory=list)
+    tier: Literal["global", "project"]
+    created_at: str  # ISO datetime string
+    ttl_days: int
+    source_phase: str
+    run_id: str
+    usage_count: int = 0
+
+
+class Finding(BaseModel):
+    """An actionable finding flagged during a pipeline run."""
+    type: Literal["performance", "architecture", "security", "dependency", "quality"]
+    severity: Literal["high", "medium", "low"]
+    finding: str
+    recommendation: str
+    phase: str
+
+
+class ResearchCache(BaseModel):
+    """In-memory container for all loaded research entries."""
+    global_entries: list[ResearchEntry] = Field(default_factory=list)
+    local_entries: list[ResearchEntry] = Field(default_factory=list)
+
+
 class ExplorationConfig(BaseModel):
     """Configuration for codebase exploration depth."""
     exploration_depth: str = "normal"  # none | minimal | normal | deep
@@ -1060,6 +1113,8 @@ class OrchestratorConfig(BaseModel):
     container: ContainerConfig = Field(default_factory=ContainerConfig)
     knowledge_context: KnowledgeContext | None = None
     test_runner: TestRunnerConfig = Field(default_factory=TestRunnerConfig)
+    research_cache: ResearchCacheConfig = Field(default_factory=ResearchCacheConfig)
+    research_cache_context: ResearchCacheContext | None = None
     monitoring: dict[str, Any] = Field(default_factory=dict)
     routing_mode: str | None = None
     speed_mode: SpeedMode | None = None

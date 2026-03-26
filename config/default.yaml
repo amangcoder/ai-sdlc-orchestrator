@@ -89,6 +89,23 @@ test_runner:
   server_path: ""                    # absolute path to test-runner server; empty = auto-detect from sibling dirs
   cleanup_mcp_config: true           # remove test-runner MCP config from target project after pipeline completes
 
+# --- Research cache (two-tier persistent research cache to reduce agent spawn costs) ---
+research_cache:
+  enabled: true                      # set to false to disable research cache integration
+  global_dir: "~/.orchestrator/research"  # global (cross-project) cache directory
+  local_dir: ".knowledge/research"   # local (per-project) cache directory
+  server_path: ""                    # absolute path to research-cache MCP server; empty = auto-detect from sibling dirs
+  base_ttl_days: 90                  # default TTL for stable research entries (architecture, security, library APIs)
+  volatile_ttl_days: 7               # TTL for volatile entries (market trends, competitor data, benchmarks)
+  max_entries: 500                   # max entries per tier before oldest entries are evicted
+  max_inject_bytes: 2048             # max bytes of cache context injected into agent prompts
+  inject_into_phases:                # phases that receive research cache prompt injection
+    - pm
+    - architect
+    - principal_engineer
+  auto_extract: true                 # automatically extract and cache research from phase artifacts
+  cleanup_mcp_config: true           # remove research-cache MCP config from target project after pipeline completes
+
 # --- Communication logs (conversation history persistence across runs) ---
 comms_log:
   enabled: false                   # enable with --comms-log CLI flag
