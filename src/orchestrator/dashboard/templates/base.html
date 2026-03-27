@@ -13,6 +13,10 @@
     <a href="/runs" {% if page_title == "All Runs" %}class="active"{% endif %}>Runs</a>
     <a href="/metrics" {% if page_title == "Metrics" %}class="active"{% endif %}>Metrics</a>
     <a href="/alerts" {% if page_title == "Alerts" %}class="active"{% endif %}>Alerts</a>
+    <a href="/cost-analytics" {% if page_title == "Cost Analytics" %}class="active"{% endif %}>💰 Cost Analytics</a>
+    <a href="/artifacts" {% if page_title and page_title.startswith("Artifacts") %}class="active"{% endif %}>📦 Artifacts</a>
+    <a href="/slo" {% if page_title == "SLO Compliance" %}class="active"{% endif %}>📊 SLO</a>
+    <a href="/observability" {% if page_title == "Observability" %}class="active"{% endif %}>🔍 Observability</a>
     <a href="/new-run" {% if page_title == "New Run" %}class="active"{% endif %} style="color: var(--accent); font-weight: 600;">New Run</a>
   </nav>
   <div class="container">

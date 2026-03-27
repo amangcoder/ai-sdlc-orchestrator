@@ -1,0 +1,284 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Cost Analytics</h1>
+
+<div class="stats">
+  <div class="stat">
+    <div class="stat-value">${{ "%.4f"|format(analytics.cost_trend | sum(attribute='cost') if analytics.cost_trend else 0) }}</div>
+    <div class="stat-label">Total Cost (all time)</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ analytics.cost_trend | length }}</div>
+    <div class="stat-label">Days with Runs</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ analytics.by_agent | length }}</div>
+    <div class="stat-label">Active Agents</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ analytics.by_model | length }}</div>
+    <div class="stat-label">Models Used</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" style="color: var(--yellow);">${{ "%.4f"|format(analytics.burn_rate) }}/hr</div>
+    <div class="stat-label">Burn Rate (last 1h)</div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <!-- Cost Trend Line Chart -->
+  <div class="card">
+    <h2>Cost Trend</h2>
+    <div class="chart-container">
+      <canvas id="costTrendChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Cost by Agent Bar Chart -->
+  <div class="card">
+    <h2>Cost by Agent</h2>
+    <div class="chart-container">
+      <canvas id="costByAgentChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="grid-2">
+  <!-- Cost by Model Pie Chart -->
+  <div class="card">
+    <h2>Cost by Model</h2>
+    <div class="chart-container">
+      <canvas id="costByModelChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Burn Rate Gauge (doughnut) -->
+  <div class="card">
+    <h2>Burn Rate (last 1h)</h2>
+    <div class="chart-container" style="position: relative;">
+      <canvas id="burnRateChart"></canvas>
+      <div id="burnRateLabel" style="
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -20%);
+        text-align: center;
+        pointer-events: none;
+      ">
+        <div style="font-size: 1.4rem; font-weight: 700; color: var(--text);">
+          ${{ "%.4f"|format(analytics.burn_rate) }}
+        </div>
+        <div style="font-size: 0.75rem; color: var(--text-dim);">USD/hour</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% if not analytics.cost_trend and not analytics.by_agent and not analytics.by_model %}
+<div class="empty" style="margin-top: 24px;">
+  <h2>No cost data yet</h2>
+  <p>Complete some runs to see cost analytics here.</p>
+</div>
+{% endif %}
+
+<!-- Agent cost breakdown table -->
+{% if analytics.by_agent %}
+<div class="card" style="margin-top: 24px;">
+  <h2>Agent Cost Breakdown</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Agent</th>
+        <th>Total Cost (USD)</th>
+        <th>Invocations</th>
+        <th>Avg Cost per Invocation</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for agent, data in analytics.by_agent.items() | sort(attribute='1.cost', reverse=True) %}
+      <tr>
+        <td>{{ agent }}</td>
+        <td>${{ "%.4f"|format(data.cost) }}</td>
+        <td>{{ data.count }}</td>
+        <td>${{ "%.4f"|format(data.cost / data.count if data.count > 0 else 0) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var analytics = {{ analytics_json|safe }};
+
+  var CHART_COLORS = [
+    '#00d4a8', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6',
+    '#ec4899', '#10b981', '#f97316', '#06b6d4', '#84cc16'
+  ];
+
+  // -------------------------------------------------------------------------
+  // 1. Cost Trend — line chart
+  // -------------------------------------------------------------------------
+  (function renderCostTrend() {
+    var ctx = document.getElementById('costTrendChart');
+    if (!ctx) return;
+    var trend = analytics.cost_trend || [];
+    if (!trend.length) {
+      ctx.parentElement.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:40px;">No trend data yet</p>';
+      return;
+    }
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: trend.map(function (d) { return d.date; }),
+        datasets: [{
+          label: 'Daily Cost (USD)',
+          data: trend.map(function (d) { return d.cost; }),
+          borderColor: '#00d4a8',
+          backgroundColor: 'rgba(0,212,168,0.12)',
+          borderWidth: 2,
+          pointRadius: 4,
+          pointBackgroundColor: '#00d4a8',
+          fill: true,
+          tension: 0.3
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { ticks: { color: '#8899aa', maxTicksLimit: 8 }, grid: { color: '#1e2a35' } },
+          y: {
+            ticks: { color: '#8899aa', callback: function (v) { return '$' + v.toFixed(4); } },
+            grid: { color: '#1e2a35' },
+            beginAtZero: true
+          }
+        }
+      }
+    });
+  }());
+
+  // -------------------------------------------------------------------------
+  // 2. Cost by Agent — horizontal bar chart
+  // -------------------------------------------------------------------------
+  (function renderCostByAgent() {
+    var ctx = document.getElementById('costByAgentChart');
+    if (!ctx) return;
+    var byAgent = analytics.by_agent || {};
+    var labels = Object.keys(byAgent);
+    if (!labels.length) {
+      ctx.parentElement.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:40px;">No agent data yet</p>';
+      return;
+    }
+    // Sort by cost descending
+    labels.sort(function (a, b) { return (byAgent[b].cost || 0) - (byAgent[a].cost || 0); });
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Cost (USD)',
+          data: labels.map(function (k) { return byAgent[k].cost || 0; }),
+          backgroundColor: labels.map(function (_, i) { return CHART_COLORS[i % CHART_COLORS.length]; }),
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        indexAxis: 'y',
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            ticks: { color: '#8899aa', callback: function (v) { return '$' + v.toFixed(4); } },
+            grid: { color: '#1e2a35' },
+            beginAtZero: true
+          },
+          y: { ticks: { color: '#8899aa' }, grid: { color: '#1e2a35' } }
+        }
+      }
+    });
+  }());
+
+  // -------------------------------------------------------------------------
+  // 3. Cost by Model — pie chart
+  // -------------------------------------------------------------------------
+  (function renderCostByModel() {
+    var ctx = document.getElementById('costByModelChart');
+    if (!ctx) return;
+    var byModel = analytics.by_model || {};
+    var labels = Object.keys(byModel);
+    if (!labels.length) {
+      ctx.parentElement.innerHTML = '<p style="color:var(--text-dim);text-align:center;padding:40px;">No model data yet</p>';
+      return;
+    }
+    new Chart(ctx, {
+      type: 'pie',
+      data: {
+        labels: labels,
+        datasets: [{
+          data: labels.map(function (k) { return byModel[k].cost || 0; }),
+          backgroundColor: labels.map(function (_, i) { return CHART_COLORS[i % CHART_COLORS.length]; }),
+          borderColor: '#0d1b24',
+          borderWidth: 2
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          legend: {
+            position: 'right',
+            labels: { color: '#8899aa', font: { size: 12 }, padding: 10 }
+          },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                var val = ctx.parsed || 0;
+                return ctx.label + ': $' + val.toFixed(4);
+              }
+            }
+          }
+        }
+      }
+    });
+  }());
+
+  // -------------------------------------------------------------------------
+  // 4. Burn Rate — doughnut gauge
+  // -------------------------------------------------------------------------
+  (function renderBurnRate() {
+    var ctx = document.getElementById('burnRateChart');
+    if (!ctx) return;
+    var burnRate = analytics.burn_rate || 0;
+    // Gauge: treat 0.10 USD/hr as "100%" of the gauge; scale linearly.
+    var maxGauge = 0.10;
+    var filled = Math.min(burnRate / maxGauge, 1.0);
+    var color = filled < 0.5 ? '#00d4a8' : filled < 0.8 ? '#f59e0b' : '#ef4444';
+    new Chart(ctx, {
+      type: 'doughnut',
+      data: {
+        datasets: [{
+          data: [filled, 1.0 - filled],
+          backgroundColor: [color, '#1e2a35'],
+          borderWidth: 0,
+          circumference: 180,
+          rotation: 270
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        cutout: '75%',
+        plugins: { legend: { display: false }, tooltip: { enabled: false } }
+      }
+    });
+  }());
+
+}());
+</script>
+{% endblock %}

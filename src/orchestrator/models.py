@@ -1103,6 +1103,27 @@ class AllowedDirectoryConfig(BaseModel):
     name: str | None = None
 
 
+class ArtifactsConfig(BaseModel):
+    """Configuration for artifact versioning, indexing, and retention.
+
+    Controls the ArtifactManager behaviour: whether to keep version history,
+    maintain a searchable index, and automatically prune old runs.
+    """
+
+    #: Write versioned copies alongside each artifact (v1, v2, …).
+    versioning_enabled: bool = True
+    #: Maintain an ``.index.json`` manifest for fast listing and search.
+    index_enabled: bool = True
+    #: Automatically purge old artifact versions to reclaim disk space.
+    retention_enabled: bool = False
+    #: Remove artifact versions older than this many days (0 = unlimited).
+    retention_max_age_days: int = 30
+    #: Keep at most this many runs' worth of artifacts (0 = unlimited).
+    retention_max_runs: int = 100
+    #: When True, never delete artifacts from failed runs during pruning.
+    retention_keep_failed: bool = True
+
+
 class ContainerConfig(BaseModel):
     """Configuration for containerized orchestration runs.
 
@@ -1143,6 +1164,7 @@ class OrchestratorConfig(BaseModel):
     spawn: SpawnConfig = Field(default_factory=SpawnConfig)
     debate: DebateConfig = Field(default_factory=DebateConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
+    artifacts: ArtifactsConfig = Field(default_factory=ArtifactsConfig)
     container: ContainerConfig = Field(default_factory=ContainerConfig)
     knowledge_context: KnowledgeContext | None = None
     test_runner: TestRunnerConfig = Field(default_factory=TestRunnerConfig)

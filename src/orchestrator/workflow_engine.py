@@ -616,6 +616,7 @@ class WorkflowEngine:
         interrupt_manager: Any | None = None,
         confirm_callback: Any | None = None,
         crash_manager: Any | None = None,
+        artifact_manager: Any | None = None,
     ) -> None:
         self.workflow = workflow
         self.state = state
@@ -627,6 +628,7 @@ class WorkflowEngine:
         self.interrupt_manager = interrupt_manager
         self.confirm_callback = confirm_callback
         self.crash_manager = crash_manager
+        self.artifact_manager = artifact_manager  # ArtifactManager | None
         self.progress = ProgressTracker(workflow, state)
         self._step_start_times: dict[str, float] = {}
         self._knowledge_watcher: KnowledgeWatcher | None = None
@@ -680,6 +682,63 @@ class WorkflowEngine:
         """
         from orchestrator.persistence import save_run_state
         save_run_state(self.state, Path(self.state.workspace_dir))
+
+    # ------------------------------------------------------------------
+    # Artifact write helpers
+    # ------------------------------------------------------------------
+
+    def _record_artifact_metric(self, artifact_type: str, agent: str) -> None:
+        """Fire metrics for a successfully saved artifact.
+
+        Calls MonitoringStack.on_artifact_produced() → MetricsManager.record_artifact_produced().
+        Failures are swallowed so metrics never block artifact persistence.
+        """
+        try:
+            if self.run_logger and self.run_logger._monitoring:
+                self.run_logger._monitoring.on_artifact_produced(artifact_type, agent)
+        except Exception as exc:
+            logger.debug(f"Metrics recording failed for artifact '{artifact_type}': {exc}")
+
+    def _write_artifact(
+        self,
+        workspace: Path,
+        name: str,
+        data: dict,
+        agent: str = "orchestrator",
+    ) -> None:
+        """Write an artifact, routing through ArtifactManager when available.
+
+        Priority:
+          1. If self.artifact_manager is set, call save_artifact() — versioned write.
+          2. On ArtifactManager error, log a warning and fall back to direct json.dump
+             (versioning must never block saves).
+          3. If self.artifact_manager is None, write directly via json.dump.
+
+        After a successful save_artifact() call, fires metrics via
+        _record_artifact_metric().
+        """
+        if self.artifact_manager is not None:
+            try:
+                self.artifact_manager.save_artifact(
+                    run_id=self.state.run_id,
+                    name=name,
+                    data=data,
+                    agent=agent,
+                )
+                self._record_artifact_metric(name, agent)
+                return
+            except Exception as exc:
+                logger.warning(
+                    f"ArtifactManager.save_artifact failed for '{name}': {exc} "
+                    f"— falling back to direct write"
+                )
+
+        # Fallback: direct json.dump (no versioning, no index update)
+        artifacts_dir = workspace / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        (artifacts_dir / f"{name}.json").write_text(
+            json.dumps(data, indent=2), encoding="utf-8"
+        )
 
     async def execute(self) -> RunState:
         """Execute the entire workflow from start to finish."""
@@ -808,14 +867,14 @@ class WorkflowEngine:
                 t.status = TaskStatus.COMPLETED
                 t.completed_at = datetime.now(timezone.utc)
             # Write stub artifacts so subsequent steps can find their inputs.
-            artifacts_dir = workspace / "artifacts"
-            artifacts_dir.mkdir(parents=True, exist_ok=True)
             for artifact_name in step.outputs:
-                stub_path = artifacts_dir / f"{artifact_name}.json"
+                stub_path = workspace / "artifacts" / f"{artifact_name}.json"
                 if not stub_path.exists():
-                    stub_path.write_text(
-                        json.dumps({"_dry_run_stub": True, "step": step.name}),
-                        encoding="utf-8",
+                    self._write_artifact(
+                        workspace,
+                        artifact_name,
+                        {"_dry_run_stub": True, "step": step.name},
+                        agent="dry_run",
                     )
             self.state.phases[phase_key].status = PhaseStatus.COMPLETED
             self.state.completed_steps.append(step.name)
@@ -1085,11 +1144,58 @@ class WorkflowEngine:
     def _rescue_artifacts_from_output(
         self, missing: list[str], workspace: Path,
     ) -> list[str]:
-        """Extract artifact JSON from stored agent output text."""
+        """Extract artifact JSON from stored agent output text.
+
+        When artifact_manager is available, routes each rescued artifact through
+        _write_artifact() so versioning and indexing are captured.  Falls back to
+        the module-level helper (direct json.dump) when artifact_manager is None.
+        """
         if not self._task_outputs:
             return []
         combined_output = "\n\n".join(self._task_outputs.values())
-        return _rescue_artifacts_from_output(combined_output, missing, workspace)
+
+        if self.artifact_manager is None:
+            # No versioning — delegate entirely to the module-level rescue helper.
+            return _rescue_artifacts_from_output(combined_output, missing, workspace)
+
+        # With artifact_manager: parse JSON blocks and route each write through
+        # _write_artifact() (which handles save_artifact + fallback + metrics).
+        json_blocks = _parse_json_blocks(combined_output)
+        if not json_blocks:
+            return []
+
+        from orchestrator.validation import _fix_invalid_json_escapes
+
+        rescued: list[str] = []
+        remaining = list(missing)
+        artifacts_dir = workspace / "artifacts"
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+
+        for block in sorted(json_blocks, key=len, reverse=True):
+            if not remaining:
+                break
+            try:
+                data = json.loads(block)
+            except json.JSONDecodeError:
+                try:
+                    data = json.loads(_fix_invalid_json_escapes(block))
+                except json.JSONDecodeError:
+                    continue
+            if not isinstance(data, dict):
+                continue
+            match = _match_json_to_artifact(data, remaining)
+            if match:
+                try:
+                    self._write_artifact(workspace, match, data, agent="rescue")
+                    logger.info(
+                        f"Rescued artifact '{match}' from agent output ({len(block)} bytes)"
+                    )
+                    rescued.append(match)
+                    remaining.remove(match)
+                except OSError as exc:
+                    logger.warning(f"Failed to write rescued artifact '{match}': {exc}")
+
+        return rescued
 
     def _create_artifact_writer_tasks(
         self,
@@ -1894,13 +2000,14 @@ class WorkflowEngine:
     def _seed_feature_request_artifact(self) -> None:
         """Write the feature_request string as a JSON artifact so steps can reference it."""
         workspace = Path(self.state.workspace_dir)
-        artifacts_dir = workspace / "artifacts"
-        artifacts_dir.mkdir(parents=True, exist_ok=True)
-        fr_path = artifacts_dir / "feature_request.json"
+        fr_path = workspace / "artifacts" / "feature_request.json"
         if not fr_path.exists():
-            fr_path.write_text(json.dumps({
-                "feature_request": self.state.feature_request,
-            }, indent=2))
+            self._write_artifact(
+                workspace,
+                "feature_request",
+                {"feature_request": self.state.feature_request},
+                agent="orchestrator",
+            )
 
     def _validate_step_inputs(self, step: WorkflowStepDefinition) -> list[str]:
         """Check that all required input artifacts exist.

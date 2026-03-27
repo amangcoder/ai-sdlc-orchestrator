@@ -1,0 +1,36 @@
+# Prometheus scrape configuration for the AI SDLC Orchestrator.
+#
+# The orchestrator's MetricsManager exposes a /metrics endpoint on :9090.
+# This config scrapes it every 10 seconds.
+#
+# NOTE: host.docker.internal resolves to the Docker host on macOS/Windows.
+# On Linux, add --add-host=host.docker.internal:host-gateway to the
+# Prometheus container, or replace with the container/host IP.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/rules.yml
+
+scrape_configs:
+  # Orchestrator metrics — the in-process MetricsManager HTTP server
+  - job_name: "orchestrator"
+    static_configs:
+      - targets: ["host.docker.internal:9090"]
+        labels:
+          instance: "orchestrator"
+    scrape_interval: 10s
+    metrics_path: /metrics
+
+  # Dashboard health endpoint (optional — only if dashboard is running)
+  - job_name: "orchestrator-dashboard"
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          instance: "dashboard"
+    scrape_interval: 30s
+    metrics_path: /healthz
+    # Don't fail if dashboard isn't running
+    scrape_timeout: 5s

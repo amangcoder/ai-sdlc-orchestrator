@@ -15,6 +15,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from orchestrator.dashboard.data import RunDataReader
+from orchestrator.dashboard.routes.artifacts import create_artifacts_router
+from orchestrator.dashboard.routes.cost import create_cost_router
+from orchestrator.dashboard.routes.observability import create_observability_router
+from orchestrator.dashboard.routes.slo import create_slo_router
 from orchestrator.dashboard.runner import RunRequest, RunTracker
 from orchestrator.workspace_manager import WorkspaceManager
 
@@ -43,11 +47,39 @@ def create_app(workspace_root: Path, project_name: str, config_path: Path | None
 
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+    # --- Observability router ---
+    observability_router = create_observability_router(templates, config_path)
+    app.include_router(observability_router)
+
+    # --- Cost analytics router ---
+    cost_router = create_cost_router(templates, reader)
+    app.include_router(cost_router)
+
+    # --- SLO compliance router ---
+    # monitoring_stack is per-run; pass None here — the router gracefully falls
+    # back to neutral default values when no tracker is attached.
+    slo_router = create_slo_router(templates, monitoring_stack=None)
+    app.include_router(slo_router)
+
+    # --- Artifacts router ---
+    try:
+        from orchestrator.artifact_manager import ArtifactManager
+        _artifacts_dir = manager.project_workspace / "artifacts"
+        _artifacts_dir.mkdir(parents=True, exist_ok=True)
+        _artifact_manager = ArtifactManager(_artifacts_dir)
+        artifacts_router = create_artifacts_router(templates, _artifact_manager)
+        app.include_router(artifacts_router)
+    except Exception as _exc:
+        import logging as _logging
+        _logging.getLogger(__name__).warning(
+            "ArtifactManager init failed — artifact routes disabled: %s", _exc
+        )
+
     # --- Auth middleware ---
 
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
-        if DASHBOARD_TOKEN and request.url.path.startswith("/api"):
+        if DASHBOARD_TOKEN and not request.url.path.startswith(('/healthz', '/health', '/static')):
             token = request.headers.get("Authorization", "").removeprefix("Bearer ")
             if token != DASHBOARD_TOKEN:
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
@@ -200,15 +232,6 @@ def create_app(workspace_root: Path, project_name: str, config_path: Path | None
     @app.get("/api/v1/alerts")
     async def api_alerts(limit: int = 100):
         return reader.get_alert_history(limit)
-
-        run_metadata = reader.get_run(run_id)
-        if not run_metadata:
-            return JSONResponse({"error": "not found"}, status_code=404)
-        
-        artifact_dir = manager.artifacts_dir(run_id)
-        if not artifact_dir.exists():
-            return []
-        return [f.name for f in artifact_dir.iterdir() if f.is_file()]
 
     @app.get("/api/v1/runs/{run_id}/artifacts/{name}")
     async def api_run_artifact(run_id: str, name: str):

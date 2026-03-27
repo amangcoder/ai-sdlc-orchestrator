@@ -127,6 +127,19 @@ class OrchestratorEngine:
         self._test_runner_mcp_config: dict[str, Any] | None = None
         self._research_mcp_config: dict[str, Any] | None = None
 
+        # ArtifactManager: versioned writes, index, and retention.
+        # Instantiated eagerly when versioning is enabled so tests can inspect
+        # engine._artifact_manager without calling run().  The path is updated
+        # in run() once the real workspace is resolved.
+        self._artifact_manager: Any = None
+        if config.artifacts.versioning_enabled:
+            try:
+                from orchestrator.artifact_manager import ArtifactManager
+                artifacts_dir = Path(config.workspace_dir).resolve() / "artifacts"
+                self._artifact_manager = ArtifactManager(artifacts_dir, config.artifacts)
+            except Exception as e:
+                logger.warning(f"ArtifactManager init failed: {e} — versioning disabled")
+
     @property
     def _mcp_servers(self) -> dict[str, Any] | None:
         """Return merged MCP server config for agent invocations."""
@@ -221,6 +234,18 @@ class OrchestratorEngine:
             workspace = Path(state.workspace_dir)
             (workspace / "artifacts").mkdir(exist_ok=True)
             (workspace / "logs").mkdir(exist_ok=True)
+
+        # Re-initialize ArtifactManager with the resolved workspace path so
+        # versioned writes go to the correct per-run artifacts directory.
+        if self.config.artifacts.versioning_enabled:
+            try:
+                from orchestrator.artifact_manager import ArtifactManager
+                self._artifact_manager = ArtifactManager(
+                    workspace / "artifacts", self.config.artifacts
+                )
+            except Exception as e:
+                logger.warning(f"ArtifactManager re-init failed: {e} — versioning disabled")
+                self._artifact_manager = None
 
         # Save recovered state now that workspace is resolved
         if _crash_recovered:
@@ -514,6 +539,7 @@ class OrchestratorEngine:
             interrupt_manager=self.interrupt_manager,
             confirm_callback=self.confirm_callback,
             crash_manager=self._crash_manager,
+            artifact_manager=self._artifact_manager,
         )
 
         await engine.execute()

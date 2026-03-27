@@ -114,6 +114,29 @@ class MetricsManager:
             "Number of currently running agents",
             registry=self._registry,
         )
+        self.burn_rate_usd_per_minute = Gauge(
+            "orchestrator_burn_rate_usd_per_minute",
+            "Cost burn rate in USD per minute",
+            ["workflow_type"],
+            registry=self._registry,
+        )
+
+        # --- Extended Histograms ---
+        self.run_duration_seconds = Histogram(
+            "orchestrator_run_duration_seconds",
+            "Pipeline run duration in seconds",
+            ["workflow_type", "status"],
+            buckets=[10, 30, 60, 120, 300, 600],
+            registry=self._registry,
+        )
+
+        # --- Extended Counters ---
+        self.artifacts_produced_total = Counter(
+            "orchestrator_artifacts_produced_total",
+            "Cumulative artifacts produced",
+            ["artifact_type", "agent"],
+            registry=self._registry,
+        )
 
         # Start background HTTP server
         self._http_server: Any = None
@@ -192,6 +215,27 @@ class MetricsManager:
         if not self._enabled:
             return
         self.active_agents.dec()
+
+    def record_burn_rate(self, workflow_type: str, usd_per_minute: float) -> None:
+        """Update the cost burn-rate gauge for the given workflow type."""
+        if not self._enabled:
+            return
+        self.burn_rate_usd_per_minute.labels(workflow_type=workflow_type).set(usd_per_minute)
+
+    def record_run_duration(self, workflow_type: str, status: str, duration_s: float) -> None:
+        """Record the end-to-end pipeline duration.
+
+        *status* should be ``'success'`` or ``'failed'``.
+        """
+        if not self._enabled:
+            return
+        self.run_duration_seconds.labels(workflow_type=workflow_type, status=status).observe(duration_s)
+
+    def record_artifact_produced(self, artifact_type: str, agent: str) -> None:
+        """Increment the artifacts-produced counter."""
+        if not self._enabled:
+            return
+        self.artifacts_produced_total.labels(artifact_type=artifact_type, agent=agent).inc()
 
     def shutdown(self) -> None:
         """Stop the Prometheus HTTP server and release the port.

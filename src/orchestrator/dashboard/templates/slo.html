@@ -1,0 +1,288 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>SLO Compliance</h1>
+
+{% if not data_available %}
+<div class="alert alert-info" style="
+  background: #1a2a3a;
+  border: 1px solid #2a3a4a;
+  border-left: 4px solid #3b82f6;
+  padding: 16px 20px;
+  border-radius: 6px;
+  margin-bottom: 24px;
+  color: #8899aa;
+">
+  <strong style="color: #93c5fd;">ℹ SLO tracking not enabled.</strong>
+  Showing default target values — no run data has been recorded yet.
+  Enable SLO tracking in your <code>monitoring.slo.enabled: true</code> config to see real metrics.
+</div>
+{% endif %}
+
+<!-- Summary stats -->
+<div class="stats">
+  <div class="stat">
+    <div class="stat-value" style="color: {% if all_passing %}var(--green){% else %}var(--red){% endif %};">
+      {% if all_passing %}✓ All Passing{% else %}✗ Violations{% endif %}
+    </div>
+    <div class="stat-label">Overall Status</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ slis | length }}</div>
+    <div class="stat-label">Total SLIs</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" style="color: var(--green);">{{ slis | selectattr('passing') | list | length }}</div>
+    <div class="stat-label">Passing</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" style="color: {% if violations %}var(--red){% else %}var(--green){% endif %};">
+      {{ violations | length }}
+    </div>
+    <div class="stat-label">Failing</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value" style="color: var(--text-dim); font-size: 0.85rem;">
+      {{ evaluation_window_hours }}h window
+    </div>
+    <div class="stat-label">Eval Window</div>
+  </div>
+</div>
+
+<!-- SLO Compliance Matrix -->
+<div class="card" style="margin-top: 24px;">
+  <h2>SLI Compliance Matrix</h2>
+  {% if evaluated_at %}
+  <p style="color: var(--text-dim); font-size: 0.8rem; margin-top: -8px; margin-bottom: 16px;">
+    Last evaluated: {{ evaluated_at }}
+  </p>
+  {% endif %}
+  <table>
+    <thead>
+      <tr>
+        <th>SLI Name</th>
+        <th>Target</th>
+        <th>Actual</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for sli in slis %}
+      <tr>
+        <td>
+          <code style="
+            font-size: 0.85rem;
+            background: #1e2a35;
+            padding: 2px 6px;
+            border-radius: 4px;
+          ">{{ sli.name }}</code>
+        </td>
+        <td>{{ sli.target_display }}</td>
+        <td>{{ sli.actual_display }}</td>
+        <td>
+          {% if sli.budget_color == 'green' %}
+            <span style="
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              color: #22c55e;
+              font-weight: 600;
+            ">
+              <span style="
+                width: 8px; height: 8px;
+                border-radius: 50%;
+                background: #22c55e;
+                display: inline-block;
+              "></span>
+              Passing
+            </span>
+          {% elif sli.budget_color == 'yellow' %}
+            <span style="
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              color: #f59e0b;
+              font-weight: 600;
+            ">
+              <span style="
+                width: 8px; height: 8px;
+                border-radius: 50%;
+                background: #f59e0b;
+                display: inline-block;
+              "></span>
+              At Risk
+            </span>
+          {% else %}
+            <span style="
+              display: inline-flex;
+              align-items: center;
+              gap: 6px;
+              color: #ef4444;
+              font-weight: 600;
+            ">
+              <span style="
+                width: 8px; height: 8px;
+                border-radius: 50%;
+                background: #ef4444;
+                display: inline-block;
+              "></span>
+              Failing
+            </span>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 32px;">
+          No SLI data available.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Error Budget Gauges -->
+{% if slis %}
+<div class="card" style="margin-top: 24px;">
+  <h2>Error Budget Remaining</h2>
+  <p style="color: var(--text-dim); font-size: 0.85rem; margin-top: -8px; margin-bottom: 20px;">
+    Green ≥ 80 % &nbsp;·&nbsp; Yellow 20–80 % &nbsp;·&nbsp; Red &lt; 20 %
+  </p>
+
+  <div style="display: flex; flex-direction: column; gap: 20px;">
+    {% for sli in slis %}
+    <div>
+      <div style="
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 6px;
+      ">
+        <span style="font-size: 0.875rem; color: var(--text);">
+          <code style="
+            background: #1e2a35;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+          ">{{ sli.name }}</code>
+        </span>
+        <span style="
+          font-size: 0.875rem;
+          font-weight: 600;
+          {% if sli.budget_color == 'green' %}color: #22c55e;
+          {% elif sli.budget_color == 'yellow' %}color: #f59e0b;
+          {% else %}color: #ef4444;{% endif %}
+        ">
+          {{ "%.1f"|format(sli.budget_pct) }}%
+        </span>
+      </div>
+      <!-- CSS progress bar -->
+      <div style="
+        width: 100%;
+        height: 10px;
+        background: #1e2a35;
+        border-radius: 5px;
+        overflow: hidden;
+      " role="progressbar"
+         aria-valuenow="{{ sli.budget_pct | int }}"
+         aria-valuemin="0"
+         aria-valuemax="100"
+         aria-label="{{ sli.name }} error budget">
+        <div style="
+          width: {{ sli.budget_pct | int }}%;
+          height: 100%;
+          border-radius: 5px;
+          transition: width 0.4s ease;
+          {% if sli.budget_color == 'green' %}background: #22c55e;
+          {% elif sli.budget_color == 'yellow' %}background: #f59e0b;
+          {% else %}background: #ef4444;{% endif %}
+        "></div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endif %}
+
+<!-- Violation Timeline -->
+<div class="card" style="margin-top: 24px;">
+  <h2>Violation Timeline</h2>
+  {% if violations %}
+  <p style="color: var(--text-dim); font-size: 0.85rem; margin-top: -8px; margin-bottom: 16px;">
+    {{ violations | length }} SLI{{ 's' if violations | length != 1 else '' }} currently in violation, worst first
+  </p>
+  <table>
+    <thead>
+      <tr>
+        <th>SLI</th>
+        <th>Target</th>
+        <th>Actual</th>
+        <th>Budget Remaining</th>
+        <th>Severity</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for v in violations %}
+      <tr>
+        <td>
+          <code style="
+            font-size: 0.85rem;
+            background: #1e2a35;
+            padding: 2px 6px;
+            border-radius: 4px;
+          ">{{ v.name }}</code>
+        </td>
+        <td>{{ v.target_display }}</td>
+        <td>{{ v.actual_display }}</td>
+        <td>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="
+              width: 80px;
+              height: 8px;
+              background: #1e2a35;
+              border-radius: 4px;
+              overflow: hidden;
+            ">
+              <div style="
+                width: {{ v.budget_pct | int }}%;
+                height: 100%;
+                border-radius: 4px;
+                {% if v.budget_color == 'green' %}background: #22c55e;
+                {% elif v.budget_color == 'yellow' %}background: #f59e0b;
+                {% else %}background: #ef4444;{% endif %}
+              "></div>
+            </div>
+            <span style="font-size: 0.8rem; color: var(--text-dim);">
+              {{ "%.1f"|format(v.budget_pct) }}%
+            </span>
+          </div>
+        </td>
+        <td>
+          {% if v.budget_color == 'yellow' %}
+            <span style="color: #f59e0b;">⚠ At Risk</span>
+          {% else %}
+            <span style="color: #ef4444;">✗ Critical</span>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="
+    text-align: center;
+    padding: 32px;
+    color: var(--text-dim);
+  ">
+    <div style="font-size: 2rem; margin-bottom: 8px;">✓</div>
+    {% if data_available %}
+    <p style="color: #22c55e; font-weight: 600; margin: 0;">No active violations</p>
+    <p style="margin-top: 4px; font-size: 0.85rem;">All SLIs are within their error budgets.</p>
+    {% else %}
+    <p style="margin: 0;">No run data yet — violations will appear here once runs complete.</p>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}

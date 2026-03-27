@@ -2,6 +2,75 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.12.0] - 2026-03-27
+
+### Added
+
+**Observability & Monitoring Stack**
+- Full Prometheus + Grafana + Loki + Promtail monitoring stack via `docker-compose.monitoring.yml`
+- `src/orchestrator/monitoring/slo.py` — SLO engine with configurable objectives, burn-rate alerting, and error-budget tracking
+- `src/orchestrator/monitoring/loki.py` — Loki log shipper with batch buffering, retry logic, and structured label injection
+- `src/orchestrator/monitoring/cli.py` — `orchestrate-monitoring` CLI entry point for managing the monitoring stack
+- `src/orchestrator/monitoring/metrics.py` — extended Prometheus metrics (histograms, counters, gauges) for agent performance and cost tracking
+- `src/orchestrator/monitoring/config.py` — monitoring configuration with Prometheus, Loki, and Grafana endpoint management
+- `src/orchestrator/observability.py` — enhanced observability layer with structured logging and trace correlation
+- Prometheus alerting rules (`infra/monitoring/prometheus-rules.yml`) for error rate, latency, and SLO burn-rate
+- Promtail pipeline configuration (`infra/monitoring/promtail.yml`) for log collection and labeling
+
+**Grafana Dashboards**
+- `agent-performance.json` — per-agent latency, token usage, and success rate panels
+- `cost-analysis.json` — cost breakdown by agent, phase, and model with trend tracking
+- `error-analysis.json` — error classification, retry rates, and failure pattern visualization
+- `run-overview.json` — pipeline run status, duration, and throughput overview
+- `slo-overview.json` — SLO compliance, error budgets, and burn-rate alerting panels
+- Grafana provisioning for auto-discovery of dashboards and datasources
+
+**Artifact Management**
+- `src/orchestrator/artifact_manager.py` — artifact lifecycle manager with metadata tracking, versioning, and cleanup policies
+- `src/orchestrator/cli_artifacts.py` — `orchestrate-artifacts` CLI for listing, inspecting, and managing pipeline artifacts
+- `src/orchestrator/dashboard/routes/artifacts.py` — dashboard routes for artifact browsing and detail views
+- `src/orchestrator/dashboard/templates/artifacts.html` — artifact browser UI template
+
+**Dashboard Extensions**
+- `src/orchestrator/dashboard/routes/cost.py` — cost analytics dashboard route with per-run and per-agent breakdowns
+- `src/orchestrator/dashboard/routes/observability.py` — observability dashboard route with health checks and metrics
+- `src/orchestrator/dashboard/routes/slo.py` — SLO dashboard route with compliance and error-budget views
+- `cost_analytics.html`, `observability.html`, `slo.html` — new dashboard templates
+- Dashboard route registration via `routes/__init__.py` blueprint pattern
+
+**Configuration & Infrastructure**
+- `observability` extras group in `pyproject.toml` (`httpx`, `prometheus-client`)
+- `orchestrate-monitoring` and `orchestrate-artifacts` CLI entry points registered in `pyproject.toml`
+- Monitoring config section added to `config/default.yaml`
+- `infra/scripts/start-monitoring.sh` — one-command monitoring stack launcher
+
+**Engine & Model Extensions**
+- `engine.py` — observability hooks for phase lifecycle events
+- `models.py` — extended models for SLO objectives, monitoring config, and artifact metadata
+- `workflow_engine.py` — monitoring integration points and metric emission during workflow execution
+
+### Tests
+- `test_artifact_manager.py`, `test_artifact_manager_integration.py` — artifact manager unit and integration tests
+- `test_artifact_routes.py` — artifact dashboard route tests
+- `test_cli_artifacts.py` — artifact CLI tests
+- `test_cli_monitoring.py` — monitoring CLI tests
+- `test_cost_analytics.py` — cost analytics dashboard tests
+- `test_dashboard_extended.py` — extended dashboard route tests
+- `test_log_shipper.py` — Loki log shipper tests
+- `test_monitoring_config.py` — monitoring configuration tests
+- `test_monitoring_integration.py` — end-to-end monitoring integration tests
+- `test_monitoring_loki.py` — Loki client tests
+- `test_monitoring_metrics.py` — Prometheus metrics tests (extended)
+- `test_monitoring_slo.py` — SLO engine tests
+- `test_observability_routes.py` — observability dashboard tests
+- `test_slo.py`, `test_slo_routes.py` — SLO route and logic tests
+- `test_task008_observability_monitoring.py` — full observability feature validation suite
+
+### Documentation
+- `docs/observability_verification.md` — observability setup verification guide
+
+---
+
 ## [0.11.0] - 2026-03-26
 
 ### Added

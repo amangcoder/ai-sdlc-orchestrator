@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "knowledge-base": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/amangupta/Projects/knowledge-base-mcp/dist/index.js",
+        "serve"
+      ]
+    }
+  }
+}

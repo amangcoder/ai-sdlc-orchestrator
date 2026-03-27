@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from orchestrator.monitoring.config import MonitoringConfig
 from orchestrator.monitoring.errors import ErrorCode
 from orchestrator.monitoring.health import get_health_state
+
+if TYPE_CHECKING:
+    from orchestrator.monitoring.loki import LokiLogShipper
+    from orchestrator.monitoring.slo import SLOTracker
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +41,11 @@ class MonitoringStack:
         self._alerting: Any = None
         self._budget: Any = None
         self._timeline: Any = None
+        self._loki_shipper: Optional[LokiLogShipper] = None
+        self._slo_tracker: Optional[SLOTracker] = None
 
         self._agent_spans: dict[str, Any] = {}  # key: f"{agent}:{attempt}"
+        self._workflow_type: str = ""  # stored from on_run_start for burn-rate labeling
 
         # --- Metrics ---
         if config.metrics_enabled:
@@ -79,6 +86,28 @@ class MonitoringStack:
         from orchestrator.monitoring.timeline import TimelineRecorder
         self._timeline = TimelineRecorder()
 
+        # --- Loki log shipping ---
+        if config.loki_enabled:
+            try:
+                from orchestrator.monitoring.loki import LokiLogShipper as _LokiLogShipper
+                self._loki_shipper = _LokiLogShipper(
+                    config.loki_endpoint,
+                    auth_token=config.loki_auth_token,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to start Loki log shipper: {e}")
+
+        # --- SLO tracking ---
+        if config.slo.enabled:
+            try:
+                from orchestrator.monitoring.slo import SLOTracker as _SLOTracker
+                self._slo_tracker = _SLOTracker(
+                    config.slo,
+                    prometheus_url=config.prometheus_url,
+                )
+            except Exception as e:
+                logger.warning(f"Failed to start SLO tracker: {e}")
+
         # --- Health state ---
         self._health = get_health_state()
         self._health.update(
@@ -96,6 +125,36 @@ class MonitoringStack:
     def timeline(self) -> Any:
         return self._timeline
 
+    @property
+    def slo_tracker(self) -> "Optional[SLOTracker]":
+        """Return the SLOTracker instance, or None if SLO tracking is disabled."""
+        return self._slo_tracker
+
+    @property
+    def current_trace_id(self) -> str:
+        """Return the current OTel trace_id hex string, or empty string if unavailable."""
+        if self._tracing is None:
+            return ""
+        try:
+            return self._tracing.current_trace_id  # type: ignore[no-any-return]
+        except Exception:  # noqa: BLE001
+            return ""
+
+    # --- Loki event forwarding ---
+
+    def on_log_event(self, event: dict) -> None:
+        """Forward an enriched log event to the Loki log shipper (if enabled).
+
+        Called by RunLogger._dispatch_to_monitoring() for every pipeline event.
+        The *event* dict must already contain the enrichment fields (trace_id,
+        task_id, agent, level) added by the RunLogger.
+        """
+        if self._loki_shipper is not None:
+            try:
+                self._loki_shipper.push(event)
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Loki push failed: %s", exc)
+
     # --- Event handlers ---
 
     def on_run_start(
@@ -103,6 +162,7 @@ class MonitoringStack:
         workflow_type: str,
         feature_request: str,
     ) -> None:
+        self._workflow_type = workflow_type
         if self._tracing:
             self._tracing.start_run_span(self._run_id, workflow_type, feature_request)
         if self._timeline:
@@ -113,11 +173,15 @@ class MonitoringStack:
         success: bool,
         total_cost_usd: float,
         workflow_type: str,
+        duration_s: float = 0.0,
+        errors: int = 0,
     ) -> None:
-        status = "completed" if success else "failed"
+        status = "success" if success else "failed"
 
         if self._metrics:
             self._metrics.record_run_complete(workflow_type, status)
+            if duration_s > 0:
+                self._metrics.record_run_duration(workflow_type, status, duration_s)
         if self._tracing:
             self._tracing.end_run_span(success, total_cost_usd)
         if self._timeline:
@@ -132,6 +196,13 @@ class MonitoringStack:
                     "status": status,
                     "total_cost_usd": total_cost_usd,
                 })
+        if self._slo_tracker is not None:
+            self._slo_tracker.record_run(
+                success=success,
+                cost_usd=total_cost_usd,
+                duration_s=duration_s,
+                errors=errors,
+            )
         self._health.update(current_step=None)
 
     def on_step_start(
@@ -154,6 +225,9 @@ class MonitoringStack:
     ) -> None:
         if self._metrics:
             self._metrics.record_phase_duration(step_name, model_tier, duration_s)
+            if duration_s > 0 and self._workflow_type:
+                burn_rate = cost_usd / duration_s * 60.0
+                self._metrics.record_burn_rate(self._workflow_type, burn_rate)
         if self._tracing:
             self._tracing.end_step_span(success, cost_usd, duration_s)
         if self._budget:
@@ -164,6 +238,29 @@ class MonitoringStack:
                 "step": step_name,
                 "cost_usd": cost_usd,
             })
+
+    def on_phase_end(
+        self,
+        phase_name: str,
+        success: bool,
+        cost_usd: float,
+        duration_s: float,
+        artifact_valid: bool | None = None,
+    ) -> None:
+        """Record phase completion with optional artifact validation outcome for SLO tracking.
+
+        Args:
+            phase_name:     Identifier for the phase (e.g. ``"pm"``, ``"architect"``).
+            success:        Whether the phase completed successfully.
+            cost_usd:       Cost incurred during this phase.
+            duration_s:     Wall-clock duration in seconds.
+            artifact_valid: ``True``/``False`` if an artifact was written and validated;
+                            ``None`` if no artifact was produced by this phase.
+        """
+        if self._slo_tracker is not None:
+            self._slo_tracker.record_phase_result(phase_name, duration_s, success)
+            if artifact_valid is not None:
+                self._slo_tracker.record_artifact_validation(artifact_valid)
 
     def on_agent_invoke(
         self,
@@ -283,6 +380,15 @@ class MonitoringStack:
         if self._metrics:
             self._metrics.record_error(agent, error_code)
 
+    def on_artifact_produced(
+        self,
+        artifact_type: str,
+        agent: str,
+    ) -> None:
+        """Record that an artifact was produced by an agent."""
+        if self._metrics:
+            self._metrics.record_artifact_produced(artifact_type, agent)
+
     def shutdown(self) -> None:
         if self._metrics:
             try:
@@ -296,3 +402,19 @@ class MonitoringStack:
                 self._tracing.shutdown()
             except Exception as exc:
                 logger.warning(f"Error during tracing shutdown: {exc}")
+        if self._loki_shipper is not None:
+            try:
+                self._loki_shipper.shutdown()
+            except Exception as exc:
+                logger.warning(f"Error during Loki shipper shutdown: {exc}")
+        if self._slo_tracker is not None:
+            try:
+                # Flush final SLO state to log before shutdown
+                report = self._slo_tracker.evaluate_slos()
+                logger.info(
+                    "SLO final state at shutdown: all_passing=%s slis=%d",
+                    report.all_passing,
+                    len(report.slis),
+                )
+            except Exception as exc:
+                logger.warning(f"Error flushing SLO state at shutdown: {exc}")

@@ -1,0 +1,131 @@
+# Prometheus recording rules and alert rules for the AI SDLC Orchestrator.
+#
+# Recording rules pre-aggregate expensive PromQL queries so dashboards
+# and SLO evaluations are fast even at high metric cardinality.
+#
+# Alerts fire when SLO targets are violated, enabling operator awareness
+# before error budgets are exhausted.
+
+groups:
+  # ── Recording Rules ────────────────────────────────────────────────────────
+  - name: orchestrator_recording_rules
+    interval: 60s
+    rules:
+      # Pipeline success rate over the last hour.
+      # Used by: SLO dashboard, run-overview dashboard.
+      - record: orchestrator:pipeline_success_rate:rate1h
+        expr: |
+          sum(rate(orchestrator_run_total{status="completed"}[1h]))
+          /
+          (sum(rate(orchestrator_run_total[1h])) > 0)
+
+      # Phase duration 95th percentile over a 5-minute window.
+      # Used by: agent-performance dashboard, SLO dashboard.
+      - record: orchestrator:phase_duration_p95:5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(rate(orchestrator_phase_duration_seconds_bucket[5m])) by (le, phase)
+          )
+
+      # Error rate per run over the last hour.
+      # Used by: error-analysis dashboard, SLO dashboard.
+      - record: orchestrator:error_rate_per_run:rate1h
+        expr: |
+          sum(rate(orchestrator_errors_total[1h]))
+          /
+          (sum(rate(orchestrator_run_total[1h])) > 0)
+
+      # Cumulative cost per run (p50) over the last 24 hours — approximated
+      # via the histogram if available, otherwise raw counter average.
+      - record: orchestrator:cost_per_run_p50:rate24h
+        expr: |
+          sum(rate(orchestrator_cost_usd_total[24h]))
+          /
+          (sum(rate(orchestrator_run_total[24h])) > 0)
+
+      # Artifact validation rate over the last hour.
+      - record: orchestrator:artifact_validation_rate:rate1h
+        expr: |
+          sum(rate(orchestrator_artifacts_produced_total{valid="true"}[1h]))
+          /
+          (sum(rate(orchestrator_artifacts_produced_total[1h])) > 0)
+
+      # Error budget remaining for pipeline success rate SLO (target: 95%).
+      # Budget = 1 - (1 - actual_rate) / (1 - target_rate)
+      # Ranges 0.0 (exhausted) to 1.0 (fully intact), clamped to [0, 1].
+      - record: orchestrator:error_budget_remaining:pipeline_success_rate
+        expr: |
+          clamp_min(
+            1 - (
+              (1 - orchestrator:pipeline_success_rate:rate1h)
+              / (1 - 0.95)
+            ),
+            0
+          )
+
+  # ── Alert Rules ─────────────────────────────────────────────────────────────
+  - name: orchestrator_alerts
+    rules:
+      # Alert when pipeline success rate drops below SLO target of 95%.
+      # Fires after 5 minutes sustained below threshold to reduce flapping.
+      - alert: PipelineSuccessRateLow
+        expr: orchestrator:pipeline_success_rate:rate1h < 0.95
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Pipeline success rate below SLO ({{ $value | humanizePercentage }})"
+          description: >
+            The 1-hour pipeline success rate is {{ $value | humanizePercentage }},
+            below the SLO target of 95%. Check the error-analysis dashboard and
+            recent run logs for failure patterns.
+          dashboard_url: "http://localhost:3000/d/error-analysis"
+          runbook_url: "https://github.com/org/repo/docs/runbooks/pipeline-success-rate.md"
+
+      # Alert when the error budget for pipeline success rate falls below 10%.
+      # This is a critical signal: SLO is at risk of being missed for the period.
+      - alert: ErrorBudgetExhausted
+        expr: orchestrator:error_budget_remaining:pipeline_success_rate < 0.10
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Error budget nearly exhausted ({{ $value | humanizePercentage }} remaining)"
+          description: >
+            Less than 10% of the error budget for pipeline_success_rate remains.
+            Immediate action is required to avoid missing the SLO for this window.
+            Current success rate: {{ with query "orchestrator:pipeline_success_rate:rate1h" }}{{ . | first | value | humanizePercentage }}{{ end }}.
+          dashboard_url: "http://localhost:3000/d/slo-overview"
+          runbook_url: "https://github.com/org/repo/docs/runbooks/error-budget.md"
+
+      # Alert when phase duration p95 exceeds the SLO target of 300 seconds.
+      - alert: PhaseDurationHigh
+        expr: orchestrator:phase_duration_p95:5m > 300
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Phase duration p95 exceeds 300s ({{ $value | humanizeDuration }})"
+          description: >
+            The p95 phase duration has exceeded 300 seconds for 10 minutes.
+            This may indicate slow agent responses or resource contention.
+          dashboard_url: "http://localhost:3000/d/agent-performance"
+
+      # Alert when cost burn rate exceeds $1/minute — early cost anomaly detection.
+      - alert: HighCostBurnRate
+        expr: orchestrator_burn_rate_usd_per_minute > 1.0
+        for: 3m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Cost burn rate is high ({{ $value | printf \"$%.3f\" }}/min)"
+          description: >
+            The current cost burn rate is {{ $value | printf "$%.3f" }}/minute,
+            which exceeds the $1.00/minute alert threshold. Review agent efficiency
+            and active run count.
+          dashboard_url: "http://localhost:3000/d/cost-analysis"

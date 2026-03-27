@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Observability</h1>
+
+{% if config_missing %}
+<div class="card" style="border-color: var(--yellow); margin-bottom: 24px;">
+  <h2 style="color: var(--yellow);">⚠ Monitoring URLs Not Configured</h2>
+  <p style="margin-top: 8px; color: var(--text-dim);">
+    Add <code>monitoring.grafana_url</code>, <code>monitoring.jaeger_ui_url</code>,
+    and/or <code>monitoring.loki_endpoint</code> to your
+    <code>config/default.yaml</code> to enable deep links.
+  </p>
+  <pre style="margin-top: 12px; background: var(--bg); padding: 12px; border-radius: 6px; font-size: 12px; color: var(--text-dim); overflow-x: auto;">monitoring:
+  grafana_url: "http://localhost:3000"
+  jaeger_ui_url: "http://localhost:16686"
+  loki_endpoint: "http://localhost:3100"</pre>
+  <p style="margin-top: 8px; color: var(--text-dim); font-size: 13px;">
+    Start the monitoring stack with:
+    <code>docker compose -f infra/docker/docker-compose.monitoring.yml up -d</code>
+  </p>
+</div>
+{% endif %}
+
+<!-- Run ID filter bar -->
+<div class="card" style="margin-bottom: 24px;">
+  <form method="get" action="/observability" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+    <label for="run_id_input" style="color: var(--text-dim); font-size: 14px; white-space: nowrap;">Filter by Run ID:</label>
+    <input
+      id="run_id_input"
+      type="text"
+      name="run_id"
+      value="{{ run_id }}"
+      placeholder="e.g. abc123def456"
+      style="background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 6px 10px; font-size: 13px; font-family: monospace; flex: 1; min-width: 200px;"
+    />
+    <button type="submit" style="background: var(--accent); color: #000; border: none; border-radius: 4px; padding: 6px 16px; font-size: 13px; cursor: pointer; white-space: nowrap;">Apply</button>
+    {% if run_id %}
+    <a href="/observability" style="font-size: 13px; color: var(--text-dim);">Clear</a>
+    {% endif %}
+  </form>
+  {% if run_id %}
+  <p style="margin-top: 8px; font-size: 12px; color: var(--text-dim);">
+    Showing deep links pre-filtered for run <code style="color: var(--accent);">{{ run_id }}</code>.
+    <a href="/runs/{{ run_id }}">View run detail →</a>
+  </p>
+  {% endif %}
+</div>
+
+<!-- ================================================================
+     Section 1: Grafana Dashboards
+     ================================================================ -->
+<div class="card" style="margin-bottom: 24px;">
+  <h2 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+    <span style="font-size: 20px;">📊</span> Grafana Dashboards
+    {% if not grafana_configured %}
+    <span style="font-size: 12px; color: var(--yellow); font-weight: normal; margin-left: auto;">Not configured</span>
+    {% endif %}
+  </h2>
+
+  {% if not grafana_configured %}
+  <p style="color: var(--text-dim); font-size: 14px;">
+    Set <code>monitoring.grafana_url</code> in your config to enable Grafana deep links.
+    Once configured, links will open each dashboard pre-filtered to the selected run.
+  </p>
+  {% else %}
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;">
+
+    <a href="{{ urls.grafana_run_overview }}" target="_blank" rel="noopener noreferrer"
+       class="obs-link-card">
+      <div class="obs-link-icon">📈</div>
+      <div>
+        <div class="obs-link-title">Run Overview</div>
+        <div class="obs-link-desc">Success rate, phase duration, agent cost heatmap</div>
+      </div>
+    </a>
+
+    <a href="{{ urls.grafana_cost_analysis }}" target="_blank" rel="noopener noreferrer"
+       class="obs-link-card">
+      <div class="obs-link-icon">💰</div>
+      <div>
+        <div class="obs-link-title">Cost Analysis</div>
+        <div class="obs-link-desc">Per-run and per-agent cost breakdown over time</div>
+      </div>
+    </a>
+
+    <a href="{{ urls.grafana_agent_performance }}" target="_blank" rel="noopener noreferrer"
+       class="obs-link-card">
+      <div class="obs-link-icon">🤖</div>
+      <div>
+        <div class="obs-link-title">Agent Performance</div>
+        <div class="obs-link-desc">Agent latency, token usage, and error rates</div>
+      </div>
+    </a>
+
+    <a href="{{ urls.grafana_error_analysis }}" target="_blank" rel="noopener noreferrer"
+       class="obs-link-card">
+      <div class="obs-link-icon">🔴</div>
+      <div>
+        <div class="obs-link-title">Error Analysis</div>
+        <div class="obs-link-desc">Error frequency, types, and affected agents</div>
+      </div>
+    </a>
+
+    <a href="{{ urls.grafana_slo_overview }}" target="_blank" rel="noopener noreferrer"
+       class="obs-link-card">
+      <div class="obs-link-icon">🎯</div>
+      <div>
+        <div class="obs-link-title">SLO Overview</div>
+        <div class="obs-link-desc">Service level indicators vs. targets</div>
+      </div>
+    </a>
+
+  </div>
+  {% endif %}
+</div>
+
+<!-- ================================================================
+     Section 2: Jaeger Distributed Tracing
+     ================================================================ -->
+<div class="card" style="margin-bottom: 24px;">
+  <h2 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+    <span style="font-size: 20px;">🔍</span> Jaeger Distributed Tracing
+    {% if not jaeger_configured %}
+    <span style="font-size: 12px; color: var(--yellow); font-weight: normal; margin-left: auto;">Not configured</span>
+    {% endif %}
+  </h2>
+
+  {% if not jaeger_configured %}
+  <p style="color: var(--text-dim); font-size: 14px;">
+    Set <code>monitoring.jaeger_ui_url</code> in your config to enable Jaeger deep links.
+    Traces are exported via OpenTelemetry when <code>tracing_enabled: true</code>.
+  </p>
+  {% else %}
+  <a href="{{ urls.jaeger_trace_search }}" target="_blank" rel="noopener noreferrer"
+     class="obs-link-card" style="display: flex; max-width: 480px;">
+    <div class="obs-link-icon">🔎</div>
+    <div>
+      <div class="obs-link-title">Trace Search</div>
+      <div class="obs-link-desc">
+        Search traces for service <code>orchestrator</code>
+        {% if run_id %}filtered to run <code>{{ run_id }}</code>{% endif %}
+      </div>
+    </div>
+  </a>
+  <p style="margin-top: 12px; font-size: 12px; color: var(--text-dim);">
+    Trace IDs are emitted as <code>trace_id</code> in pipeline event logs and
+    can be correlated with Loki log entries.
+  </p>
+  {% endif %}
+</div>
+
+<!-- ================================================================
+     Section 3: Loki Log Explorer
+     ================================================================ -->
+<div class="card" style="margin-bottom: 24px;">
+  <h2 style="margin-bottom: 16px; display: flex; align-items: center; gap: 8px;">
+    <span style="font-size: 20px;">📜</span> Loki Log Explorer
+    {% if not loki_configured and not grafana_configured %}
+    <span style="font-size: 12px; color: var(--yellow); font-weight: normal; margin-left: auto;">Not configured</span>
+    {% endif %}
+  </h2>
+
+  {% if not loki_configured and not grafana_configured %}
+  <p style="color: var(--text-dim); font-size: 14px;">
+    Set <code>monitoring.grafana_url</code> (for Grafana Explore) and/or
+    <code>monitoring.loki_endpoint</code> (for direct API access) to enable log deep links.
+    Enable log shipping with <code>loki_enabled: true</code>.
+  </p>
+  {% else %}
+  <div style="display: flex; flex-direction: column; gap: 12px;">
+
+    {% if urls.loki_explore %}
+    <a href="{{ urls.loki_explore }}" target="_blank" rel="noopener noreferrer"
+       class="obs-link-card" style="max-width: 600px;">
+      <div class="obs-link-icon">🖥️</div>
+      <div>
+        <div class="obs-link-title">Grafana Explore — Loki</div>
+        <div class="obs-link-desc">
+          Visual log explorer with LogQL query:
+          <code style="font-size: 11px; color: var(--accent);">
+            {job="orchestrator"{% if run_id %}, run_id="{{ run_id }}"{% endif %}}
+          </code>
+        </div>
+      </div>
+    </a>
+    {% endif %}
+
+    {% if urls.loki_query_api %}
+    <a href="{{ urls.loki_query_api }}" target="_blank" rel="noopener noreferrer"
+       class="obs-link-card" style="max-width: 600px;">
+      <div class="obs-link-icon">⚡</div>
+      <div>
+        <div class="obs-link-title">Loki Query API</div>
+        <div class="obs-link-desc">
+          Direct HTTP query endpoint for scripting / curl:
+          <code style="font-size: 11px; word-break: break-all; color: var(--text-dim);">
+            /loki/api/v1/query_range
+          </code>
+        </div>
+      </div>
+    </a>
+    {% endif %}
+
+    {% if not urls.loki_explore and not urls.loki_query_api %}
+    <p style="color: var(--text-dim); font-size: 14px;">
+      Configure <code>monitoring.grafana_url</code> and/or <code>monitoring.loki_endpoint</code>
+      to generate log deep links.
+    </p>
+    {% endif %}
+
+  </div>
+
+  <div style="margin-top: 16px; padding: 12px; background: var(--bg); border-radius: 6px; font-size: 12px; color: var(--text-dim);">
+    <strong style="color: var(--text);">LogQL query used:</strong>
+    <code style="color: var(--accent);">
+      {job="orchestrator"{% if run_id %}, run_id="{{ run_id }}"{% endif %}}
+    </code>
+    <br/>
+    Labels shipped by <code>LokiLogShipper</code>: <code>job</code>, <code>run_id</code>,
+    <code>event</code>, <code>agent</code>.
+  </div>
+  {% endif %}
+</div>
+
+<style>
+.obs-link-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.obs-link-card:hover {
+  border-color: var(--accent);
+  background: var(--bg-hover);
+  text-decoration: none;
+}
+.obs-link-icon {
+  font-size: 22px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.obs-link-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--accent);
+  margin-bottom: 4px;
+}
+.obs-link-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+</style>
+{% endblock %}

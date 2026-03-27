@@ -1,0 +1,38 @@
+# Grafana datasource provisioning — auto-registers all monitoring backends.
+# Grafana reads this on startup; no manual configuration needed.
+
+apiVersion: 1
+
+datasources:
+  # Prometheus — primary metrics source
+  - name: Prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      timeInterval: "10s"
+      httpMethod: POST
+
+  # Loki — log aggregation
+  - name: Loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    editable: false
+    jsonData:
+      derivedFields:
+        # Link from Loki logs to Jaeger traces via trace_id
+        - datasourceUid: jaeger
+          matcherRegex: '"trace_id":"([a-f0-9]+)"'
+          name: TraceID
+          url: "$${__value.raw}"
+
+  # Jaeger — distributed tracing
+  - name: Jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    uid: jaeger
+    editable: false

@@ -1,0 +1,17 @@
+# Grafana dashboard provisioning — auto-loads JSON dashboard files.
+# Dashboards are read from the mounted volume at container startup.
+
+apiVersion: 1
+
+providers:
+  - name: "Orchestrator Dashboards"
+    orgId: 1
+    folder: "AI SDLC Orchestrator"
+    type: file
+    disableDeletion: false
+    editable: true
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

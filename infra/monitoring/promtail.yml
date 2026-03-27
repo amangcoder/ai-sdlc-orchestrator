@@ -1,0 +1,61 @@
+# Promtail configuration — ships orchestrator JSONL logs to Loki.
+#
+# Tails all run-*.jsonl files from the workspace directory and extracts
+# structured labels (run_id, event, agent) for efficient LogQL queries.
+#
+# Example queries in Grafana Explore → Loki:
+#   {job="orchestrator"}                                    — all events
+#   {job="orchestrator", run_id="abc123"}                   — events for a run
+#   {job="orchestrator", event="agent_result"} |= `false`   — agent failures
+#   {job="orchestrator"} | json | duration_s > 60           — slow operations
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: orchestrator-runs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: orchestrator
+          __path__: /workspace/**/run-*.jsonl
+
+    pipeline_stages:
+      # Parse JSON fields from each JSONL line
+      - json:
+          expressions:
+            run_id: run_id
+            event: event
+            agent: agent
+            ts: ts
+            level: level
+
+      # Promote extracted fields to Loki labels for indexed queries
+      - labels:
+          run_id:
+          event:
+          agent:
+
+      # Use the event timestamp instead of ingestion time
+      - timestamp:
+          source: ts
+          format: RFC3339Nano
+          fallback_formats:
+            - RFC3339
+
+      # Map event types to log levels for Grafana level-based filtering
+      - template:
+          source: level
+          template: >-
+            {{ if or (eq .event "budget_warning") (eq .event "model_escalation") }}warn{{ else if or (eq .event "phase_failed") (eq .event "crash") }}error{{ else }}info{{ end }}
+
+      - labels:
+          level:

@@ -1,0 +1,183 @@
+# docker-compose.monitoring.yml — Centralized monitoring stack for the
+# AI SDLC Orchestrator.
+#
+# USAGE:
+#   # One-command startup:
+#   bash infra/scripts/start-monitoring.sh
+#
+#   # Or manually:
+#   docker compose -f infra/docker/docker-compose.monitoring.yml up -d
+#
+#   # To run alongside the containerized orchestrator:
+#   docker compose -f infra/docker/docker-compose.yml \
+#                  -f infra/docker/docker-compose.monitoring.yml up -d
+#
+# SERVICES:
+#   - Prometheus  (TSDB)       → http://localhost:9091
+#   - Grafana     (dashboards) → http://localhost:3000  (admin/admin)
+#   - Jaeger      (tracing)    → http://localhost:16686
+#   - Loki        (logs)       → http://localhost:3100
+#   - Promtail    (log shipper)
+#
+# All data is persisted in named Docker volumes. To reset:
+#   docker compose -f infra/docker/docker-compose.monitoring.yml down -v
+
+networks:
+  orchestrator-monitoring:
+    name: orchestrator-monitoring
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  jaeger-data:
+  loki-data:
+
+services:
+  # ── Prometheus — time-series metrics database ─────────────────────────
+  # Scrapes the orchestrator's /metrics endpoint (MetricsManager on :9090)
+  # and stores metrics persistently. Exposed on host :9091 to avoid
+  # collision with the orchestrator's in-process Prometheus HTTP server.
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: orchestrator-prometheus
+    networks:
+      - orchestrator-monitoring
+    ports:
+      - "9091:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/prometheus-rules.yml:/etc/prometheus/rules.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=90d"
+      - "--storage.tsdb.retention.size=5GB"
+      - "--web.enable-lifecycle"
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1g
+          cpus: "1"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── Grafana — visualization and dashboards ────────────────────────────
+  # Auto-provisions Prometheus, Loki, and Jaeger as data sources.
+  # Pre-built dashboards are loaded from infra/monitoring/grafana/dashboards/.
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: orchestrator-grafana
+    networks:
+      - orchestrator-monitoring
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/run-overview.json
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── Jaeger — distributed tracing ──────────────────────────────────────
+  # Receives OTLP gRPC traces from the orchestrator's TracingManager
+  # (default endpoint: localhost:4317). Uses Badger for persistent storage.
+  # UI available at :16686.
+  jaeger:
+    image: jaegertracing/all-in-one:1.58
+    container_name: orchestrator-jaeger
+    networks:
+      - orchestrator-monitoring
+    ports:
+      - "16686:16686"   # Jaeger UI
+      - "4317:4317"     # OTLP gRPC receiver
+      - "4318:4318"     # OTLP HTTP receiver
+    volumes:
+      - jaeger-data:/badger
+    environment:
+      - SPAN_STORAGE_TYPE=badger
+      - BADGER_EPHEMERAL=false
+      - BADGER_DIRECTORY_VALUE=/badger/data
+      - BADGER_DIRECTORY_KEY=/badger/key
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:16686/"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  # ── Loki — log aggregation ────────────────────────────────────────────
+  # Receives structured JSONL events from Promtail (or the Python
+  # LokiLogShipper). Queryable via Grafana Explore or LogQL API.
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: orchestrator-loki
+    networks:
+      - orchestrator-monitoring
+    ports:
+      - "3100:3100"
+    volumes:
+      - loki-data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+          cpus: "0.5"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/ready"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ── Promtail — log shipping agent ─────────────────────────────────────
+  # Tails JSONL log files from the orchestrator workspace and ships them
+  # to Loki with structured labels (run_id, event, agent).
+  promtail:
+    image: grafana/promtail:3.1.0
+    container_name: orchestrator-promtail
+    networks:
+      - orchestrator-monitoring
+    volumes:
+      - ../monitoring/promtail.yml:/etc/promtail/config.yml:ro
+      - ${WORKSPACE_ROOT:-../../workspace}:/workspace:ro
+      - /tmp/promtail-positions:/tmp
+    command: -config.file=/etc/promtail/config.yml
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
+    depends_on:
+      loki:
+        condition: service_healthy

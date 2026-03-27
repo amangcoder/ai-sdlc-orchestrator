@@ -9,6 +9,7 @@ from pydantic import ValidationError
 
 from orchestrator.models import (
     AgentConfig,
+    ArtifactsConfig,
     ContainerConfig,
     DebateConfig,
     ExplorationConfig,
@@ -138,6 +139,13 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
     except ValidationError as exc:
         raise ConfigurationError(_format_validation_error("container", exc)) from exc
 
+    # Parse artifacts config
+    artifacts_raw = raw.get("artifacts", {})
+    try:
+        artifacts_config = ArtifactsConfig(**artifacts_raw) if artifacts_raw else ArtifactsConfig()
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("artifacts", exc)) from exc
+
     try:
         workspace_root = raw.get("workspace_root")
         project_name = raw.get("project_name") or Path.cwd().name
@@ -168,6 +176,7 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             knowledge=knowledge_config,
             exploration=exploration_config,
             test_runner=test_runner_config,
+            artifacts=artifacts_config,
             container=container_config,
             monitoring=raw.get("monitoring", {}),
             allowed_directories=allowed_directories,

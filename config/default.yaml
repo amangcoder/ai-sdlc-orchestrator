@@ -122,6 +122,15 @@ comms_log:
     max_recall_results: 10         # max past messages returned per recall query
     similarity_threshold: 0.7      # minimum relevance score for recall results
 
+# --- Artifact management (versioning, retention, indexing) ---
+artifacts:
+  versioning_enabled: true         # keep version history of artifacts in .versions/
+  index_enabled: true              # maintain .index.json manifest per run
+  retention_enabled: false         # auto-cleanup old runs (opt-in for safety)
+  retention_max_age_days: 90       # delete artifacts from runs older than this
+  retention_max_runs: 200          # keep at most this many runs
+  retention_keep_failed: true      # never auto-delete failed runs
+
 # --- Monitoring (all opt-in — orchestrator works without monitoring deps) ---
 monitoring:
   metrics_enabled: false           # expose Prometheus metrics on metrics_port
@@ -130,11 +139,24 @@ monitoring:
   tracing_endpoint: "http://localhost:4317"
   tracing_console: false           # also log spans to console
   dashboard_port: 8080             # port for orchestrate-dashboard
+  loki_enabled: false              # push logs to Loki (alternative to Promtail)
+  loki_endpoint: "http://localhost:3100"
+  grafana_url: "http://localhost:3000"   # for deep-link generation in dashboard
+  jaeger_ui_url: "http://localhost:16686" # for trace link generation in dashboard
   webhooks: []                     # list of {url: "...", events: [...]}
   alerts:
     on_failure: true               # alert when a phase/step fails
     on_budget_warning: true        # alert at 80% budget utilization
     on_completion: true            # alert when run completes
+  slo:
+    enabled: false                 # track SLI/SLO compliance
+    pipeline_success_rate: 0.95    # target: ≥95% runs complete successfully
+    phase_duration_p95_seconds: 300 # target: p95 phase duration ≤5 min
+    cost_per_run_p50_usd: 0.50    # target: median cost ≤$0.50 (standard speed)
+    artifact_validation_rate: 0.99 # target: ≥99% artifacts pass schema validation
+    max_errors_per_run: 2          # target: ≤2 errors per run
+    recovery_success_rate: 0.90    # target: ≥90% crashed runs resume successfully
+    evaluation_window_hours: 24    # sliding window for SLO evaluation
 
 phases:
   pm:

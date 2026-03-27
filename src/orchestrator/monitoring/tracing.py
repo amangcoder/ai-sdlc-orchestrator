@@ -71,6 +71,31 @@ class TracingManager:
     def enabled(self) -> bool:
         return self._enabled
 
+    @property
+    def current_trace_id(self) -> str:
+        """Return the hex trace_id for the most-current active span, or empty string.
+
+        Checks spans in priority order: task → step → run.
+        Returns a 32-character lowercase hex string when OTel is enabled and
+        a valid span is active; otherwise returns ``""``.
+        """
+        if not self._enabled:
+            return ""
+        span = (
+            getattr(self, "_task_span", None)
+            or getattr(self, "_step_span", None)
+            or getattr(self, "_run_span", None)
+        )
+        if span is None:
+            return ""
+        try:
+            ctx = span.get_span_context()
+            if ctx and ctx.is_valid:
+                return format(ctx.trace_id, "032x")
+        except Exception:  # noqa: BLE001 — defensive: span API may not be available
+            pass
+        return ""
+
     @contextmanager
     def span_context(
         self,

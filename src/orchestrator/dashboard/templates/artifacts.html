@@ -1,0 +1,469 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Artifacts — <span style="font-family: monospace; font-size: 0.85em;">{{ run_id }}</span></h1>
+
+<div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
+  <a href="/runs/{{ run_id }}" style="color: var(--text-dim); font-size: 0.875rem;">← Back to run</a>
+  <button id="btn-diff-viewer" onclick="toggleDiffPanel()" style="
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+  ">Compare runs…</button>
+</div>
+
+{% if artifacts %}
+<div class="card" style="padding: 0; overflow: hidden;">
+  <table id="artifacts-table">
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Version</th>
+        <th>Agent</th>
+        <th>Size</th>
+        <th>Updated</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for a in artifacts %}
+      <tr
+        class="artifact-row"
+        data-name="{{ a.name }}"
+        onclick="showVersionHistory('{{ run_id }}', '{{ a.name }}')"
+        style="cursor: pointer;"
+        title="Click to view version history"
+      >
+        <td><code>{{ a.name }}</code></td>
+        <td>v{{ a.current_version }}</td>
+        <td>{{ a.agent or '—' }}</td>
+        <td>{{ (a.size_bytes / 1024) | round(1) }} KB</td>
+        <td>{{ a.updated_at[:19] if a.updated_at else '—' }}</td>
+        <td onclick="event.stopPropagation()">
+          <button
+            onclick="showVersionHistory('{{ run_id }}', '{{ a.name }}')"
+            style="background: none; border: 1px solid var(--accent); color: var(--accent); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;"
+          >History</button>
+          <button
+            onclick="loadRawArtifact('{{ run_id }}', '{{ a.name }}')"
+            style="background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: 6px;"
+          >View</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% else %}
+<div class="empty">
+  <h2>No artifacts for this run</h2>
+  <p>Artifacts are produced during orchestration phases (prd, architecture, tasks, etc.).</p>
+</div>
+{% endif %}
+
+<!-- ── Version History Modal ───────────────────────────────────────────── -->
+<div id="modal-overlay" onclick="closeModal()" style="
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 100;
+"></div>
+
+<div id="version-modal" style="
+  display: none;
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: min(760px, 94vw);
+  max-height: 80vh;
+  overflow-y: auto;
+  z-index: 101;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h2 id="modal-title" style="margin: 0;">Version History</h2>
+    <button onclick="closeModal()" style="
+      background: none; border: none; color: var(--text-dim);
+      font-size: 1.4rem; cursor: pointer; padding: 4px 8px;
+    ">✕</button>
+  </div>
+  <div id="modal-body">
+    <p style="color: var(--text-dim);">Loading…</p>
+  </div>
+</div>
+
+<!-- ── Raw / Version Content Viewer ───────────────────────────────────── -->
+<div id="content-modal" style="
+  display: none;
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: min(880px, 96vw);
+  max-height: 85vh;
+  overflow-y: auto;
+  z-index: 102;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+    <h2 id="content-modal-title" style="margin: 0;">Artifact Content</h2>
+    <button onclick="closeContentModal()" style="
+      background: none; border: none; color: var(--text-dim);
+      font-size: 1.4rem; cursor: pointer; padding: 4px 8px;
+    ">✕</button>
+  </div>
+  <pre id="content-viewer" style="
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    overflow: auto;
+    font-size: 0.8rem;
+    line-height: 1.5;
+    color: var(--text);
+    max-height: calc(85vh - 120px);
+  "></pre>
+</div>
+
+<!-- ── Diff Viewer Panel ────────────────────────────────────────────────── -->
+<div id="diff-panel" style="display: none; margin-top: 24px;">
+  <div class="card">
+    <h2>Compare Runs</h2>
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end;">
+      <div>
+        <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Run A</label>
+        <input id="diff-run-a" type="text" placeholder="{{ run_id }}" value="{{ run_id }}" style="
+          background: var(--bg); border: 1px solid var(--border); color: var(--text);
+          padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 260px;
+        ">
+      </div>
+      <div>
+        <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Run B</label>
+        <input id="diff-run-b" type="text" placeholder="other-run-id…" style="
+          background: var(--bg); border: 1px solid var(--border); color: var(--text);
+          padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 260px;
+        ">
+      </div>
+      <div>
+        <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Artifact</label>
+        <input id="diff-artifact" type="text" placeholder="prd" style="
+          background: var(--bg); border: 1px solid var(--border); color: var(--text);
+          padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 160px;
+        ">
+      </div>
+      <button onclick="runDiff()" style="
+        background: var(--accent); color: #000;
+        border: none; border-radius: 6px;
+        padding: 8px 18px; cursor: pointer; font-weight: 600;
+      ">Compare</button>
+    </div>
+    <div id="diff-result" style="display: none;">
+      <div id="diff-summary" style="margin-bottom: 12px; font-size: 0.875rem; color: var(--text-dim);"></div>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
+        <div>
+          <h3 style="font-size: 0.875rem; color: #10b981; margin-bottom: 8px;">Added keys</h3>
+          <ul id="diff-added" style="margin: 0; padding: 0; list-style: none; font-family: monospace; font-size: 0.8rem;"></ul>
+        </div>
+        <div>
+          <h3 style="font-size: 0.875rem; color: #ef4444; margin-bottom: 8px;">Removed keys</h3>
+          <ul id="diff-removed" style="margin: 0; padding: 0; list-style: none; font-family: monospace; font-size: 0.8rem;"></ul>
+        </div>
+        <div>
+          <h3 style="font-size: 0.875rem; color: #f59e0b; margin-bottom: 8px;">Changed keys</h3>
+          <ul id="diff-changed" style="margin: 0; padding: 0; list-style: none; font-family: monospace; font-size: 0.8rem;"></ul>
+        </div>
+      </div>
+    </div>
+    <div id="diff-error" style="display: none; color: #ef4444; font-size: 0.875rem;"></div>
+  </div>
+</div>
+
+<!-- ── Search Panel ─────────────────────────────────────────────────────── -->
+<div class="card" style="margin-top: 24px;">
+  <h2>Search All Artifacts</h2>
+  <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px;">
+    <div>
+      <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Query</label>
+      <input id="search-q" type="text" placeholder="Search artifact content…" style="
+        background: var(--bg); border: 1px solid var(--border); color: var(--text);
+        padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 220px;
+      ">
+    </div>
+    <div>
+      <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Type</label>
+      <input id="search-type" type="text" placeholder="prd, architecture…" style="
+        background: var(--bg); border: 1px solid var(--border); color: var(--text);
+        padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 160px;
+      ">
+    </div>
+    <div>
+      <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Agent</label>
+      <input id="search-agent" type="text" placeholder="pm, architect…" style="
+        background: var(--bg); border: 1px solid var(--border); color: var(--text);
+        padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 140px;
+      ">
+    </div>
+    <button onclick="runSearch()" style="
+      background: var(--accent); color: #000;
+      border: none; border-radius: 6px;
+      padding: 8px 18px; cursor: pointer; font-weight: 600;
+    ">Search</button>
+  </div>
+  <div id="search-results"></div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  'use strict';
+
+  // ── Modal helpers ─────────────────────────────────────────────────────
+
+  function openModal() {
+    document.getElementById('modal-overlay').style.display = 'block';
+    document.getElementById('version-modal').style.display = 'block';
+  }
+
+  window.closeModal = function () {
+    document.getElementById('modal-overlay').style.display = 'none';
+    document.getElementById('version-modal').style.display = 'none';
+    document.getElementById('content-modal').style.display = 'none';
+  };
+
+  window.closeContentModal = function () {
+    document.getElementById('content-modal').style.display = 'none';
+  };
+
+  // ── Version History ───────────────────────────────────────────────────
+
+  window.showVersionHistory = function (runId, name) {
+    document.getElementById('modal-title').textContent = 'Version History — ' + name;
+    document.getElementById('modal-body').innerHTML = '<p style="color:var(--text-dim)">Loading…</p>';
+    openModal();
+
+    fetch('/api/v1/runs/' + encodeURIComponent(runId) + '/artifacts/' + encodeURIComponent(name) + '/versions')
+      .then(function (r) { return r.json(); })
+      .then(function (versions) {
+        if (!versions.length) {
+          document.getElementById('modal-body').innerHTML =
+            '<p style="color:var(--text-dim)">No version history found.</p>';
+          return;
+        }
+        var html = '<table style="width:100%"><thead><tr>'
+          + '<th>Version</th><th>Run ID</th><th>Agent</th>'
+          + '<th>Size</th><th>Created</th><th>Status</th><th></th>'
+          + '</tr></thead><tbody>';
+        versions.forEach(function (v) {
+          var statusColor = v.run_status === 'completed' ? '#10b981'
+            : v.run_status === 'failed' ? '#ef4444' : '#8899aa';
+          html += '<tr>'
+            + '<td><strong>v' + v.version + '</strong></td>'
+            + '<td style="font-family:monospace;font-size:0.8rem">' + (v.run_id || '—').substring(0, 12) + '…</td>'
+            + '<td>' + (v.agent || '—') + '</td>'
+            + '<td>' + ((v.size_bytes || 0) / 1024).toFixed(1) + ' KB</td>'
+            + '<td>' + (v.created_at || '—').substring(0, 19) + '</td>'
+            + '<td style="color:' + statusColor + '">' + (v.run_status || 'unknown') + '</td>'
+            + '<td><button onclick="loadVersionContent(\'' + encodeURIComponent(runId) + '\',\''
+            + encodeURIComponent(name) + '\',' + v.version + ')" style="'
+            + 'background:none;border:1px solid var(--border);color:var(--text-dim);'
+            + 'padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.78rem;">View</button></td>'
+            + '</tr>';
+        });
+        html += '</tbody></table>';
+        document.getElementById('modal-body').innerHTML = html;
+      })
+      .catch(function (err) {
+        document.getElementById('modal-body').innerHTML =
+          '<p style="color:#ef4444">Error loading history: ' + err.message + '</p>';
+      });
+  };
+
+  // ── Load versioned content ────────────────────────────────────────────
+
+  window.loadVersionContent = function (runId, name, version) {
+    var url = '/api/v1/runs/' + runId + '/artifacts/' + name + '/versions/' + version;
+    document.getElementById('content-modal-title').textContent =
+      'Artifact: ' + decodeURIComponent(name) + ' (v' + version + ')';
+    document.getElementById('content-viewer').textContent = 'Loading…';
+    document.getElementById('content-modal').style.display = 'block';
+
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        document.getElementById('content-viewer').textContent =
+          JSON.stringify(data, null, 2);
+      })
+      .catch(function (err) {
+        document.getElementById('content-viewer').textContent = 'Error: ' + err.message;
+      });
+  };
+
+  // ── Load raw (current) artifact ───────────────────────────────────────
+
+  window.loadRawArtifact = function (runId, name) {
+    var url = '/api/v1/runs/' + encodeURIComponent(runId)
+      + '/artifacts/' + encodeURIComponent(name) + '/versions';
+
+    document.getElementById('content-modal-title').textContent = 'Artifact: ' + name + ' (latest)';
+    document.getElementById('content-viewer').textContent = 'Loading…';
+    document.getElementById('content-modal').style.display = 'block';
+
+    // Get the latest version number, then load it
+    fetch(url)
+      .then(function (r) { return r.json(); })
+      .then(function (versions) {
+        if (!versions.length) throw new Error('No versions found');
+        var latest = versions[versions.length - 1];
+        return fetch('/api/v1/runs/' + encodeURIComponent(runId)
+          + '/artifacts/' + encodeURIComponent(name)
+          + '/versions/' + latest.version);
+      })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        document.getElementById('content-viewer').textContent =
+          JSON.stringify(data, null, 2);
+      })
+      .catch(function (err) {
+        document.getElementById('content-viewer').textContent = 'Error: ' + err.message;
+      });
+  };
+
+  // ── Diff panel ────────────────────────────────────────────────────────
+
+  window.toggleDiffPanel = function () {
+    var panel = document.getElementById('diff-panel');
+    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+  };
+
+  window.runDiff = function () {
+    var runA = document.getElementById('diff-run-a').value.trim();
+    var runB = document.getElementById('diff-run-b').value.trim();
+    var artifact = document.getElementById('diff-artifact').value.trim();
+
+    var resultEl = document.getElementById('diff-result');
+    var errorEl = document.getElementById('diff-error');
+    resultEl.style.display = 'none';
+    errorEl.style.display = 'none';
+
+    if (!runA || !runB || !artifact) {
+      errorEl.textContent = 'All three fields are required.';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    var url = '/api/v1/artifacts/compare?run_a=' + encodeURIComponent(runA)
+      + '&run_b=' + encodeURIComponent(runB)
+      + '&artifact=' + encodeURIComponent(artifact);
+
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'HTTP ' + r.status); });
+        return r.json();
+      })
+      .then(function (diff) {
+        document.getElementById('diff-summary').textContent =
+          'Comparing \'' + artifact + '\' — '
+          + 'v' + diff.version_a + ' (' + runA.substring(0, 12) + '…) vs '
+          + 'v' + diff.version_b + ' (' + runB.substring(0, 12) + '…)';
+
+        function renderList(elId, items, color) {
+          var el = document.getElementById(elId);
+          el.innerHTML = '';
+          if (!items.length) {
+            el.innerHTML = '<li style="color:var(--text-dim);font-style:italic">none</li>';
+            return;
+          }
+          items.forEach(function (k) {
+            var li = document.createElement('li');
+            li.textContent = k;
+            li.style.color = color;
+            li.style.padding = '2px 0';
+            el.appendChild(li);
+          });
+        }
+        renderList('diff-added', diff.added || [], '#10b981');
+        renderList('diff-removed', diff.removed || [], '#ef4444');
+        renderList('diff-changed', diff.changed || [], '#f59e0b');
+
+        resultEl.style.display = 'block';
+      })
+      .catch(function (err) {
+        errorEl.textContent = 'Compare failed: ' + err.message;
+        errorEl.style.display = 'block';
+      });
+  };
+
+  // ── Search ────────────────────────────────────────────────────────────
+
+  window.runSearch = function () {
+    var q = document.getElementById('search-q').value.trim();
+    var type = document.getElementById('search-type').value.trim();
+    var agent = document.getElementById('search-agent').value.trim();
+
+    var params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (type) params.set('type', type);
+    if (agent) params.set('agent', agent);
+
+    var resultEl = document.getElementById('search-results');
+    resultEl.innerHTML = '<p style="color:var(--text-dim)">Searching…</p>';
+
+    fetch('/api/v1/artifacts/search?' + params.toString())
+      .then(function (r) {
+        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'HTTP ' + r.status); });
+        return r.json();
+      })
+      .then(function (results) {
+        if (!results.length) {
+          resultEl.innerHTML = '<p style="color:var(--text-dim)">No artifacts matched your query.</p>';
+          return;
+        }
+        var html = '<table><thead><tr>'
+          + '<th>Name</th><th>Run ID</th><th>Agent</th>'
+          + '<th>Version</th><th>Size</th><th>Updated</th>'
+          + '</tr></thead><tbody>';
+        results.forEach(function (a) {
+          html += '<tr>'
+            + '<td><code>' + a.name + '</code></td>'
+            + '<td style="font-family:monospace;font-size:0.8rem">'
+            + (a.run_id || '—').substring(0, 16) + '…</td>'
+            + '<td>' + (a.agent || '—') + '</td>'
+            + '<td>v' + a.current_version + '</td>'
+            + '<td>' + ((a.size_bytes || 0) / 1024).toFixed(1) + ' KB</td>'
+            + '<td>' + (a.updated_at || '—').substring(0, 19) + '</td>'
+            + '</tr>';
+        });
+        html += '</tbody></table>';
+        resultEl.innerHTML = html;
+      })
+      .catch(function (err) {
+        resultEl.innerHTML = '<p style="color:#ef4444">Search error: ' + err.message + '</p>';
+      });
+  };
+
+  // ── Close on Escape ───────────────────────────────────────────────────
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') {
+      window.closeModal();
+    }
+  });
+}());
+</script>
+{% endblock %}

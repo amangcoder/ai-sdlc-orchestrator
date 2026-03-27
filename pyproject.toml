@@ -38,8 +38,12 @@ mobile-api = [
     "websockets>=12.0",
     "pyyaml>=6.0",
 ]
+observability = [
+    "httpx>=0.24.0",
+    "prometheus-client>=0.20",
+]
 all = [
-    "ai-sdlc-orchestrator[monitoring,dashboard,mobile-api]",
+    "ai-sdlc-orchestrator[monitoring,dashboard,mobile-api,observability]",
 ]
 dev = [
     "pytest>=8.0",
@@ -57,6 +61,8 @@ orchestrate-container = "orchestrator.containerized_main:main"
 orchestrate-watchdog = "orchestrator.watchdog:main"
 orchestrate-dashboard = "orchestrator.dashboard.cli:main"
 orchestrator-mobile-api = "orchestrator.mobile_api.server:main"
+orchestrate-monitoring = "orchestrator.monitoring.cli:main"
+orchestrate-artifacts = "orchestrator.cli_artifacts:main"
 
 [tool.hatch.version]
 source = "vcs"
