@@ -55,6 +55,7 @@ def _make_workflow() -> WorkflowDefinition:
     """Minimal single-step workflow for testing."""
     return WorkflowDefinition(
         name="Test Workflow",
+        workflow_type=WorkflowType.FEATURE_DEVELOPMENT,
         steps=[
             WorkflowStepDefinition(
                 name="PRD",

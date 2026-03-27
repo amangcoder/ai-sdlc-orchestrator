@@ -70,10 +70,20 @@ def _make_observability_app(config_path: Optional[Path] = None) -> FastAPI:
 
 
 def _make_dashboard_app(workspace_root: Path, project_name: str = "test-project") -> FastAPI:
-    """Create the full dashboard app for integration-level tests."""
+    """Create the full dashboard app for integration-level tests.
+
+    Explicitly clears DASHBOARD_TOKEN so the app's auth middleware captures
+    None — preventing test pollution from other modules that patch the global.
+    """
+    import orchestrator.dashboard.app as _app_mod
     from orchestrator.dashboard.app import create_app
 
-    return create_app(workspace_root, project_name)
+    saved = _app_mod.DASHBOARD_TOKEN
+    _app_mod.DASHBOARD_TOKEN = None
+    try:
+        return create_app(workspace_root, project_name)
+    finally:
+        _app_mod.DASHBOARD_TOKEN = saved
 
 
 # ---------------------------------------------------------------------------

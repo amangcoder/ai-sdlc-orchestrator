@@ -76,12 +76,15 @@ def create_app(workspace_root: Path, project_name: str, config_path: Path | None
         )
 
     # --- Auth middleware ---
+    # Capture the token at app-creation time so tests that patch the module
+    # global before calling create_app() get deterministic behaviour.
+    _auth_token = DASHBOARD_TOKEN
 
     @app.middleware("http")
     async def auth_middleware(request: Request, call_next):
-        if DASHBOARD_TOKEN and not request.url.path.startswith(('/healthz', '/health', '/static')):
+        if _auth_token and not request.url.path.startswith(('/healthz', '/health', '/static')):
             token = request.headers.get("Authorization", "").removeprefix("Bearer ")
-            if token != DASHBOARD_TOKEN:
+            if token != _auth_token:
                 return JSONResponse(status_code=401, content={"error": "Unauthorized"})
         return await call_next(request)
 

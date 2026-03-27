@@ -413,6 +413,7 @@ class TestFlagFinding:
 # ---------------------------------------------------------------------------
 
 class TestGetResearchMcpConfig:
+    @patch("orchestrator.research_cache._SEARCH_PATHS", [])
     def test_returns_none_when_server_missing(self, tmp_path: Path):
         result = get_research_mcp_config("", tmp_path)
         assert result is None

@@ -61,6 +61,7 @@ from orchestrator.phases import (
     build_reviewer_prompt,
     get_engineer_tasks,
 )
+from orchestrator.artifact_manager import ArtifactManager
 from orchestrator.validation import validate_artifact_file
 from orchestrator.workflows import BUILTIN_WORKFLOWS, parse_custom_workflow, select_workflow
 from orchestrator.workflow_engine import (
@@ -134,7 +135,6 @@ class OrchestratorEngine:
         self._artifact_manager: Any = None
         if config.artifacts.versioning_enabled:
             try:
-                from orchestrator.artifact_manager import ArtifactManager
                 artifacts_dir = Path(config.workspace_dir).resolve() / "artifacts"
                 self._artifact_manager = ArtifactManager(artifacts_dir, config.artifacts)
             except Exception as e:
@@ -239,7 +239,6 @@ class OrchestratorEngine:
         # versioned writes go to the correct per-run artifacts directory.
         if self.config.artifacts.versioning_enabled:
             try:
-                from orchestrator.artifact_manager import ArtifactManager
                 self._artifact_manager = ArtifactManager(
                     workspace / "artifacts", self.config.artifacts
                 )

@@ -46,6 +46,8 @@ def _find_research_server(server_path: str) -> Path | None:
         if (p / "dist" / "index.js").exists():
             return p / "dist" / "index.js"
         logger.warning(f"Configured research_cache server_path not found: {server_path}")
+        # Explicit path was given but not found — do not fall back to auto-detect.
+        return None
 
     # Auto-detect from well-known sibling locations
     search_roots = [_ORCHESTRATOR_ROOT]

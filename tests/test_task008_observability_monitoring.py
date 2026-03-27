@@ -683,13 +683,14 @@ class TestMonitoringStackCurrentTraceId:
         assert stack.current_trace_id == "cafebabe" * 4
 
     def test_current_trace_id_returns_empty_string_on_tracing_error(self):
-        from unittest.mock import PropertyMock
         stack = _make_stack()
-        fake_tracing = MagicMock()
-        type(fake_tracing).current_trace_id = PropertyMock(
-            side_effect=AttributeError("no trace")
-        )
-        stack._tracing = fake_tracing
+
+        class BrokenTracing:
+            @property
+            def current_trace_id(self):
+                raise AttributeError("no trace")
+
+        stack._tracing = BrokenTracing()
         assert stack.current_trace_id == ""
 
 

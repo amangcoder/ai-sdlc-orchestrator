@@ -92,7 +92,7 @@ BUGFIX = WorkflowDefinition(
     steps=[
         WorkflowStepDefinition(
             name="Bug Analysis",
-            agent_role=AgentRole.QA_PLANNER,
+            agent_role=AgentRole.PRODUCT_MANAGER,
             inputs=[],
             outputs=["prd"],
             next="Root Cause",
