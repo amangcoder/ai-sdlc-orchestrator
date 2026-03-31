@@ -2,6 +2,58 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.15.0] - 2026-03-31
+
+### Added
+
+**SQLAlchemy / Alembic DB Persistence Layer**
+- `src/orchestrator/db/` — full database package with SQLAlchemy async engine, session management, ORM models, and Alembic migrations
+- `db/engine.py` — async SQLAlchemy engine factory with connection-pool configuration
+- `db/session.py` — async session context manager and dependency injection helpers
+- `db/models.py` — ORM models: `Run`, `Event`, `Artifact`, `Alert`, `TimelineEntry` (227 lines)
+- `db/migrations/` — Alembic env with `0001_initial` migration covering all five tables
+- `db/repositories/runs.py`, `events.py`, `artifacts.py`, `alerts.py`, `timeline.py` — repository pattern; each exposes async CRUD + query operations matching the filesystem equivalents
+- `db/__init__.py` — public re-exports: `get_engine`, `get_session`, repository classes, `init_db`
+
+**Hosted Mode for RunDataReader**
+- `RunDataReader.__init__` now accepts optional `run_repo`, `event_repo_factory`, `alert_repo`, `timeline_repo` injected dependencies; when present, all queries route to the DB and the filesystem is used only as a fallback for legacy runs
+- `tail_events` and `get_events` respect the injected `EventRepository` before falling back to log-file parsing
+
+**Run Registry & Persistence Improvements**
+- `run_registry.py` — run state now persisted to DB when a `RunRepository` is available; added `list_active_runs()`, `get_run_summary()`, and heartbeat-based liveness tracking
+- `persistence.py` — dual-write to both filesystem and DB during phase transitions; `load_run_state` tries DB first then falls back to JSONL
+- `workspace_manager.py` — `get_or_create_run_dir` wired to emit a `Run` row on first access
+
+**Observability & Monitoring**
+- `observability.py` — metrics emitter now writes structured events to DB `Event` table when a session is available
+- `monitoring/alerting.py` — `AlertRepository` integration: alerts persisted to DB alongside filesystem alert log
+- `monitoring/timeline.py` — `TimelineRepository` integration: timeline entries persisted to DB
+
+**File-to-DB Migration Script**
+- `scripts/migrate_files_to_db.py` — standalone script that reads existing JSONL/JSON workspace files and back-fills the DB tables; idempotent (skips rows already present)
+
+**Development Tooling (`.claude/`)**
+- `.claude/hooks/` — quality-gate hooks: `block-no-verify.sh`, `console-log-check.sh`, `cost-tracker.sh`, `mcp-health-check.sh`, `post-edit-lint.sh`, `pre-push-review.sh`, `secret-detection.sh`, `session-persist.sh`
+- `.claude/rules/` — coding standards documentation: common rules (agents, style, git, hooks, patterns, performance, security, testing) and Python-specific rules (async, packages, security, style, testing, typing)
+- `.claude/skills/` — reusable skill definitions: `build-fix`, `checkpoint`
+- `.claude/contexts/` — persona contexts: `dev.md`, `research.md`, `review.md`
+
+### Changed
+
+- `config/default.yaml` — DB connection URL, pool size, and migration settings added under `database:` key
+- `engine.py` — pipeline engine initialises DB session on startup when `database.url` is configured
+- `models.py` — `RunContext` extended with `db_session` optional field for passing the active DB session through the pipeline
+- `infra/docker/docker-compose.monitoring.yml` — minor service ordering fix
+
+### Tests
+
+- `tests/test_db_persistence.py` — 501-line integration test suite covering all five repositories, dual-write behaviour, and fallback logic
+- `tests/integration/test_mcp_protocol_compliance.py`, `test_research_cache_integration.py` — updated fixtures for new `RunContext` fields
+- `tests/test_cumulative_context_integration.py` — updated for `RunContext` schema changes
+- `tests/test_research_cache.py` — minor fixture alignment
+
+---
+
 ## [0.14.0] - 2026-03-31
 
 ### Added
