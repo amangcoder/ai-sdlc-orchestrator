@@ -2,61 +2,157 @@
 {% block content %}
 <h1>Cost Analytics</h1>
 
-<div class="stats">
+<!-- ================================================================
+     KPI Cards — four metrics at a glance
+     ================================================================ -->
+<div class="stats" role="region" aria-label="Cost analytics summary">
+
+  <!-- 1. Total Spend -->
   <div class="stat">
-    <div class="stat-value">${{ "%.4f"|format(analytics.cost_trend | sum(attribute='cost') if analytics.cost_trend else 0) }}</div>
-    <div class="stat-label">Total Cost (all time)</div>
+    <div class="stat-value" aria-label="Total spend: ${{ '%.4f'|format(total_spend) }}">${{ "%.4f"|format(total_spend) }}</div>
+    <div class="stat-label">Total Spend</div>
   </div>
+
+  <!-- 2. Burn Rate -->
   <div class="stat">
-    <div class="stat-value">{{ analytics.cost_trend | length }}</div>
-    <div class="stat-label">Days with Runs</div>
+    <div class="stat-value" style="color: var(--yellow);"
+         aria-label="Burn rate: ${{ '%.4f'|format(analytics.burn_rate) }} per hour">
+      ${{ "%.4f"|format(analytics.burn_rate) }}/hr
+    </div>
+    <div class="stat-label">Burn Rate (USD/hour)</div>
   </div>
+
+  <!-- 3. Average Cost Per Run -->
   <div class="stat">
-    <div class="stat-value">{{ analytics.by_agent | length }}</div>
-    <div class="stat-label">Active Agents</div>
+    <div class="stat-value" aria-label="Average cost per run: ${{ '%.4f'|format(avg_cost_per_run) }}">${{ "%.4f"|format(avg_cost_per_run) }}</div>
+    <div class="stat-label">Avg Cost Per Run</div>
   </div>
+
+  <!-- 4. Most Expensive Agent -->
   <div class="stat">
-    <div class="stat-value">{{ analytics.by_model | length }}</div>
-    <div class="stat-label">Models Used</div>
+    <div class="stat-value" style="font-size: 1.2rem; word-break: break-all;"
+         aria-label="Most expensive agent: {{ most_expensive_agent }}">
+      {{ most_expensive_agent }}
+    </div>
+    <div class="stat-label">Most Expensive Agent</div>
   </div>
-  <div class="stat">
-    <div class="stat-value" style="color: var(--yellow);">${{ "%.4f"|format(analytics.burn_rate) }}/hr</div>
-    <div class="stat-label">Burn Rate (last 1h)</div>
+
+</div>
+
+<!-- ================================================================
+     Chart grid (2 × 2)
+     ================================================================ -->
+<div class="grid-2">
+
+  <!-- Cost Trend — line chart -->
+  <div class="card">
+    <h2 id="costTrendHeading">Cost Trend</h2>
+    <div class="chart-container">
+      <canvas id="costTrendChart"
+              role="img"
+              aria-label="Cost trend line chart showing daily cost over time"
+              aria-describedby="costTrendTable"></canvas>
+    </div>
+    <!-- Visually-hidden fallback table for screen readers -->
+    <table id="costTrendTable" class="sr-only" aria-label="Cost trend data">
+      <caption>Daily cost trend</caption>
+      <thead>
+        <tr>
+          <th scope="col">Date</th>
+          <th scope="col">Cost (USD)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in analytics.cost_trend %}
+        <tr>
+          <td>{{ entry.date }}</td>
+          <td>${{ "%.4f"|format(entry.cost) }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="2">No data available</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
+
+  <!-- Cost by Agent — horizontal bar chart -->
+  <div class="card">
+    <h2 id="costByAgentHeading">Cost by Agent</h2>
+    <div class="chart-container">
+      <canvas id="costByAgentChart"
+              role="img"
+              aria-label="Cost by agent horizontal bar chart"
+              aria-describedby="costByAgentTable"></canvas>
+    </div>
+    <!-- Visually-hidden fallback table for screen readers -->
+    <table id="costByAgentTable" class="sr-only" aria-label="Cost by agent data">
+      <caption>Cost by agent</caption>
+      <thead>
+        <tr>
+          <th scope="col">Agent</th>
+          <th scope="col">Cost (USD)</th>
+          <th scope="col">Invocations</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for agent, data in analytics.by_agent.items() | sort(attribute='1.cost', reverse=True) %}
+        <tr>
+          <td>{{ agent }}</td>
+          <td>${{ "%.4f"|format(data.cost) }}</td>
+          <td>{{ data.count }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">No data available</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
 </div>
 
 <div class="grid-2">
-  <!-- Cost Trend Line Chart -->
+
+  <!-- Cost by Model — pie/doughnut chart -->
   <div class="card">
-    <h2>Cost Trend</h2>
+    <h2 id="costByModelHeading">Cost by Model</h2>
     <div class="chart-container">
-      <canvas id="costTrendChart"></canvas>
+      <canvas id="costByModelChart"
+              role="img"
+              aria-label="Cost by model pie chart"
+              aria-describedby="costByModelTable"></canvas>
     </div>
+    <!-- Visually-hidden fallback table for screen readers -->
+    <table id="costByModelTable" class="sr-only" aria-label="Cost by model data">
+      <caption>Cost by model</caption>
+      <thead>
+        <tr>
+          <th scope="col">Model</th>
+          <th scope="col">Cost (USD)</th>
+          <th scope="col">Invocations</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for model, data in analytics.by_model.items() | sort(attribute='1.cost', reverse=True) %}
+        <tr>
+          <td>{{ model }}</td>
+          <td>${{ "%.4f"|format(data.cost) }}</td>
+          <td>{{ data.count }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3">No data available</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 
-  <!-- Cost by Agent Bar Chart -->
+  <!-- Burn Rate Gauge — semi-circle doughnut chart -->
   <div class="card">
-    <h2>Cost by Agent</h2>
-    <div class="chart-container">
-      <canvas id="costByAgentChart"></canvas>
-    </div>
-  </div>
-</div>
-
-<div class="grid-2">
-  <!-- Cost by Model Pie Chart -->
-  <div class="card">
-    <h2>Cost by Model</h2>
-    <div class="chart-container">
-      <canvas id="costByModelChart"></canvas>
-    </div>
-  </div>
-
-  <!-- Burn Rate Gauge (doughnut) -->
-  <div class="card">
-    <h2>Burn Rate (last 1h)</h2>
+    <h2 id="burnRateHeading">Burn Rate (last 1h)</h2>
     <div class="chart-container" style="position: relative;">
-      <canvas id="burnRateChart"></canvas>
+      <canvas id="burnRateChart"
+              role="img"
+              aria-label="Burn rate gauge showing ${{ '%.4f'|format(analytics.burn_rate) }} USD per hour"
+              aria-describedby="burnRateTable"></canvas>
       <div id="burnRateLabel" style="
         position: absolute;
         top: 50%;
@@ -71,7 +167,28 @@
         <div style="font-size: 0.75rem; color: var(--text-dim);">USD/hour</div>
       </div>
     </div>
+    <!-- Visually-hidden fallback table for screen readers -->
+    <table id="burnRateTable" class="sr-only" aria-label="Burn rate data">
+      <caption>Current burn rate</caption>
+      <thead>
+        <tr>
+          <th scope="col">Metric</th>
+          <th scope="col">Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Current burn rate</td>
+          <td>${{ "%.4f"|format(analytics.burn_rate) }} USD/hour</td>
+        </tr>
+        <tr>
+          <td>Threshold</td>
+          <td>$0.1000 USD/hour</td>
+        </tr>
+      </tbody>
+    </table>
   </div>
+
 </div>
 
 {% if not analytics.cost_trend and not analytics.by_agent and not analytics.by_model %}
@@ -88,10 +205,10 @@
   <table>
     <thead>
       <tr>
-        <th>Agent</th>
-        <th>Total Cost (USD)</th>
-        <th>Invocations</th>
-        <th>Avg Cost per Invocation</th>
+        <th scope="col">Agent</th>
+        <th scope="col">Total Cost (USD)</th>
+        <th scope="col">Invocations</th>
+        <th scope="col">Avg Cost per Invocation</th>
       </tr>
     </thead>
     <tbody>
@@ -149,7 +266,16 @@
       options: {
         responsive: true,
         maintainAspectRatio: true,
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                return 'Cost: $' + ctx.parsed.y.toFixed(4);
+              }
+            }
+          }
+        },
         scales: {
           x: { ticks: { color: '#8899aa', maxTicksLimit: 8 }, grid: { color: '#1e2a35' } },
           y: {
@@ -191,7 +317,16 @@
         responsive: true,
         maintainAspectRatio: true,
         indexAxis: 'y',
-        plugins: { legend: { display: false } },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                return 'Cost: $' + ctx.parsed.x.toFixed(4);
+              }
+            }
+          }
+        },
         scales: {
           x: {
             ticks: { color: '#8899aa', callback: function (v) { return '$' + v.toFixed(4); } },
@@ -205,7 +340,7 @@
   }());
 
   // -------------------------------------------------------------------------
-  // 3. Cost by Model — pie chart
+  // 3. Cost by Model — doughnut chart
   // -------------------------------------------------------------------------
   (function renderCostByModel() {
     var ctx = document.getElementById('costByModelChart');
@@ -217,7 +352,7 @@
       return;
     }
     new Chart(ctx, {
-      type: 'pie',
+      type: 'doughnut',
       data: {
         labels: labels,
         datasets: [{
@@ -249,13 +384,13 @@
   }());
 
   // -------------------------------------------------------------------------
-  // 4. Burn Rate — doughnut gauge
+  // 4. Burn Rate — semi-circle doughnut gauge
   // -------------------------------------------------------------------------
   (function renderBurnRate() {
     var ctx = document.getElementById('burnRateChart');
     if (!ctx) return;
     var burnRate = analytics.burn_rate || 0;
-    // Gauge: treat 0.10 USD/hr as "100%" of the gauge; scale linearly.
+    // Gauge threshold: $0.10/hr = 100%
     var maxGauge = 0.10;
     var filled = Math.min(burnRate / maxGauge, 1.0);
     var color = filled < 0.5 ? '#00d4a8' : filled < 0.8 ? '#f59e0b' : '#ef4444';

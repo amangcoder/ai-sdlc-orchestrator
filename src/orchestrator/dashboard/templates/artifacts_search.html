@@ -1,0 +1,219 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h1>Artifact Search</h1>
+<p style="color: var(--text-dim); margin-top: 0; margin-bottom: 24px; font-size: 0.9rem;">
+  Search for artifacts across all runs by name, schema type, or agent.
+</p>
+
+{# ── Search form — submits via GET for bookmarkability ───────────────────── #}
+<div class="card" style="margin-bottom: 24px;">
+  <form method="GET" action="/artifacts" id="artifact-search-form" role="search">
+    <div style="display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-end;">
+
+      {# Text query input #}
+      <div style="flex: 1; min-width: 200px;">
+        <label
+          for="q"
+          style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 6px;"
+        >Search</label>
+        <input
+          id="q"
+          name="q"
+          type="text"
+          value="{{ query_q | e }}"
+          placeholder="Artifact name or schema…"
+          autocomplete="off"
+          aria-label="Search query"
+          style="
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            box-sizing: border-box;
+          "
+        >
+      </div>
+
+      {# Artifact type dropdown — populated from known schema types #}
+      <div style="min-width: 180px;">
+        <label
+          for="type"
+          style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 6px;"
+        >Artifact Type</label>
+        <select
+          id="type"
+          name="type"
+          aria-label="Filter by artifact type"
+          style="
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            box-sizing: border-box;
+          "
+        >
+          <option value="">All types</option>
+          {% for schema in schema_types %}
+          <option value="{{ schema }}"{% if query_type == schema %} selected{% endif %}>
+            {{ schema }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {# Agent name dropdown #}
+      <div style="min-width: 180px;">
+        <label
+          for="agent"
+          style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 6px;"
+        >Agent</label>
+        <select
+          id="agent"
+          name="agent"
+          aria-label="Filter by agent name"
+          style="
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            box-sizing: border-box;
+          "
+        >
+          <option value="">All agents</option>
+          {% for a in known_agents %}
+          <option value="{{ a }}"{% if query_agent == a %} selected{% endif %}>
+            {{ a }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      {# Search button #}
+      <div>
+        <button
+          type="submit"
+          aria-label="Run search"
+          style="
+            background: var(--accent);
+            color: #000;
+            border: none;
+            border-radius: 6px;
+            padding: 8px 24px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+          "
+        >Search</button>
+      </div>
+    </div>
+  </form>
+</div>
+
+{# ── Validation / runtime error message ──────────────────────────────────── #}
+{% if error_message %}
+<div
+  role="alert"
+  style="
+    background: rgba(248, 81, 73, 0.1);
+    border: 1px solid rgba(248, 81, 73, 0.3);
+    border-radius: 6px;
+    padding: 12px 16px;
+    color: #f85149;
+    margin-bottom: 20px;
+    font-size: 0.875rem;
+  "
+>
+  {{ error_message | e }}
+</div>
+{% endif %}
+
+{# ── Results — only shown after a search has been performed ──────────────── #}
+{% if search_performed %}
+  {% if results %}
+  <div class="card" style="padding: 0; overflow: hidden;">
+    {# Result count summary bar #}
+    <div style="
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text-dim);
+      font-size: 0.8rem;
+    ">
+      {{ results | length }} artifact{{ 's' if results | length != 1 else '' }} found
+      {% if query_q %} matching <strong style="color: var(--text);">{{ query_q | e }}</strong>{% endif %}
+      {% if query_type %} of type <strong style="color: var(--text);">{{ query_type | e }}</strong>{% endif %}
+      {% if query_agent %} by agent <strong style="color: var(--text);">{{ query_agent | e }}</strong>{% endif %}
+    </div>
+
+    {# Results table #}
+    <table id="search-results-table">
+      <thead>
+        <tr>
+          <th scope="col">Artifact Name</th>
+          <th scope="col">Run ID</th>
+          <th scope="col">Schema</th>
+          <th scope="col">Agent</th>
+          <th scope="col">Version</th>
+          <th scope="col">Last Updated</th>
+          <th scope="col">Size</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in results %}
+        <tr>
+          <td><code>{{ item.name | e }}</code></td>
+          <td>
+            <a href="/runs/{{ item.run_id | e }}">
+              {{- item.run_id[:12] | e -}}
+              {%- if item.run_id | length > 12 %}…{% endif -%}
+            </a>
+          </td>
+          <td>{{ item.schema | e if item.schema else '—' }}</td>
+          <td>{{ item.agent | e if item.agent else '—' }}</td>
+          <td>v{{ item.version }}</td>
+          <td>
+            {%- if item.updated_at -%}
+              {{ item.updated_at[:19] | e }}
+            {%- else -%}
+              —
+            {%- endif -%}
+          </td>
+          <td>
+            {%- set sz = item.size_bytes -%}
+            {%- if sz < 1024 -%}
+              {{ sz }} B
+            {%- elif sz < 1048576 -%}
+              {{ (sz / 1024) | round(1) }} KB
+            {%- else -%}
+              {{ (sz / 1048576) | round(2) }} MB
+            {%- endif -%}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  {# Empty-results state #}
+  <div class="empty">
+    <h2>No matching artifacts found</h2>
+    <p>
+      Try broadening your search — remove a filter, shorten the query, or leave
+      all fields blank to browse all indexed artifacts.  Artifacts are indexed
+      when an orchestration run completes.
+    </p>
+  </div>
+  {% endif %}
+{% endif %}
+{% endblock %}

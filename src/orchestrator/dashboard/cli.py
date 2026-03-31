@@ -27,6 +27,10 @@ def main() -> None:
         "--config", type=Path, default=None, metavar="PATH",
         help="Path to orchestrator config YAML file",
     )
+    parser.add_argument(
+        "--project", type=str, default=None,
+        help="Project name (defaults to workspace directory name)",
+    )
     args = parser.parse_args()
 
     try:
@@ -40,7 +44,8 @@ def main() -> None:
     workspace = args.workspace.resolve()
     workspace.mkdir(parents=True, exist_ok=True)
 
-    app = create_app(workspace, config_path=args.config)
+    project_name = args.project or workspace.name
+    app = create_app(workspace, project_name, config_path=args.config)
     print(f"Dashboard: http://{args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

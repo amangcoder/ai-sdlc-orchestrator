@@ -1,85 +1,621 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>
-  <span class="live-dot"></span>
-  Live: {{ run.run_id[:8] }}...
-</h1>
-<p style="color: var(--text-dim); margin-bottom: 20px;">{{ run.feature_request }}</p>
 
-<div class="stats">
-  <div class="stat">
-    <div class="stat-value" id="cost">${{ "%.4f"|format(run.total_cost_usd) }}</div>
-    <div class="stat-label">Cost</div>
-  </div>
-  <div class="stat">
-    <div class="stat-value" id="event-count">0</div>
-    <div class="stat-label">Events</div>
-  </div>
-  <div class="stat">
-    <div class="stat-value badge badge-{{ run.status }}" id="status">{{ run.status }}</div>
-    <div class="stat-label">Status</div>
-  </div>
-</div>
-
+<!-- Page header -->
 <div style="margin-bottom: 16px;">
-  <button class="btn btn-danger" onclick="cancelRun('{{ run.run_id }}')">Cancel Run</button>
+  <h1>
+    <span class="live-dot" id="live-dot" aria-hidden="true"></span>
+    Live: {{ run.run_id[:12] }}…
+  </h1>
+  <p style="color: var(--text-dim); margin-top: 4px; font-size: 14px;">
+    {{ run.feature_request[:160] }}{% if run.feature_request | length > 160 %}…{% endif %}
+  </p>
 </div>
 
-<div class="card">
-  <h2>Live Events</h2>
-  <div class="event-list" id="live-events">
-    <div class="event-item" style="color: var(--text-dim);">Waiting for events...</div>
-  </div>
+<!-- ============================================================
+     Phase Stepper
+     ============================================================ -->
+{% if workflow_phases %}
+<div class="phase-stepper-wrapper">
+  <nav class="phase-stepper" aria-label="Workflow phases">
+    {% for phase in workflow_phases %}
+    <div
+      class="phase-step phase-step-{{ phase.status }}"
+      data-phase="{{ phase.key }}"
+      data-label="{{ phase.label }}"
+      aria-label="{{ phase.label }}: {{ phase.status }}"
+    >
+      <div class="phase-step-circle" aria-hidden="true">
+        {% if phase.status == 'completed' %}
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" focusable="false">
+          <path d="M2 7l3.5 3.5L12 4" stroke="currentColor" stroke-width="2.2"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        {% elif phase.status == 'running' %}
+        <span class="phase-pulse-dot" aria-hidden="true"></span>
+        {% elif phase.status == 'failed' %}
+        <span aria-hidden="true">✕</span>
+        {% else %}
+        <span class="phase-step-number" aria-hidden="true">{{ loop.index }}</span>
+        {% endif %}
+      </div>
+      <div class="phase-step-label">{{ phase.label }}</div>
+    </div>
+    {% if not loop.last %}
+    <div class="phase-connector {% if phase.status == 'completed' %}phase-connector-active{% endif %}" aria-hidden="true"></div>
+    {% endif %}
+    {% endfor %}
+  </nav>
 </div>
+{% endif %}
+
+<!-- ============================================================
+     Two-column layout: main content | sidebar
+     ============================================================ -->
+<div class="live-layout">
+
+  <!-- ---- Left: event log + prompt card ---- -->
+  <div class="live-main">
+
+    <!-- Prompt card — hidden until awaiting_input -->
+    <div id="prompt-card" class="card prompt-card" hidden>
+      <div class="prompt-card-header">
+        <span class="live-dot" style="width:10px;height:10px;" aria-hidden="true"></span>
+        <strong id="prompt-agent-name" class="prompt-agent-label">Agent</strong>
+        <span style="color: var(--text-dim); font-size: 13px; margin-left: 8px;">is waiting for your input</span>
+      </div>
+      <p id="prompt-question" class="prompt-question-text"></p>
+      <div class="form-group" style="margin-bottom: 12px;">
+        <label for="prompt-response" class="sr-only">Response</label>
+        <textarea
+          id="prompt-response"
+          rows="4"
+          placeholder="Type your response here…"
+          aria-label="Response to agent prompt"
+          aria-required="true"
+        ></textarea>
+      </div>
+      <button
+        class="btn btn-primary"
+        id="prompt-submit-btn"
+        type="button"
+      >Submit Response</button>
+    </div>
+
+    <!-- Event log -->
+    <div class="card" style="position: relative;">
+      <div class="live-log-header">
+        <h2 style="margin-bottom: 0;">Live Events</h2>
+        <span style="font-size: 13px; color: var(--text-dim);">
+          <span id="event-count">0</span> events
+        </span>
+      </div>
+
+      <!-- Scrollable event container -->
+      <!-- aria-busy=true while stream is active; aria-live announces new entries -->
+      <div
+        class="event-list live-event-list"
+        id="live-events"
+        role="log"
+        aria-label="Live event stream"
+        aria-live="polite"
+        aria-atomic="false"
+        aria-busy="true"
+      >
+        <div class="event-item" style="color: var(--text-dim);">Waiting for events…</div>
+      </div>
+
+      <!-- Floating "Scroll to Bottom" button — shown on manual scroll-up -->
+      <button
+        id="scroll-btn"
+        class="scroll-to-bottom-btn"
+        type="button"
+        aria-label="Scroll to latest events"
+        hidden
+      >↓ Latest</button>
+    </div>
+
+  </div><!-- end .live-main -->
+
+  <!-- ---- Right: run metadata sidebar ---- -->
+  <aside class="live-sidebar" aria-label="Run information">
+    <div class="card">
+      <h2>Run Info</h2>
+      <dl class="run-meta-list">
+
+        <dt>Run ID</dt>
+        <dd><code class="run-id-code">{{ run.run_id }}</code></dd>
+
+        <dt>Status</dt>
+        <dd>
+          <span
+            class="badge badge-{{ run.status }}"
+            id="status-badge"
+            aria-live="polite"
+            aria-label="Status: {{ run.status }}"
+          >{{ run.status }}</span>
+        </dd>
+
+        <dt>Workflow</dt>
+        <dd>{{ run.workflow_type }}</dd>
+
+        <dt>Cost</dt>
+        <dd><span id="sidebar-cost">${{ "%.4f" | format(run.total_cost_usd) }}</span></dd>
+
+        <dt>Start Time</dt>
+        <dd id="sidebar-start-time" style="font-size: 12px; color: var(--text-dim);">—</dd>
+
+        <dt>Duration</dt>
+        <dd id="sidebar-duration">—</dd>
+
+      </dl>
+
+      <!-- Action buttons -->
+      <div class="sidebar-actions">
+        <button
+          class="btn btn-danger"
+          id="cancel-btn"
+          type="button"
+          aria-label="Cancel this run"
+          {% if run.status != 'running' %}style="display:none;"{% endif %}
+        >Cancel Run</button>
+        <button
+          class="btn"
+          id="resume-btn"
+          type="button"
+          aria-label="Resume this run"
+          {% if run.status not in ('interrupted', 'cancelled', 'failed') %}style="display:none;"{% endif %}
+        >Resume Run</button>
+      </div>
+    </div>
+  </aside>
+
+</div><!-- end .live-layout -->
+
+<!-- SSE error notice — shown on connection failure -->
+<div
+  id="sse-error-notice"
+  class="card"
+  role="alert"
+  aria-live="assertive"
+  aria-atomic="true"
+  hidden
+  style="border-color: var(--red); margin-top: 16px;"
+>
+  <span style="color: #f85149;" aria-hidden="true">⚠</span>
+  <span id="sse-error-message">Connection lost. Reload the page to reconnect.</span>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/sse-client.js"></script>
 <script>
-  let eventCount = 0;
-  startSSE('{{ run.run_id }}', 'live-events');
+(function () {
+  'use strict';
 
-  // Override to also update counters
-  const origOnMessage = EventSource.prototype.onmessage;
-  const container = document.getElementById('live-events');
-  const countEl = document.getElementById('event-count');
+  /* ---- Configuration ---- */
+  const RUN_ID         = {{ run.run_id | tojson }};
+  const INITIAL_STATUS = {{ run.status | tojson }};
+  /* Auth token for EventSource URL (?token=X) — empty string when auth is off */
+  const SSE_TOKEN      = {{ dashboard_token | tojson }};
 
-  // Clear placeholder
+  /* ---- DOM references ---- */
+  const container      = document.getElementById('live-events');
+  const countEl        = document.getElementById('event-count');
+  const statusBadge    = document.getElementById('status-badge');
+  const costEl         = document.getElementById('sidebar-cost');
+  const liveDot        = document.getElementById('live-dot');
+  const errorNotice    = document.getElementById('sse-error-notice');
+  const errorMsg       = document.getElementById('sse-error-message');
+  const scrollBtn      = document.getElementById('scroll-btn');
+  const promptCard     = document.getElementById('prompt-card');
+  const promptAgent    = document.getElementById('prompt-agent-name');
+  const promptQText    = document.getElementById('prompt-question');
+  const promptTextarea = document.getElementById('prompt-response');
+  const promptSubmit   = document.getElementById('prompt-submit-btn');
+  const cancelBtn      = document.getElementById('cancel-btn');
+  const resumeBtn      = document.getElementById('resume-btn');
+  const startTimeEl    = document.getElementById('sidebar-start-time');
+  const durationEl     = document.getElementById('sidebar-duration');
+
+  /* ---- State ---- */
+  let eventCount       = 0;
+  let autoScroll       = true;
+  let startTimestamp   = null;
+  let durationInterval = null;
+  let promptPollTimer  = null;
+  let currentStatus    = INITIAL_STATUS;
+
+  /* Clear the initial placeholder */
   container.innerHTML = '';
 
-  const evtSource = new EventSource(`/api/runs/{{ run.run_id }}/stream`);
-  evtSource.onmessage = function(event) {
-    const data = JSON.parse(event.data);
-    if (data.event === 'stream_end') {
-      evtSource.close();
-      document.getElementById('status').textContent = 'completed';
-      document.querySelector('.live-dot').style.animation = 'none';
-      document.querySelector('.live-dot').style.background = '#6e7681';
+  /* ================================================================
+     Auto-scroll logic
+     ================================================================ */
+  const SCROLL_THRESHOLD = 40; // px from bottom — within this distance ⇒ "at bottom"
+
+  function isNearBottom () {
+    return (container.scrollHeight - container.scrollTop - container.clientHeight) < SCROLL_THRESHOLD;
+  }
+
+  function scrollToBottom () {
+    container.scrollTop = container.scrollHeight;
+    autoScroll = true;
+    scrollBtn.hidden = true;
+  }
+
+  /* Detect manual scroll-up */
+  container.addEventListener('scroll', function () {
+    if (isNearBottom()) {
+      autoScroll = true;
+      scrollBtn.hidden = true;
+    } else {
+      autoScroll = false;
+      scrollBtn.hidden = false;
+    }
+  });
+
+  function appendEvent (item) {
+    container.appendChild(item);
+    if (autoScroll) {
+      container.scrollTop = container.scrollHeight;
+    }
+  }
+
+  /* ================================================================
+     Duration ticker
+     ================================================================ */
+  function formatDuration (ms) {
+    const totalSecs = Math.floor(ms / 1000);
+    const h = Math.floor(totalSecs / 3600);
+    const m = Math.floor((totalSecs % 3600) / 60);
+    const s = totalSecs % 60;
+    if (h > 0) return h + 'h ' + m + 'm ' + s + 's';
+    if (m > 0) return m + 'm ' + s + 's';
+    return s + 's';
+  }
+
+  function tickDuration () {
+    if (!startTimestamp) return;
+    durationEl.textContent = formatDuration(Date.now() - startTimestamp);
+  }
+
+  function setStartTime (ts) {
+    if (startTimestamp || !ts) return;   // only set once
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return;
+    startTimestamp = d.getTime();
+    startTimeEl.textContent = d.toLocaleString();
+    tickDuration();
+    if (!durationInterval) {
+      durationInterval = setInterval(tickDuration, 1000);
+    }
+  }
+
+  /* ================================================================
+     Phase stepper updates
+     ================================================================ */
+  function updatePhaseStep (phaseKey, newStatus) {
+    const step = document.querySelector('.phase-step[data-phase="' + CSS.escape(phaseKey) + '"]');
+    if (!step) return;
+
+    /* Swap status class */
+    step.classList.remove('phase-step-completed', 'phase-step-running',
+                          'phase-step-pending', 'phase-step-failed');
+    step.classList.add('phase-step-' + newStatus);
+
+    /* Update accessible label */
+    const label = step.getAttribute('data-label') || phaseKey;
+    step.setAttribute('aria-label', label + ': ' + newStatus);
+
+    /* Re-render circle content */
+    const circle = step.querySelector('.phase-step-circle');
+    if (!circle) return;
+    if (newStatus === 'completed') {
+      circle.innerHTML =
+        '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" focusable="false">' +
+        '<path d="M2 7l3.5 3.5L12 4" stroke="currentColor" stroke-width="2.2"' +
+        ' stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    } else if (newStatus === 'running') {
+      circle.innerHTML = '<span class="phase-pulse-dot" aria-hidden="true"></span>';
+    } else if (newStatus === 'failed') {
+      circle.innerHTML = '<span aria-hidden="true">✕</span>';
+    }
+
+    /* Activate the connector that leads into this step */
+    const prev = step.previousElementSibling;
+    if (prev && prev.classList.contains('phase-connector')) {
+      if (newStatus === 'completed' || newStatus === 'running') {
+        prev.classList.add('phase-connector-active');
+      }
+    }
+  }
+
+  /* ================================================================
+     Status badge + button visibility
+     ================================================================ */
+  function updateStatus (newStatus) {
+    if (!newStatus || newStatus === currentStatus) return;
+    currentStatus = newStatus;
+
+    statusBadge.textContent = newStatus;
+    statusBadge.setAttribute('aria-label', 'Status: ' + newStatus);
+    statusBadge.className = 'badge badge-' + newStatus;
+
+    if (newStatus === 'running') {
+      cancelBtn.style.display  = '';
+      resumeBtn.style.display  = 'none';
+    } else if (['interrupted', 'cancelled', 'failed'].includes(newStatus)) {
+      cancelBtn.style.display  = 'none';
+      resumeBtn.style.display  = '';
+      stopLiveDot();
+    } else if (newStatus === 'completed') {
+      cancelBtn.style.display  = 'none';
+      resumeBtn.style.display  = 'none';
+      stopLiveDot();
+    }
+  }
+
+  function stopLiveDot () {
+    liveDot.style.animation = 'none';
+    liveDot.style.background = '#6e7681';
+  }
+
+  /* ================================================================
+     Prompt card
+     ================================================================ */
+  function showPromptCard (agent, question) {
+    promptAgent.textContent  = agent || 'Agent';
+    promptQText.textContent  = question || '';
+    promptTextarea.value     = '';
+    promptCard.hidden        = false;
+    promptTextarea.focus();
+  }
+
+  function hidePromptCard () {
+    promptCard.hidden = true;
+  }
+
+  async function checkPendingPrompt () {
+    try {
+      const resp = await fetch('/api/v1/runs/' + encodeURIComponent(RUN_ID) + '/prompt');
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data.pending) {
+        showPromptCard(data.agent || '', data.question || '');
+      } else {
+        /* Only hide if currently shown — avoid flickering */
+        if (!promptCard.hidden) hidePromptCard();
+      }
+    } catch (_) { /* network error — ignore on poll */ }
+  }
+
+  function startPromptPolling () {
+    checkPendingPrompt();
+    if (!promptPollTimer) {
+      promptPollTimer = setInterval(checkPendingPrompt, 3000);
+    }
+  }
+
+  function stopPromptPolling () {
+    if (promptPollTimer) {
+      clearInterval(promptPollTimer);
+      promptPollTimer = null;
+    }
+  }
+
+  async function submitPromptResponse () {
+    const responseText = (promptTextarea.value || '').trim();
+    if (!responseText) {
+      promptTextarea.focus();
       return;
     }
-
-    eventCount++;
-    countEl.textContent = eventCount;
-
-    if (data.cost_usd) {
-      // Update cost display
+    promptSubmit.disabled    = true;
+    promptSubmit.textContent = 'Submitting…';
+    try {
+      const resp = await fetch('/api/v1/runs/' + encodeURIComponent(RUN_ID) + '/prompt', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ response: responseText }),
+      });
+      if (resp.ok) {
+        hidePromptCard();
+        showToast('Response submitted', 'success');
+      } else {
+        const err = await resp.json().catch(function () { return {}; });
+        showToast('Failed: ' + (err.detail || resp.status), 'error');
+      }
+    } catch (_) {
+      showToast('Network error submitting response', 'error');
+    } finally {
+      promptSubmit.disabled    = false;
+      promptSubmit.textContent = 'Submit Response';
     }
+  }
 
-    const item = document.createElement('div');
+  /* ================================================================
+     Cancel / Resume actions
+     ================================================================ */
+  async function cancelRunAction () {
+    cancelBtn.disabled = true;
+    try {
+      const resp = await fetch('/api/runs/' + encodeURIComponent(RUN_ID) + '/cancel', { method: 'POST' });
+      if (resp.ok) {
+        updateStatus('cancelled');
+        showToast('Run cancellation requested', 'success');
+      } else {
+        showToast('Cancel request failed', 'error');
+        cancelBtn.disabled = false;
+      }
+    } catch (_) {
+      showToast('Network error', 'error');
+      cancelBtn.disabled = false;
+    }
+  }
+
+  async function resumeRunAction () {
+    resumeBtn.disabled = true;
+    try {
+      const resp = await fetch('/api/v1/runs/' + encodeURIComponent(RUN_ID) + '/resume', { method: 'POST' });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.redirect) {
+          window.location.href = data.redirect;
+        } else {
+          showToast('Run resumed', 'success');
+        }
+      } else {
+        showToast('Resume failed', 'error');
+        resumeBtn.disabled = false;
+      }
+    } catch (_) {
+      showToast('Network error', 'error');
+      resumeBtn.disabled = false;
+    }
+  }
+
+  /* ================================================================
+     Event rendering
+     ================================================================ */
+  function renderEventItem (data) {
+    const item     = document.createElement('div');
     item.className = 'event-item';
-    const time = data.ts ? new Date(data.ts).toLocaleTimeString() : '';
-    const type = data.event || 'unknown';
-    const details = Object.entries(data)
-      .filter(([k]) => !['ts', 'run_id', 'event', 'config'].includes(k))
-      .map(([k, v]) => `${k}=${typeof v === 'object' ? JSON.stringify(v) : v}`)
+    const time     = data.ts ? new Date(data.ts).toLocaleTimeString() : '';
+    const type     = data.event || 'unknown';
+    const details  = Object.entries(data)
+      .filter(function (_ref) { const k = _ref[0]; return !['ts', 'run_id', 'event', 'config'].includes(k); })
+      .map(function (_ref) {
+        const k = _ref[0]; const v = _ref[1];
+        return k + '=' + (typeof v === 'object' ? JSON.stringify(v) : v);
+      })
       .join(' ');
-    item.innerHTML = `<span class="event-time">${escapeHtml(time)}</span><span class="event-type">${escapeHtml(type)}</span>${escapeHtml(details)}`;
-    container.prepend(item);
+    item.innerHTML =
+      '<span class="event-time">' + escapeHtml(time) + '</span>' +
+      '<span class="event-type">' + escapeHtml(type) + '</span>' +
+      escapeHtml(details);
+    return item;
+  }
+
+  /* ================================================================
+     SSE connection — ReconnectingSSE with exponential backoff
+     ================================================================ */
+  var sseUrl = '/api/runs/' + encodeURIComponent(RUN_ID) + '/stream' +
+               (SSE_TOKEN ? '?token=' + encodeURIComponent(SSE_TOKEN) : '');
+
+  var _sseClient = new ReconnectingSSE(sseUrl, {
+
+    onEvent: function (data) {
+      /* Terminal stream events are handled by onEnd — skip rendering here */
+      if (data.event === 'stream_end' || data.event === 'stream_timeout') {
+        return;
+      }
+
+      /* Clear aria-busy on first real event */
+      container.removeAttribute('aria-busy');
+
+      /* Start time — grab from first timestamped event */
+      if (data.ts) setStartTime(data.ts);
+
+      /* Phase transition */
+      if (data.event === 'phase_transition') {
+        var phase   = data.phase || data.phase_name || '';
+        var pStatus = data.status || 'running';
+        if (phase) updatePhaseStep(phase, pStatus);
+      }
+
+      /* Run complete */
+      if (data.event === 'run_complete') {
+        updateStatus('completed');
+      }
+
+      /* Cost update */
+      if (data.total_cost_usd !== undefined) {
+        costEl.textContent = '$' + parseFloat(data.total_cost_usd).toFixed(4);
+      }
+
+      /* General status */
+      if (data.status && data.event !== 'phase_transition') {
+        updateStatus(data.status);
+      }
+
+      /* Awaiting input — show prompt card */
+      if (data.event === 'awaiting_input' || data.event === 'prompt_request') {
+        showPromptCard(data.agent || '', data.question || '');
+      }
+
+      /* Append to event log */
+      eventCount++;
+      countEl.textContent = eventCount;
+      appendEvent(renderEventItem(data));
+    },
+
+    onDisconnect: function () {
+      /* Connection dropped — dim the live indicator while banner is shown */
+      stopLiveDot();
+      container.setAttribute('aria-busy', 'false');
+    },
+
+    onReconnect: function () {
+      /* Connection restored — re-activate the live indicator if still running */
+      if (currentStatus === 'running') {
+        liveDot.style.animation = '';
+        liveDot.style.background = '';
+      }
+      container.setAttribute('aria-busy', 'true');
+    },
+
+    onEnd: function () {
+      /* Stream has ended (stream_end or stream_timeout) */
+      stopPromptPolling();
+      if (durationInterval) { clearInterval(durationInterval); durationInterval = null; }
+      updateStatus('completed');
+      container.setAttribute('aria-busy', 'false');
+    },
+
+  });
+
+  /* ================================================================
+     Toast helper
+     ================================================================ */
+  function showToast (msg, type) {
+    var toast = document.getElementById('toast-notification');
+    if (!toast) return;
+    toast.textContent = msg;
+    toast.className   = 'toast toast-' + type + ' toast-visible';
+    setTimeout(function () { toast.className = 'toast'; }, 3500);
+  }
+
+  /* ================================================================
+     Wire up global handlers referenced by inline onclick / button
+     ================================================================ */
+  promptSubmit.addEventListener('click', submitPromptResponse);
+  if (cancelBtn) cancelBtn.addEventListener('click', cancelRunAction);
+  if (resumeBtn) resumeBtn.addEventListener('click', resumeRunAction);
+  document.getElementById('scroll-btn').addEventListener('click', scrollToBottom);
+
+  /* Expose for any external callers / tests */
+  window._liveRunPage = {
+    scrollToBottom:  scrollToBottom,
+    updatePhaseStep: updatePhaseStep,
+    updateStatus:    updateStatus,
+    showPromptCard:  showPromptCard,
+    hidePromptCard:  hidePromptCard,
+    closeSSE:        function () { _sseClient.close(); },
   };
 
-  evtSource.onerror = function() {
-    evtSource.close();
-    document.querySelector('.live-dot').style.background = '#da3633';
-    document.querySelector('.live-dot').style.animation = 'none';
-  };
+  /* ================================================================
+     Initialise
+     ================================================================ */
+  /* Adjust live-dot for non-running initial state */
+  if (INITIAL_STATUS !== 'running') {
+    stopLiveDot();
+    if (INITIAL_STATUS === 'failed') liveDot.style.background = '#da3633';
+  }
+
+  /* Start prompt polling */
+  startPromptPolling();
+
+})();
 </script>
 {% endblock %}

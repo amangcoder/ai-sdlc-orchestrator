@@ -2,6 +2,9 @@
 {% block content %}
 <h1>New Run</h1>
 
+<!-- Toast notification (auto-dismissed by JS) -->
+<div id="toast-notification" class="toast" aria-live="polite"></div>
+
 {% if active_runs %}
 <div class="card" style="border-color: var(--yellow);">
   <h2>Active Run</h2>
@@ -13,26 +16,44 @@
 {% endif %}
 
 <form id="new-run-form" class="card">
+  <!-- Feature Request -->
   <div class="form-group">
     <label for="feature_request">Feature Request</label>
     <textarea id="feature_request" name="feature_request" rows="5"
-              placeholder="Describe what you want to build..." required
+              placeholder="Describe what you want to build..."
               maxlength="10000"></textarea>
+    <span id="feature-request-error" class="form-error" role="alert" style="display:none;">
+      Feature request is required.
+    </span>
     <span class="form-hint">Max 10,000 characters. Be specific about what you want.</span>
   </div>
 
+  <!-- Workflow Type + Model Routing row -->
   <div class="form-row">
     <div class="form-group">
       <label for="workflow_type">Workflow Type</label>
       <select id="workflow_type" name="workflow_type">
-        {% for wt in workflow_types %}
-        <option value="{{ wt }}" {% if wt == "feature_development" %}selected{% endif %}>
-          {{ wt.replace('_', ' ').title() }}
-        </option>
-        {% endfor %}
+        <option value="full">Full (Feature Development)</option>
+        <option value="backend">Backend</option>
+        <option value="frontend">Frontend</option>
+        <option value="research">Research</option>
+        <option value="custom">Custom</option>
       </select>
     </div>
 
+    <div class="form-group">
+      <label for="model_routing">Model Routing</label>
+      <select id="model_routing" name="model_routing">
+        <option value="default">Default</option>
+        <option value="speed">Speed (Fast models)</option>
+        <option value="quality">Quality (Best models)</option>
+        <option value="economy">Economy (Efficient models)</option>
+      </select>
+    </div>
+  </div>
+
+  <!-- Budget + Concurrency row -->
+  <div class="form-row">
     <div class="form-group">
       <label for="max_budget_usd">Budget (USD)</label>
       <input type="number" id="max_budget_usd" name="max_budget_usd"
@@ -47,6 +68,7 @@
     </div>
   </div>
 
+  <!-- Checkboxes -->
   <div class="form-row">
     <label class="checkbox">
       <input type="checkbox" name="debate"> Enable Debate Phase
@@ -59,6 +81,30 @@
     </label>
   </div>
 
+  <!-- Advanced Options (collapsible) -->
+  <div style="margin-top: 8px;">
+    <button type="button" class="advanced-toggle" id="advanced-options-toggle"
+            aria-expanded="false" aria-controls="advanced-options-section">
+      <span id="advanced-toggle-icon">▶</span> Advanced Options
+    </button>
+    <div id="advanced-options-section" class="advanced-section" style="display:none;" aria-hidden="true">
+      <div class="form-group">
+        <label for="config_path">Config Path</label>
+        <input type="text" id="config_path" name="config_path"
+               placeholder="/path/to/config.yaml">
+        <span class="form-hint">Override the default config file. Leave blank to use server default.</span>
+      </div>
+
+      <div class="form-group">
+        <label for="custom_workflow">Custom Workflow JSON</label>
+        <textarea id="custom_workflow" name="custom_workflow" rows="6"
+                  placeholder='{"phases": ["pm", "architect", "engineer"]}'></textarea>
+        <span class="form-hint">Valid JSON. Only used when Workflow Type is set to &ldquo;Custom&rdquo;.</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Submit -->
   <div class="form-actions">
     <button type="submit" class="btn btn-primary" id="submit-btn"
             {% if active_runs %}disabled{% endif %}>
@@ -71,26 +117,35 @@
 {% if resumable_runs %}
 <div class="card">
   <h2>Resume a Run</h2>
-  <table>
+  <table aria-label="Resumable runs">
     <thead>
       <tr>
-        <th>Run ID</th>
-        <th>Feature Request</th>
-        <th>Status</th>
-        <th>Cost</th>
-        <th>Action</th>
+        <th scope="col">Run ID</th>
+        <th scope="col">Feature Request</th>
+        <th scope="col">Status</th>
+        <th scope="col">Cost</th>
+        <th scope="col">Action</th>
       </tr>
     </thead>
     <tbody>
       {% for run in resumable_runs %}
       <tr>
-        <td><a href="/runs/{{ run.run_id }}">{{ run.run_id[:8] }}...</a></td>
-        <td>{{ run.feature_request[:60] }}</td>
-        <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
-        <td>${{ "%.4f"|format(run.total_cost_usd) }}</td>
-        <td>
-          <button class="btn btn-small" onclick="resumeRun('{{ run.run_id }}')"
-                  {% if active_runs %}disabled{% endif %}>Resume</button>
+        <td data-label="Run ID"><a href="/runs/{{ run.run_id }}">{{ run.run_id[:8] }}...</a></td>
+        <td data-label="Feature Request">{{ run.feature_request[:60] }}</td>
+        <td data-label="Status">
+          <span
+            class="badge badge-{{ run.status }}"
+            aria-label="Status: {{ run.status }}"
+          >{{ run.status }}</span>
+        </td>
+        <td data-label="Cost">${{ "%.4f"|format(run.total_cost_usd) }}</td>
+        <td data-label="Action">
+          <button
+            class="btn btn-small"
+            onclick="resumeRun('{{ run.run_id }}')"
+            aria-label="Resume run {{ run.run_id[:8] }}"
+            {% if active_runs %}disabled aria-disabled="true"{% endif %}
+          >Resume</button>
         </td>
       </tr>
       {% endfor %}

@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 
 from orchestrator.dashboard.data import _default_slo_report, get_slo_report
 from orchestrator.dashboard.routes.slo import (
+    _SLI_DISPLAY_NAMES,
     _budget_color,
     _enrich_slis,
     _format_sli_value,
@@ -325,6 +326,49 @@ class TestEnrichSlis:
         enriched = _enrich_slis([sli])
         assert enriched[0]["budget_pct"] == 100.0
 
+    def test_adds_display_name(self) -> None:
+        enriched = _enrich_slis(self._slis())
+        for item in enriched:
+            assert "display_name" in item
+            assert isinstance(item["display_name"], str)
+            assert len(item["display_name"]) > 0
+
+    def test_display_name_pipeline_success_rate(self) -> None:
+        enriched = _enrich_slis(self._slis())
+        psr = next(e for e in enriched if e["name"] == "pipeline_success_rate")
+        assert psr["display_name"] == "Pipeline Success Rate"
+
+    def test_display_name_phase_duration_p95(self) -> None:
+        enriched = _enrich_slis(self._slis())
+        item = next(e for e in enriched if e["name"] == "phase_duration_p95")
+        assert item["display_name"] == "Phase Duration p95"
+
+    def test_display_name_cost_per_run_p50(self) -> None:
+        enriched = _enrich_slis(self._slis())
+        item = next(e for e in enriched if e["name"] == "cost_per_run_p50")
+        assert item["display_name"] == "Cost Per Run p50"
+
+    def test_display_name_error_rate(self) -> None:
+        enriched = _enrich_slis(self._slis())
+        item = next(e for e in enriched if e["name"] == "error_rate")
+        assert item["display_name"] == "Error Rate Per Run"
+
+    def test_display_name_recovery_success_rate(self) -> None:
+        enriched = _enrich_slis(self._slis())
+        item = next(e for e in enriched if e["name"] == "recovery_success_rate")
+        assert item["display_name"] == "Recovery Success Rate"
+
+    def test_display_name_fallback_to_canonical_name(self) -> None:
+        sli = SLIResult(
+            name="unknown_sli",
+            target=1.0,
+            actual=1.0,
+            passing=True,
+            error_budget_remaining_pct=100.0,
+        )
+        enriched = _enrich_slis([sli])
+        assert enriched[0]["display_name"] == "unknown_sli"
+
 
 # ---------------------------------------------------------------------------
 # GET /slo — HTML endpoint
@@ -450,6 +494,120 @@ class TestSloPageHtml:
         # At least one color is rendered (green for 100% budget in defaults).
         assert "#22c55e" in body or "#f59e0b" in body or "#ef4444" in body
 
+    def test_compliance_matrix_has_five_columns(self) -> None:
+        resp = _client().get("/slo")
+        body = resp.text
+        # Five <th> elements should appear in the compliance matrix table.
+        assert "SLI Name" in body
+        assert "Target" in body
+        assert "Current Value" in body
+        assert "Status" in body
+        assert "Error Budget Remaining" in body
+
+    def test_compliance_matrix_shows_human_readable_names(self) -> None:
+        resp = _client().get("/slo")
+        body = resp.text
+        assert "Pipeline Success Rate" in body
+        assert "Phase Duration p95" in body
+        assert "Cost Per Run p50" in body
+        assert "Artifact Validation Rate" in body
+        assert "Error Rate Per Run" in body
+        assert "Recovery Success Rate" in body
+
+    def test_compliance_matrix_has_inline_progress_bars(self) -> None:
+        # The compliance matrix table rows include progress bars.
+        resp = _client().get("/slo")
+        # Both the gauge section and inline matrix bars use role="progressbar".
+        assert resp.text.count('role="progressbar"') >= 6
+
+    def test_status_uses_passing_label(self) -> None:
+        # Defaults have 100% error budget → green → "Passing" label.
+        resp = _client().get("/slo")
+        assert "Passing" in resp.text
+
+    def test_breached_status_label_shown_for_low_budget(self) -> None:
+        slis_breach = [
+            dataclasses.replace(s, passing=False, error_budget_remaining_pct=5.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_breach, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        assert "Breached" in resp.text
+
+    def test_at_risk_status_label_shown_for_medium_budget(self) -> None:
+        slis_risk = [
+            dataclasses.replace(s, passing=False, error_budget_remaining_pct=50.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_risk, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        assert "At Risk" in resp.text
+
+    def test_summary_banner_all_passing(self) -> None:
+        slis_passing = [
+            dataclasses.replace(s, passing=True, error_budget_remaining_pct=95.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_passing, all_passing=True)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        assert "All SLIs Passing" in resp.text
+
+    def test_summary_banner_breached(self) -> None:
+        slis_breach = [
+            dataclasses.replace(s, passing=False, error_budget_remaining_pct=5.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_breach, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        assert "Breached" in resp.text
+
+    def test_summary_banner_at_risk(self) -> None:
+        slis_risk = [
+            dataclasses.replace(s, passing=False, error_budget_remaining_pct=50.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_risk, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        assert "At Risk" in resp.text
+
+    def test_status_uses_checkmark_icon_for_passing(self) -> None:
+        slis_passing = [
+            dataclasses.replace(s, passing=True, error_budget_remaining_pct=95.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_passing, all_passing=True)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        # ✓ checkmark appears in the banner or status column
+        assert "✓" in resp.text
+
+    def test_status_uses_warning_icon_for_at_risk(self) -> None:
+        slis_risk = [
+            dataclasses.replace(s, passing=False, error_budget_remaining_pct=50.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_risk, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        # ⚠ warning icon appears
+        assert "⚠" in resp.text
+
+    def test_status_uses_cross_icon_for_breached(self) -> None:
+        slis_breach = [
+            dataclasses.replace(s, passing=False, error_budget_remaining_pct=5.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_breach, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        # ✗ cross icon appears
+        assert "✗" in resp.text
+
 
 # ---------------------------------------------------------------------------
 # GET /api/v1/slo — JSON endpoint
@@ -564,3 +722,90 @@ class TestMonitoringStackSloTrackerProperty:
         )
         assert stack.slo_tracker is not None
         assert isinstance(stack.slo_tracker, SLOTracker)
+
+
+# ---------------------------------------------------------------------------
+# _SLI_DISPLAY_NAMES
+# ---------------------------------------------------------------------------
+
+
+class TestSliDisplayNames:
+    """Unit tests for the _SLI_DISPLAY_NAMES mapping."""
+
+    def test_all_six_canonical_names_present(self) -> None:
+        expected = {
+            "pipeline_success_rate",
+            "phase_duration_p95",
+            "cost_per_run_p50",
+            "artifact_validation_rate",
+            "error_rate",
+            "recovery_success_rate",
+        }
+        assert expected.issubset(set(_SLI_DISPLAY_NAMES.keys()))
+
+    def test_display_names_are_non_empty_strings(self) -> None:
+        for canonical, display in _SLI_DISPLAY_NAMES.items():
+            assert isinstance(display, str), f"{canonical!r} display is not a string"
+            assert len(display) > 0, f"{canonical!r} display is empty"
+
+    def test_pipeline_success_rate_display(self) -> None:
+        assert _SLI_DISPLAY_NAMES["pipeline_success_rate"] == "Pipeline Success Rate"
+
+    def test_error_rate_display(self) -> None:
+        assert _SLI_DISPLAY_NAMES["error_rate"] == "Error Rate Per Run"
+
+
+# ---------------------------------------------------------------------------
+# Banner context variables (at_risk_count, breached_count, banner_status)
+# ---------------------------------------------------------------------------
+
+
+class TestBannerContext:
+    """Integration tests verifying banner_status context values drive the HTML banner."""
+
+    def test_banner_passing_rendered_when_all_green(self) -> None:
+        slis_green = [
+            dataclasses.replace(s, passing=True, error_budget_remaining_pct=90.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_green, all_passing=True)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        assert "All SLIs Passing" in resp.text
+
+    def test_banner_at_risk_rendered_for_yellow_slis(self) -> None:
+        # 20–80% budget → yellow color from _budget_color
+        slis_yellow = [
+            dataclasses.replace(s, passing=False, error_budget_remaining_pct=50.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_yellow, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        body = resp.text
+        assert "At Risk" in body
+        assert "Breached" not in body.split("All SLIs Passing")[0]  # banner shows At Risk not Breached
+
+    def test_banner_breached_rendered_for_red_slis(self) -> None:
+        # <20% budget → red color from _budget_color
+        slis_red = [
+            dataclasses.replace(s, passing=False, error_budget_remaining_pct=5.0)
+            for s in _make_slo_report().slis
+        ]
+        report = dataclasses.replace(_make_slo_report(), slis=slis_red, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        assert "Breached" in resp.text
+
+    def test_banner_worst_status_wins_breached_over_at_risk(self) -> None:
+        # Mix: some yellow (50%), one red (5%) — banner should say Breached.
+        slis_mixed = []
+        for i, s in enumerate(_make_slo_report().slis):
+            if i == 0:
+                slis_mixed.append(dataclasses.replace(s, passing=False, error_budget_remaining_pct=5.0))
+            else:
+                slis_mixed.append(dataclasses.replace(s, passing=False, error_budget_remaining_pct=50.0))
+        report = dataclasses.replace(_make_slo_report(), slis=slis_mixed, all_passing=False)
+        stack = _make_monitoring_stack(report=report)
+        resp = _client(stack).get("/slo")
+        assert "Breached" in resp.text

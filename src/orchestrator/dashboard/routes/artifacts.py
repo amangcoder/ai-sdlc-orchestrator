@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
@@ -48,6 +48,9 @@ from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
     from orchestrator.artifact_manager import ArtifactManager
+    from orchestrator.dashboard.data import RunDataReader
+
+from orchestrator.dashboard.routes.validators import _RUN_ID_RE  # shared pattern
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +62,7 @@ logger = logging.getLogger(__name__)
 # names at the HTTP layer before touching the filesystem at all.
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
 
-# run_id accepts the same characters used by the orchestrator (hex + dashes/underscores)
-_RUN_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
+# _RUN_ID_RE is imported from routes.validators (single source of truth).
 
 
 # ---------------------------------------------------------------------------
@@ -131,12 +133,16 @@ def _validate_version(v: int) -> None:
 def create_artifacts_router(
     templates: Jinja2Templates,
     artifact_manager: "ArtifactManager",
+    reader: "Optional[RunDataReader]" = None,
 ) -> APIRouter:
     """Return an APIRouter wired up with all artifact management endpoints.
 
     Args:
         templates: The Jinja2Templates instance shared by the parent app.
         artifact_manager: Initialised ArtifactManager instance.
+        reader: Optional RunDataReader for cross-run diff operations.
+            When provided, the /api/v1/artifacts/diff endpoint is available
+            and delegates key-level diff computation to reader.get_artifact_diff().
 
     Returns:
         Configured FastAPI APIRouter.
@@ -314,6 +320,70 @@ def create_artifacts_router(
             )
             raise HTTPException(status_code=500, detail="Failed to compare artifacts") from exc
         return diff.model_dump()
+
+    # -----------------------------------------------------------------------
+    # GET /api/v1/artifacts/diff
+    # -----------------------------------------------------------------------
+
+    @router.get("/api/v1/artifacts/diff")
+    async def api_artifact_diff(
+        run1: str = Query(..., description="First run ID (before / left side)"),
+        run2: str = Query(..., description="Second run ID (after / right side)"),
+        name: str = Query(..., description="Artifact name to diff, e.g. 'prd'"),
+    ) -> dict:
+        """Return a key-level diff between the same artifact in two different runs.
+
+        Requires a RunDataReader to be configured at router creation time
+        (passed as the ``reader`` argument to :func:`create_artifacts_router`).
+
+        Response shape::
+
+            {
+              "run_id_1": "run-abc",
+              "run_id_2": "run-def",
+              "artifact_name": "prd",
+              "added": ["new_key"],
+              "removed": ["old_key"],
+              "changed": [
+                {"key": "title", "old": "V1 title", "new": "V2 title"}
+              ]
+            }
+
+        Error response (artifact missing in one or both runs)::
+
+            {"detail": "Artifact 'prd' not found for run(s): run-def"}
+
+        Input validation
+        ----------------
+        * ``run1`` / ``run2`` — must match ``_RUN_ID_RE`` (alphanumeric + hyphens/underscores).
+        * ``name`` — must match ``_NAME_RE`` (alphanumeric + hyphens/underscores, max 128 chars).
+        """
+        _validate_run_id(run1)
+        _validate_run_id(run2)
+        _validate_name(name)
+
+        if reader is None:
+            raise HTTPException(
+                status_code=503,
+                detail=(
+                    "Cross-run artifact diff is unavailable: "
+                    "RunDataReader was not configured for this server."
+                ),
+            )
+
+        try:
+            diff: dict[str, Any] = reader.get_artifact_diff(run1, run2, name)
+        except Exception as exc:
+            logger.error(
+                "get_artifact_diff error run1=%s run2=%s name=%s: %s",
+                run1, run2, name, exc,
+            )
+            raise HTTPException(status_code=500, detail="Failed to compute artifact diff") from exc
+
+        if "error" in diff:
+            raise HTTPException(status_code=404, detail=diff["error"])
+
+        return diff
 
     # -----------------------------------------------------------------------
     # GET /api/v1/artifacts/search

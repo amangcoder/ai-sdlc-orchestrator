@@ -1,5 +1,21 @@
 {% extends "base.html" %}
+
 {% block content %}
+{# ── JSON syntax-highlight colours (dark theme) ────────────────────────── #}
+<style>
+  .json-key     { color: #79c0ff; }
+  .json-string  { color: #a5d6a7; }
+  .json-number  { color: #f8c555; }
+  .json-bool    { color: #ff7b72; }
+  .json-null    { color: #d2a8ff; }
+  .json-punct   { color: #8b949e; }
+
+  /* Slide-over responsive tweak */
+  @media (max-width: 480px) {
+    #version-slideover { width: 100vw !important; }
+  }
+</style>
+
 <h1>Artifacts — <span style="font-family: monospace; font-size: 0.85em;">{{ run_id }}</span></h1>
 
 <div style="margin-bottom: 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
@@ -15,17 +31,38 @@
   ">Compare runs…</button>
 </div>
 
+{# ── Client-side name filter ─────────────────────────────────────────────── #}
+<div style="margin-bottom: 12px;">
+  <input
+    id="artifact-search"
+    type="text"
+    placeholder="Filter artifacts by name…"
+    aria-label="Filter artifacts by name"
+    style="
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      width: 280px;
+      max-width: 100%;
+    "
+  >
+</div>
+
 {% if artifacts %}
 <div class="card" style="padding: 0; overflow: hidden;">
-  <table id="artifacts-table">
+  <table id="artifacts-table" aria-label="Artifacts for run {{ run_id }}">
     <thead>
       <tr>
-        <th>Name</th>
-        <th>Version</th>
-        <th>Agent</th>
-        <th>Size</th>
-        <th>Updated</th>
-        <th>Actions</th>
+        <th scope="col">Name</th>
+        <th scope="col">Schema</th>
+        <th scope="col">Agent</th>
+        <th scope="col">Version</th>
+        <th scope="col">Last Updated</th>
+        <th scope="col">Size</th>
+        <th scope="col">Valid</th>
       </tr>
     </thead>
     <tbody>
@@ -33,24 +70,33 @@
       <tr
         class="artifact-row"
         data-name="{{ a.name }}"
-        onclick="showVersionHistory('{{ run_id }}', '{{ a.name }}')"
+        onclick="openSlideover('{{ run_id }}', '{{ a.name }}')"
+        role="button"
+        tabindex="0"
+        aria-label="View version history for {{ a.name }}"
         style="cursor: pointer;"
-        title="Click to view version history"
       >
-        <td><code>{{ a.name }}</code></td>
-        <td>v{{ a.current_version }}</td>
-        <td>{{ a.agent or '—' }}</td>
-        <td>{{ (a.size_bytes / 1024) | round(1) }} KB</td>
-        <td>{{ a.updated_at[:19] if a.updated_at else '—' }}</td>
-        <td onclick="event.stopPropagation()">
-          <button
-            onclick="showVersionHistory('{{ run_id }}', '{{ a.name }}')"
-            style="background: none; border: 1px solid var(--accent); color: var(--accent); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem;"
-          >History</button>
-          <button
-            onclick="loadRawArtifact('{{ run_id }}', '{{ a.name }}')"
-            style="background: none; border: 1px solid var(--border); color: var(--text-dim); padding: 3px 10px; border-radius: 4px; cursor: pointer; font-size: 0.8rem; margin-left: 6px;"
-          >View</button>
+        <td data-label="Name"><code>{{ a.name }}</code></td>
+        <td data-label="Schema">{{ a.schema_name or '—' }}</td>
+        <td data-label="Agent">{{ a.agent or '—' }}</td>
+        <td data-label="Version">v{{ a.current_version }}</td>
+        <td data-label="Last Updated">{{ a.updated_at[:19] if a.updated_at else '—' }}</td>
+        <td data-label="Size">
+          {%- if a.size_bytes < 1024 -%}
+            {{ a.size_bytes }} B
+          {%- elif a.size_bytes < 1048576 -%}
+            {{ (a.size_bytes / 1024) | round(1) }} KB
+          {%- else -%}
+            {{ (a.size_bytes / 1048576) | round(2) }} MB
+          {%- endif -%}
+        </td>
+        <td data-label="Valid">
+          {% if a.valid %}
+            {# Icon provided by CSS ::before on badge-success — text only here #}
+            <span class="badge badge-success" aria-label="Artifact is valid" style="font-size:0.78rem;">Valid</span>
+          {% else %}
+            <span class="badge badge-failed" aria-label="Artifact is invalid" style="font-size:0.78rem;">Invalid</span>
+          {% endif %}
         </td>
       </tr>
       {% endfor %}
@@ -64,102 +110,151 @@
 </div>
 {% endif %}
 
-<!-- ── Version History Modal ───────────────────────────────────────────── -->
-<div id="modal-overlay" onclick="closeModal()" style="
+{# ── Slide-over backdrop ──────────────────────────────────────────────────── #}
+<div id="slideover-overlay" style="
   display: none;
   position: fixed; inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 100;
+  background: rgba(0,0,0,0.5);
+  z-index: 199;
 "></div>
 
-<div id="version-modal" style="
-  display: none;
+{# ── Right-side slide-over panel (400 px wide) ───────────────────────────── #}
+<div id="version-slideover" style="
   position: fixed;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
+  top: 0; right: 0;
+  width: 400px;
+  height: 100vh;
   background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 24px;
-  width: min(760px, 94vw);
-  max-height: 80vh;
+  border-left: 1px solid var(--border);
+  z-index: 200;
+  transform: translateX(100%);
+  transition: transform 0.25s ease-in-out;
   overflow-y: auto;
-  z-index: 101;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  display: flex;
+  flex-direction: column;
+  box-shadow: -8px 0 32px rgba(0,0,0,0.4);
 ">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-    <h2 id="modal-title" style="margin: 0;">Version History</h2>
-    <button onclick="closeModal()" style="
-      background: none; border: none; color: var(--text-dim);
-      font-size: 1.4rem; cursor: pointer; padding: 4px 8px;
-    ">✕</button>
+  {# Header #}
+  <div style="
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--card-bg);
+    z-index: 1;
+    flex-shrink: 0;
+  ">
+    <span id="slideover-title" style="font-weight: 600; font-size: 0.95rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 300px;"></span>
+    <button
+      onclick="closeSlideover()"
+      aria-label="Close panel"
+      style="background: none; border: none; color: var(--text-dim); font-size: 1.3rem; cursor: pointer; padding: 4px 8px; flex-shrink: 0;"
+    >✕</button>
   </div>
-  <div id="modal-body">
-    <p style="color: var(--text-dim);">Loading…</p>
-  </div>
-</div>
 
-<!-- ── Raw / Version Content Viewer ───────────────────────────────────── -->
-<div id="content-modal" style="
-  display: none;
-  position: fixed;
-  top: 50%; left: 50%;
-  transform: translate(-50%, -50%);
-  background: var(--card-bg);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 24px;
-  width: min(880px, 96vw);
-  max-height: 85vh;
-  overflow-y: auto;
-  z-index: 102;
-  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
-">
-  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-    <h2 id="content-modal-title" style="margin: 0;">Artifact Content</h2>
-    <button onclick="closeContentModal()" style="
-      background: none; border: none; color: var(--text-dim);
-      font-size: 1.4rem; cursor: pointer; padding: 4px 8px;
-    ">✕</button>
-  </div>
-  <pre id="content-viewer" style="
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 6px;
+  {# Version history list #}
+  <div id="slideover-versions" style="
     padding: 16px;
-    overflow: auto;
-    font-size: 0.8rem;
-    line-height: 1.5;
-    color: var(--text);
-    max-height: calc(85vh - 120px);
-  "></pre>
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  ">
+    <p style="color: var(--text-dim); font-size: 0.85rem;">Select an artifact row to load version history.</p>
+  </div>
+
+  {# Artifact content viewer — shown after clicking a version #}
+  <div id="slideover-content-section" style="padding: 16px; display: none; flex: 1; min-height: 0; flex-direction: column; display: none;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; flex-shrink: 0;">
+      <span id="slideover-content-title" style="font-size: 0.82rem; color: var(--text-dim); font-family: monospace;"></span>
+      <div style="display: flex; gap: 6px; flex-shrink: 0;">
+        <button
+          id="btn-copy"
+          onclick="copyArtifactContent()"
+          style="
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.78rem;
+            transition: color 0.15s, border-color 0.15s;
+          "
+        >Copy</button>
+        <button
+          id="btn-download"
+          onclick="downloadArtifactContent()"
+          style="
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 4px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.78rem;
+          "
+        >Download</button>
+      </div>
+    </div>
+    <pre
+      id="slideover-content-viewer"
+      style="
+        background: var(--bg);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        padding: 12px;
+        overflow: auto;
+        font-size: 0.72rem;
+        line-height: 1.6;
+        color: var(--text);
+        font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+        flex: 1;
+        white-space: pre;
+        max-height: calc(100vh - 280px);
+      "
+    ></pre>
+  </div>
 </div>
 
-<!-- ── Diff Viewer Panel ────────────────────────────────────────────────── -->
+{# ── Diff Viewer Panel ────────────────────────────────────────────────────── #}
 <div id="diff-panel" style="display: none; margin-top: 24px;">
   <div class="card">
     <h2>Compare Runs</h2>
     <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; align-items: flex-end;">
       <div>
-        <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Run A</label>
-        <input id="diff-run-a" type="text" placeholder="{{ run_id }}" value="{{ run_id }}" style="
-          background: var(--bg); border: 1px solid var(--border); color: var(--text);
-          padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 260px;
-        ">
+        <label for="diff-run1" style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Run 1 (left / before)</label>
+        <input id="diff-run1" type="text" placeholder="{{ run_id }}" value="{{ run_id }}"
+          aria-label="First run ID for comparison"
+          style="background: var(--bg); border: 1px solid var(--border); color: var(--text);
+                 padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 260px;">
       </div>
       <div>
-        <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Run B</label>
-        <input id="diff-run-b" type="text" placeholder="other-run-id…" style="
-          background: var(--bg); border: 1px solid var(--border); color: var(--text);
-          padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 260px;
-        ">
+        <label for="diff-run2" style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Run 2 (right / after)</label>
+        <input id="diff-run2" type="text" placeholder="other-run-id…"
+          aria-label="Second run ID for comparison"
+          style="background: var(--bg); border: 1px solid var(--border); color: var(--text);
+                 padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 260px;">
       </div>
       <div>
-        <label style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Artifact</label>
-        <input id="diff-artifact" type="text" placeholder="prd" style="
-          background: var(--bg); border: 1px solid var(--border); color: var(--text);
-          padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 160px;
-        ">
+        <label for="diff-name" style="display: block; color: var(--text-dim); font-size: 0.8rem; margin-bottom: 4px;">Artifact</label>
+        {% if artifacts %}
+        <select id="diff-name"
+          aria-label="Select artifact to compare"
+          style="background: var(--bg); border: 1px solid var(--border); color: var(--text);
+                 padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 180px;">
+          <option value="">— choose artifact —</option>
+          {% for a in artifacts %}
+          <option value="{{ a.name }}">{{ a.name }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <input id="diff-name" type="text" placeholder="prd"
+          aria-label="Artifact name to compare"
+          style="background: var(--bg); border: 1px solid var(--border); color: var(--text);
+                 padding: 6px 10px; border-radius: 6px; font-size: 0.875rem; width: 180px;">
+        {% endif %}
       </div>
       <button onclick="runDiff()" style="
         background: var(--accent); color: #000;
@@ -169,26 +264,26 @@
     </div>
     <div id="diff-result" style="display: none;">
       <div id="diff-summary" style="margin-bottom: 12px; font-size: 0.875rem; color: var(--text-dim);"></div>
-      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;">
-        <div>
-          <h3 style="font-size: 0.875rem; color: #10b981; margin-bottom: 8px;">Added keys</h3>
-          <ul id="diff-added" style="margin: 0; padding: 0; list-style: none; font-family: monospace; font-size: 0.8rem;"></ul>
-        </div>
-        <div>
-          <h3 style="font-size: 0.875rem; color: #ef4444; margin-bottom: 8px;">Removed keys</h3>
-          <ul id="diff-removed" style="margin: 0; padding: 0; list-style: none; font-family: monospace; font-size: 0.8rem;"></ul>
-        </div>
-        <div>
-          <h3 style="font-size: 0.875rem; color: #f59e0b; margin-bottom: 8px;">Changed keys</h3>
-          <ul id="diff-changed" style="margin: 0; padding: 0; list-style: none; font-family: monospace; font-size: 0.8rem;"></ul>
-        </div>
+      {# Side-by-side diff table #}
+      <div style="overflow-x: auto;">
+        <table id="diff-table" aria-label="Artifact diff results" style="width: 100%; border-collapse: collapse; font-size: 0.82rem; font-family: 'SF Mono', 'Fira Code', monospace;">
+          <thead>
+            <tr>
+              <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-weight: 600; width: 25%;">Key</th>
+              <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-weight: 600; width: 37.5%;">Run 1 (before)</th>
+              <th style="text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); color: var(--text-dim); font-weight: 600; width: 37.5%;">Run 2 (after)</th>
+            </tr>
+          </thead>
+          <tbody id="diff-table-body">
+          </tbody>
+        </table>
       </div>
     </div>
-    <div id="diff-error" style="display: none; color: #ef4444; font-size: 0.875rem;"></div>
+    <div id="diff-error" role="alert" aria-live="assertive" style="display: none; color: #f85149; font-size: 0.875rem;"></div>
   </div>
 </div>
 
-<!-- ── Search Panel ─────────────────────────────────────────────────────── -->
+{# ── Global Artifact Search Panel ────────────────────────────────────────── #}
 <div class="card" style="margin-top: 24px;">
   <h2>Search All Artifacts</h2>
   <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 16px;">
@@ -224,246 +319,16 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/artifacts.js"></script>
 <script>
-(function () {
-  'use strict';
-
-  // ── Modal helpers ─────────────────────────────────────────────────────
-
-  function openModal() {
-    document.getElementById('modal-overlay').style.display = 'block';
-    document.getElementById('version-modal').style.display = 'block';
-  }
-
-  window.closeModal = function () {
-    document.getElementById('modal-overlay').style.display = 'none';
-    document.getElementById('version-modal').style.display = 'none';
-    document.getElementById('content-modal').style.display = 'none';
-  };
-
-  window.closeContentModal = function () {
-    document.getElementById('content-modal').style.display = 'none';
-  };
-
-  // ── Version History ───────────────────────────────────────────────────
-
-  window.showVersionHistory = function (runId, name) {
-    document.getElementById('modal-title').textContent = 'Version History — ' + name;
-    document.getElementById('modal-body').innerHTML = '<p style="color:var(--text-dim)">Loading…</p>';
-    openModal();
-
-    fetch('/api/v1/runs/' + encodeURIComponent(runId) + '/artifacts/' + encodeURIComponent(name) + '/versions')
-      .then(function (r) { return r.json(); })
-      .then(function (versions) {
-        if (!versions.length) {
-          document.getElementById('modal-body').innerHTML =
-            '<p style="color:var(--text-dim)">No version history found.</p>';
-          return;
-        }
-        var html = '<table style="width:100%"><thead><tr>'
-          + '<th>Version</th><th>Run ID</th><th>Agent</th>'
-          + '<th>Size</th><th>Created</th><th>Status</th><th></th>'
-          + '</tr></thead><tbody>';
-        versions.forEach(function (v) {
-          var statusColor = v.run_status === 'completed' ? '#10b981'
-            : v.run_status === 'failed' ? '#ef4444' : '#8899aa';
-          html += '<tr>'
-            + '<td><strong>v' + v.version + '</strong></td>'
-            + '<td style="font-family:monospace;font-size:0.8rem">' + (v.run_id || '—').substring(0, 12) + '…</td>'
-            + '<td>' + (v.agent || '—') + '</td>'
-            + '<td>' + ((v.size_bytes || 0) / 1024).toFixed(1) + ' KB</td>'
-            + '<td>' + (v.created_at || '—').substring(0, 19) + '</td>'
-            + '<td style="color:' + statusColor + '">' + (v.run_status || 'unknown') + '</td>'
-            + '<td><button onclick="loadVersionContent(\'' + encodeURIComponent(runId) + '\',\''
-            + encodeURIComponent(name) + '\',' + v.version + ')" style="'
-            + 'background:none;border:1px solid var(--border);color:var(--text-dim);'
-            + 'padding:3px 8px;border-radius:4px;cursor:pointer;font-size:0.78rem;">View</button></td>'
-            + '</tr>';
-        });
-        html += '</tbody></table>';
-        document.getElementById('modal-body').innerHTML = html;
-      })
-      .catch(function (err) {
-        document.getElementById('modal-body').innerHTML =
-          '<p style="color:#ef4444">Error loading history: ' + err.message + '</p>';
-      });
-  };
-
-  // ── Load versioned content ────────────────────────────────────────────
-
-  window.loadVersionContent = function (runId, name, version) {
-    var url = '/api/v1/runs/' + runId + '/artifacts/' + name + '/versions/' + version;
-    document.getElementById('content-modal-title').textContent =
-      'Artifact: ' + decodeURIComponent(name) + ' (v' + version + ')';
-    document.getElementById('content-viewer').textContent = 'Loading…';
-    document.getElementById('content-modal').style.display = 'block';
-
-    fetch(url)
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        document.getElementById('content-viewer').textContent =
-          JSON.stringify(data, null, 2);
-      })
-      .catch(function (err) {
-        document.getElementById('content-viewer').textContent = 'Error: ' + err.message;
-      });
-  };
-
-  // ── Load raw (current) artifact ───────────────────────────────────────
-
-  window.loadRawArtifact = function (runId, name) {
-    var url = '/api/v1/runs/' + encodeURIComponent(runId)
-      + '/artifacts/' + encodeURIComponent(name) + '/versions';
-
-    document.getElementById('content-modal-title').textContent = 'Artifact: ' + name + ' (latest)';
-    document.getElementById('content-viewer').textContent = 'Loading…';
-    document.getElementById('content-modal').style.display = 'block';
-
-    // Get the latest version number, then load it
-    fetch(url)
-      .then(function (r) { return r.json(); })
-      .then(function (versions) {
-        if (!versions.length) throw new Error('No versions found');
-        var latest = versions[versions.length - 1];
-        return fetch('/api/v1/runs/' + encodeURIComponent(runId)
-          + '/artifacts/' + encodeURIComponent(name)
-          + '/versions/' + latest.version);
-      })
-      .then(function (r) {
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
-      .then(function (data) {
-        document.getElementById('content-viewer').textContent =
-          JSON.stringify(data, null, 2);
-      })
-      .catch(function (err) {
-        document.getElementById('content-viewer').textContent = 'Error: ' + err.message;
-      });
-  };
-
-  // ── Diff panel ────────────────────────────────────────────────────────
-
-  window.toggleDiffPanel = function () {
-    var panel = document.getElementById('diff-panel');
-    panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-  };
-
-  window.runDiff = function () {
-    var runA = document.getElementById('diff-run-a').value.trim();
-    var runB = document.getElementById('diff-run-b').value.trim();
-    var artifact = document.getElementById('diff-artifact').value.trim();
-
-    var resultEl = document.getElementById('diff-result');
-    var errorEl = document.getElementById('diff-error');
-    resultEl.style.display = 'none';
-    errorEl.style.display = 'none';
-
-    if (!runA || !runB || !artifact) {
-      errorEl.textContent = 'All three fields are required.';
-      errorEl.style.display = 'block';
-      return;
-    }
-
-    var url = '/api/v1/artifacts/compare?run_a=' + encodeURIComponent(runA)
-      + '&run_b=' + encodeURIComponent(runB)
-      + '&artifact=' + encodeURIComponent(artifact);
-
-    fetch(url)
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'HTTP ' + r.status); });
-        return r.json();
-      })
-      .then(function (diff) {
-        document.getElementById('diff-summary').textContent =
-          'Comparing \'' + artifact + '\' — '
-          + 'v' + diff.version_a + ' (' + runA.substring(0, 12) + '…) vs '
-          + 'v' + diff.version_b + ' (' + runB.substring(0, 12) + '…)';
-
-        function renderList(elId, items, color) {
-          var el = document.getElementById(elId);
-          el.innerHTML = '';
-          if (!items.length) {
-            el.innerHTML = '<li style="color:var(--text-dim);font-style:italic">none</li>';
-            return;
-          }
-          items.forEach(function (k) {
-            var li = document.createElement('li');
-            li.textContent = k;
-            li.style.color = color;
-            li.style.padding = '2px 0';
-            el.appendChild(li);
-          });
-        }
-        renderList('diff-added', diff.added || [], '#10b981');
-        renderList('diff-removed', diff.removed || [], '#ef4444');
-        renderList('diff-changed', diff.changed || [], '#f59e0b');
-
-        resultEl.style.display = 'block';
-      })
-      .catch(function (err) {
-        errorEl.textContent = 'Compare failed: ' + err.message;
-        errorEl.style.display = 'block';
-      });
-  };
-
-  // ── Search ────────────────────────────────────────────────────────────
-
-  window.runSearch = function () {
-    var q = document.getElementById('search-q').value.trim();
-    var type = document.getElementById('search-type').value.trim();
-    var agent = document.getElementById('search-agent').value.trim();
-
-    var params = new URLSearchParams();
-    if (q) params.set('q', q);
-    if (type) params.set('type', type);
-    if (agent) params.set('agent', agent);
-
-    var resultEl = document.getElementById('search-results');
-    resultEl.innerHTML = '<p style="color:var(--text-dim)">Searching…</p>';
-
-    fetch('/api/v1/artifacts/search?' + params.toString())
-      .then(function (r) {
-        if (!r.ok) return r.json().then(function (e) { throw new Error(e.detail || 'HTTP ' + r.status); });
-        return r.json();
-      })
-      .then(function (results) {
-        if (!results.length) {
-          resultEl.innerHTML = '<p style="color:var(--text-dim)">No artifacts matched your query.</p>';
-          return;
-        }
-        var html = '<table><thead><tr>'
-          + '<th>Name</th><th>Run ID</th><th>Agent</th>'
-          + '<th>Version</th><th>Size</th><th>Updated</th>'
-          + '</tr></thead><tbody>';
-        results.forEach(function (a) {
-          html += '<tr>'
-            + '<td><code>' + a.name + '</code></td>'
-            + '<td style="font-family:monospace;font-size:0.8rem">'
-            + (a.run_id || '—').substring(0, 16) + '…</td>'
-            + '<td>' + (a.agent || '—') + '</td>'
-            + '<td>v' + a.current_version + '</td>'
-            + '<td>' + ((a.size_bytes || 0) / 1024).toFixed(1) + ' KB</td>'
-            + '<td>' + (a.updated_at || '—').substring(0, 19) + '</td>'
-            + '</tr>';
-        });
-        html += '</tbody></table>';
-        resultEl.innerHTML = html;
-      })
-      .catch(function (err) {
-        resultEl.innerHTML = '<p style="color:#ef4444">Search error: ' + err.message + '</p>';
-      });
-  };
-
-  // ── Close on Escape ───────────────────────────────────────────────────
-  document.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') {
-      window.closeModal();
-    }
+  // Keyboard accessibility for artifact rows (role="button" + tabindex="0")
+  document.querySelectorAll('.artifact-row').forEach(function(row) {
+    row.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        openSlideover('{{ run_id }}', row.dataset.name);
+      }
+    });
   });
-}());
 </script>
 {% endblock %}

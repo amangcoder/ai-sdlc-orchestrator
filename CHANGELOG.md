@@ -2,6 +2,78 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.14.0] - 2026-03-31
+
+### Added
+
+**Dashboard Overview Page**
+- `routes/dashboard_overview.py` — `/dashboard` landing page with four KPI cards (Active Runs, Runs Today, Cost Today, Burn Rate) and SLO compliance summary row
+- `GET /api/v1/dashboard/overview` — JSON snapshot of consolidated real-time KPIs
+- `GET /api/v1/dashboard/sse` — Server-sent event stream pushing KPI updates every 5 seconds (30-minute max duration to prevent resource exhaustion)
+- `static/dashboard.js`, `static/sse-client.js` — client-side SSE subscription with automatic reconnection and patch-in-place DOM updates
+- `templates/dashboard.html` — responsive KPI card layout with live badge indicators
+
+**Settings Page**
+- `routes/settings.py` — `/settings` page with four tabbed sections: Monitoring (service URLs), Artifacts (versioning, retention, GC controls), SLOs (per-SLI targets), Advanced (remaining config fields)
+- `static/settings.js` — fetches current config on load, diffs changed fields on save, inline validation, toast notifications, GC preview/execute flow
+- `templates/settings.html` — tabbed form UI with section-level save buttons
+
+**Global Artifact Search**
+- `routes/search.py` — `GET /artifacts` HTML search page; `GET /api/v1/artifacts/search` JSON API across all runs
+- Full-text substring match on artifact name and schema name; filterable by type and agent; bookmarkable query-string form
+- `static/artifacts.js` — progressive enhancement for the search page
+- `templates/artifacts_search.html` — results table with run/agent/type columns
+
+**Log Analysis**
+- `routes/log_analysis.py` — `GET /runs/{run_id}/log-analysis` HTML page; `GET /api/v1/runs/{run_id}/log-analysis` JSON API
+- Surfaces: identified patterns with frequency counts, errors with severity badges and timestamps, actionable recommendations
+- `templates/log_analysis.html` — three-section layout with severity-coded error cards
+
+**Monitoring Health Probe**
+- `routes/monitoring_health.py` — `GET /api/v1/monitoring/health` probes Prometheus (9090), Grafana (3000), Jaeger (16686), Loki (3100), Promtail (9080) and returns structured status array
+
+**Prompt REST API**
+- `routes/prompt.py` — `GET /api/v1/runs/{run_id}/prompt` returns pending prompt state; `POST /api/v1/runs/{run_id}/prompt` writes user response for the engine's `poll_for_response()` loop
+- Response sanitisation: Unicode control/format characters stripped, 10 000-char max enforced, `run_id` validated via allowlist regex
+
+**Runs Page**
+- `routes/runs.py` — dedicated runs-list route extracted from app.py for cleaner separation
+
+**Shared Validation Utilities**
+- `routes/validators.py` — `_validate_run_id()` allowlist regex shared across all run-scoped routes to prevent path traversal
+
+**Monitoring Infrastructure**
+- `infra/monitoring/loki.yml` — Loki log aggregation config for the monitoring stack
+- `infra/docker/docker-compose.monitoring.yml` — Loki service added to compose stack
+
+### Changed
+
+- `dashboard/app.py` — all new routers registered; route registration refactored into helper functions
+- `dashboard/data.py` — `RunDataReader` extended with `get_dashboard_overview()`, `search_artifacts_global()`, `get_log_analysis()`, `check_monitoring_health()`; major additions (~750 lines)
+- `dashboard/runner.py` — runner wired to new route modules
+- `dashboard/cli.py` — minor CLI flag additions
+- `dashboard/static/app.js` — navigation links for new pages; SSE integration in live-run view
+- `dashboard/static/style.css` — major UI refresh; KPI card styles, alert severity badges, tabbed settings layout, responsive artifact search table (~1 000 lines net)
+- All templates — consistent `base.html` navigation with links to Dashboard, Runs, Artifacts, Settings, SLOs, Cost, Observability, Alerts; live-run view SSE reconnection indicator
+- `config/default.yaml` — monitoring service URL defaults; artifact GC defaults
+- `main.py` — minor startup additions
+
+### Tests
+
+- `tests/test_dashboard_overview.py`, `test_task002_dashboard_overview.py` — KPI endpoint and SSE stream tests
+- `tests/test_dashboard_search.py`, `tests/test_task009_artifact_search.py` — global search route tests
+- `tests/test_dashboard_settings.py`, `tests/test_settings_routes.py` — settings GET/PUT tests
+- `tests/test_monitoring_health_route.py` — health probe tests (mocked socket connections)
+- `tests/test_prompt_routes.py` — prompt GET/POST including sanitisation edge cases
+- `tests/test_sse_reconnection.py`, `tests/test_task006_sse_reconnection.py` — SSE client reconnection logic tests
+- `tests/test_run_data_reader_task001.py` — RunDataReader extension tests
+- `tests/test_task000_security_fixes.py` — run_id validation and response sanitisation tests
+- `tests/test_task003_runs_page.py`, `tests/test_task004_new_run_form.py`, `tests/test_task005_live_run_view.py` — page render smoke tests
+- `tests/test_task007_artifact_browser.py`, `tests/test_task008_diff_viewer.py` — artifact browser and diff view tests
+- `tests/test_task011_alerts_dashboard.py`, `tests/test_task017_log_analysis.py` — alerts and log analysis route tests
+
+---
+
 ## [0.13.0] - 2026-03-31
 
 ### Added

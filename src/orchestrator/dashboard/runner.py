@@ -55,6 +55,16 @@ class RunRequest(BaseModel):
     brainstormers: int | None = None
     debate_rounds: int | None = None
 
+    # ── Dashboard-specific fields (TASK-004) ───────────────────────────────
+    # model_routing: simplified routing tier for the new-run dashboard form.
+    # "default" means no override; "speed"/"quality"/"economy" map to routing modes.
+    model_routing: str = Field(default="default")
+    # config_path: optional path to a config YAML file, overrides server default.
+    config_path: str | None = None
+    # custom_workflow: JSON string defining a custom workflow; applied when
+    # workflow_type == "custom".
+    custom_workflow: str | None = None
+
 
 class RunTracker:
     """Manages background orchestration runs within the dashboard process."""
@@ -134,9 +144,18 @@ class RunTracker:
         if request.max_concurrent_agents > 0:
             config.max_concurrent_agents = request.max_concurrent_agents
 
-        # routing mode
+        # routing mode (from explicit mode field, or from dashboard model_routing)
         if request.mode is not None:
             config.routing_mode = request.mode
+        elif request.model_routing and request.model_routing != "default":
+            _routing_map: dict[str, str] = {
+                "speed": "fast",
+                "quality": "overkill",
+                "economy": "superhaiku",
+            }
+            _mapped_mode = _routing_map.get(request.model_routing)
+            if _mapped_mode:
+                config.routing_mode = _mapped_mode
 
         # speed mode
         if request.speed is not None:

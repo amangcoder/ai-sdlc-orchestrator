@@ -1,45 +1,206 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>All Runs</h1>
 
-{% if runs %}
-<table>
-  <thead>
-    <tr>
-      <th>Run ID</th>
-      <th>Feature Request</th>
-      <th>Workflow</th>
-      <th>Status</th>
-      <th>Cost (USD)</th>
-      <th>Steps</th>
-      <th>Started</th>
-    </tr>
-  </thead>
-  <tbody>
-    {% for run in runs %}
-    <tr>
-      <td><a href="/runs/{{ run.run_id }}">{{ run.run_id[:8] }}...</a></td>
-      <td>{{ run.feature_request[:80] }}</td>
-      <td>{{ run.workflow_type }}</td>
-      <td><span class="badge badge-{{ run.status }}">{{ run.status }}</span></td>
-      <td>${{ "%.4f"|format(run.total_cost_usd) }}</td>
-      <td>{{ run.steps_completed }}/{{ run.steps_total }}</td>
-      <td>{{ run.start_time[:19] if run.start_time else '-' }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-{% else %}
-<div class="empty">
-  <h2>No runs yet</h2>
-  <p>Run <code>orchestrate "your feature request"</code> to get started.</p>
+<div class="page-header">
+  <h1>All Runs</h1>
+  <a href="/new-run" class="btn btn-primary" aria-label="Start a new orchestration run">New Run</a>
 </div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Filter bar                                                           -->
+<!-- ------------------------------------------------------------------ -->
+<form
+  method="get"
+  action="/runs"
+  class="filter-bar"
+  aria-label="Filter runs"
+  role="search"
+>
+  <div class="filter-group">
+    <label for="filter-status">Status</label>
+    <select id="filter-status" name="status">
+      <option value="all" {% if not filter_status or filter_status == 'all' %}selected{% endif %}>All statuses</option>
+      <option value="running"   {% if filter_status == 'running'   %}selected{% endif %}>Running</option>
+      <option value="completed" {% if filter_status == 'completed' %}selected{% endif %}>Completed</option>
+      <option value="failed"    {% if filter_status == 'failed'    %}selected{% endif %}>Failed</option>
+      <option value="cancelled" {% if filter_status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+    </select>
+  </div>
+
+  <div class="filter-group">
+    <label for="filter-workflow">Workflow</label>
+    <select id="filter-workflow" name="workflow">
+      <option value="all"      {% if not filter_workflow or filter_workflow == 'all' %}selected{% endif %}>All workflows</option>
+      <option value="full"     {% if filter_workflow == 'full'     %}selected{% endif %}>Full</option>
+      <option value="backend"  {% if filter_workflow == 'backend'  %}selected{% endif %}>Backend</option>
+      <option value="frontend" {% if filter_workflow == 'frontend' %}selected{% endif %}>Frontend</option>
+      <option value="research" {% if filter_workflow == 'research' %}selected{% endif %}>Research</option>
+      <option value="custom"   {% if filter_workflow == 'custom'   %}selected{% endif %}>Custom</option>
+    </select>
+  </div>
+
+  <div class="filter-group">
+    <label for="filter-date-from">From</label>
+    <input
+      type="date"
+      id="filter-date-from"
+      name="date_from"
+      value="{{ filter_date_from }}"
+      aria-label="Filter runs from date"
+    >
+  </div>
+
+  <div class="filter-group">
+    <label for="filter-date-to">To</label>
+    <input
+      type="date"
+      id="filter-date-to"
+      name="date_to"
+      value="{{ filter_date_to }}"
+      aria-label="Filter runs to date"
+    >
+  </div>
+
+  <button type="submit" class="btn btn-secondary filter-apply">Apply</button>
+
+  {% if filter_status and filter_status != 'all' or filter_workflow and filter_workflow != 'all' or filter_date_from or filter_date_to %}
+  <a href="/runs" class="btn btn-secondary filter-clear" aria-label="Clear all filters">Clear</a>
+  {% endif %}
+</form>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Empty state                                                          -->
+<!-- ------------------------------------------------------------------ -->
+{% if total_count == 0 %}
+<div class="empty-state" role="status" aria-live="polite">
+  <svg
+    class="empty-state-icon"
+    width="48"
+    height="48"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    stroke-width="1.5"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+    <rect x="9" y="3" width="6" height="4" rx="1"/>
+    <line x1="9" y1="12" x2="15" y2="12"/>
+    <line x1="9" y1="16" x2="13" y2="16"/>
+  </svg>
+  <p class="empty-state-message">No runs yet. Start your first orchestration run.</p>
+  <a href="/new-run" class="btn btn-primary">New Run</a>
+</div>
+
+{% else %}
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Runs table                                                           -->
+<!-- ------------------------------------------------------------------ -->
+<div class="table-wrapper">
+  <table aria-label="All orchestration runs">
+    <thead>
+      <tr>
+        <th scope="col">Run ID</th>
+        <th scope="col">Feature Request</th>
+        <th scope="col">Workflow</th>
+        <th scope="col">Status</th>
+        <th scope="col">Cost (USD)</th>
+        <th scope="col">Duration</th>
+        <th scope="col">Started</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for run in runs %}
+      <tr{% if run.status == 'running' %} class="row-active"{% endif %}>
+
+        <td data-label="Run ID">
+          <a href="/runs/{{ run.run_id }}">{{ run.run_id[:8] }}&hellip;</a>
+        </td>
+
+        <td
+          data-label="Feature Request"
+          title="{{ run.feature_request | e }}"
+        >
+          {%- if run.feature_request | length > 60 -%}
+            {{ run.feature_request[:60] }}&hellip;
+          {%- else -%}
+            {{ run.feature_request }}
+          {%- endif -%}
+        </td>
+
+        <td data-label="Workflow">{{ run.workflow_type }}</td>
+
+        <td data-label="Status">
+          <span
+            class="badge badge-{{ run.status }}"
+            aria-label="Status: {{ run.status }}"
+          >{{ run.status }}</span>
+        </td>
+
+        <td data-label="Cost (USD)">${{ "%.4f" | format(run.total_cost_usd) }}</td>
+
+        <td data-label="Duration">{{ run.duration }}</td>
+
+        <td data-label="Started">
+          {{ run.start_time[:19] if run.start_time else '-' }}
+        </td>
+
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ------------------------------------------------------------------ -->
+<!-- Pagination controls                                                  -->
+<!-- ------------------------------------------------------------------ -->
+{% if total_pages > 1 %}
+<nav class="pagination" aria-label="Runs pagination">
+
+  {% if page > 1 %}
+  <a
+    href="{{ pagination_base_url }}{{ page - 1 }}"
+    class="btn btn-secondary pagination-prev"
+    aria-label="Go to previous page"
+    rel="prev"
+  >&larr; Previous</a>
+  {% else %}
+  <span
+    class="btn btn-secondary pagination-prev disabled"
+    aria-disabled="true"
+  >&larr; Previous</span>
+  {% endif %}
+
+  <span class="pagination-info" aria-live="polite" aria-atomic="true">
+    Page {{ page }} of {{ total_pages }}
+  </span>
+
+  {% if page < total_pages %}
+  <a
+    href="{{ pagination_base_url }}{{ page + 1 }}"
+    class="btn btn-secondary pagination-next"
+    aria-label="Go to next page"
+    rel="next"
+  >Next &rarr;</a>
+  {% else %}
+  <span
+    class="btn btn-secondary pagination-next disabled"
+    aria-disabled="true"
+  >Next &rarr;</span>
+  {% endif %}
+
+</nav>
 {% endif %}
+
+{% endif %}{# end total_count == 0 else #}
+
 {% endblock %}
 
 {% block scripts %}
 <script>
-  // Auto-refresh every 5s if any run is still active
+  // Auto-refresh every 5 s if any run is still active.
   autoRefresh(5000);
 </script>
 {% endblock %}

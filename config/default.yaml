@@ -162,13 +162,13 @@ artifacts:
 
 # --- Monitoring (all opt-in — orchestrator works without monitoring deps) ---
 monitoring:
-  metrics_enabled: false           # expose Prometheus metrics on metrics_port
+  metrics_enabled: true            # expose Prometheus metrics on metrics_port
   metrics_port: 9090
-  tracing_enabled: false           # OpenTelemetry distributed tracing
+  tracing_enabled: true            # OpenTelemetry distributed tracing
   tracing_endpoint: "http://localhost:4317"
   tracing_console: false           # also log spans to console
   dashboard_port: 8080             # port for orchestrate-dashboard
-  loki_enabled: false              # push logs to Loki (alternative to Promtail)
+  loki_enabled: true               # push logs to Loki (alternative to Promtail)
   loki_endpoint: "http://localhost:3100"
   grafana_url: "http://localhost:3000"   # for deep-link generation in dashboard
   jaeger_ui_url: "http://localhost:16686" # for trace link generation in dashboard
@@ -178,7 +178,7 @@ monitoring:
     on_budget_warning: true        # alert at 80% budget utilization
     on_completion: true            # alert when run completes
   slo:
-    enabled: false                 # track SLI/SLO compliance
+    enabled: true                  # track SLI/SLO compliance
     pipeline_success_rate: 0.95    # target: ≥95% runs complete successfully
     phase_duration_p95_seconds: 300 # target: p95 phase duration ≤5 min
     cost_per_run_p50_usd: 0.50    # target: median cost ≤$0.50 (standard speed)

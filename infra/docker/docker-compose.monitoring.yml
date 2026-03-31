@@ -147,7 +147,8 @@ services:
       - "3100:3100"
     volumes:
       - loki-data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
+      - ../monitoring/loki.yml:/etc/loki/loki.yml:ro
+    command: -config.file=/etc/loki/loki.yml
     restart: unless-stopped
     deploy:
       resources:

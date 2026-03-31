@@ -2,11 +2,64 @@
 {% block content %}
 <h1>Metrics</h1>
 
-<div class="stats">
+<!-- ================================================================
+     Prometheus Connection Status
+     ================================================================ -->
+<div class="card" style="margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;">
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <span style="font-size: 18px;">📡</span>
+    <div>
+      <div style="font-weight: 600; font-size: 14px;">Prometheus</div>
+      <div style="font-size: 12px; color: var(--text-dim);">Metrics data source</div>
+    </div>
+    <div class="health-indicator {% if prometheus_status == 'up' %}up{% elif prometheus_status == 'down' %}down{% else %}loading{% endif %}"
+         aria-label="Prometheus status: {{ prometheus_status }}">
+      <span class="health-dot"></span>
+      <span class="health-text">
+        {% if prometheus_status == 'up' %}Connected
+        {% elif prometheus_status == 'down' %}Unreachable
+        {% else %}Unknown{% endif %}
+      </span>
+    </div>
+  </div>
+  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+    <a href="{{ prometheus_ui_url }}" target="_blank" rel="noopener noreferrer"
+       class="btn" style="font-size: 12px; padding: 6px 14px;">
+      Open Prometheus ↗
+    </a>
+    {% if grafana_url %}
+    <a href="{{ grafana_url }}" target="_blank" rel="noopener noreferrer"
+       class="btn btn-primary" style="font-size: 12px; padding: 6px 14px;">
+      Open Grafana ↗
+    </a>
+    {% endif %}
+  </div>
+</div>
+
+<!-- ================================================================
+     KPI Cards (4)
+     ================================================================ -->
+<div class="stats" style="margin-bottom: 24px;">
   <div class="stat">
     <div class="stat-value">{{ summary.total_runs }}</div>
     <div class="stat-label">Total Runs</div>
   </div>
+  <div class="stat">
+    <div class="stat-value" style="color: var(--yellow);">{{ active_runs }}</div>
+    <div class="stat-label">Active Runs</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">${{ "%.4f"|format(total_cost_usd) }}</div>
+    <div class="stat-label">Total Cost USD</div>
+  </div>
+  <div class="stat">
+    <div class="stat-value">{{ avg_phase_duration }}s</div>
+    <div class="stat-label">Avg Phase Duration</div>
+  </div>
+</div>
+
+<!-- Secondary stats row -->
+<div class="stats" style="margin-bottom: 24px;">
   <div class="stat">
     <div class="stat-value" style="color: var(--green);">{{ summary.completed }}</div>
     <div class="stat-label">Completed</div>
@@ -16,20 +69,15 @@
     <div class="stat-label">Failed</div>
   </div>
   <div class="stat">
-    <div class="stat-value" style="color: var(--yellow);">{{ summary.running }}</div>
-    <div class="stat-label">Running</div>
-  </div>
-  <div class="stat">
-    <div class="stat-value">${{ "%.4f"|format(summary.total_cost_usd) }}</div>
-    <div class="stat-label">Total Cost</div>
-  </div>
-  <div class="stat">
     <div class="stat-value" style="color: var(--red);">{{ summary.error_count }}</div>
     <div class="stat-label">Errors</div>
   </div>
 </div>
 
-<div class="grid-2">
+<!-- ================================================================
+     Charts
+     ================================================================ -->
+<div class="grid-2" style="margin-bottom: 24px;">
   <div class="card">
     <h2>Cost per Run</h2>
     <div class="chart-container">
@@ -49,7 +97,94 @@
   <h2>No data yet</h2>
   <p>Complete some runs to see metrics here.</p>
 </div>
+{% else %}
+
+<!-- ================================================================
+     Recent Run Metrics Table (last 10 runs)
+     ================================================================ -->
+<div class="card" style="margin-bottom: 24px;">
+  <h2 style="margin-bottom: 16px;">Recent Runs (last 10)</h2>
+  {% if recent_runs %}
+  <div style="overflow-x: auto;">
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--border);">
+          <th style="text-align: left; padding: 8px 12px; color: var(--text-dim); font-weight: 500;">Run ID</th>
+          <th style="text-align: left; padding: 8px 12px; color: var(--text-dim); font-weight: 500;">Status</th>
+          <th style="text-align: left; padding: 8px 12px; color: var(--text-dim); font-weight: 500;">Workflow</th>
+          <th style="text-align: right; padding: 8px 12px; color: var(--text-dim); font-weight: 500;">Cost (USD)</th>
+          <th style="text-align: right; padding: 8px 12px; color: var(--text-dim); font-weight: 500;">Steps</th>
+          <th style="text-align: left; padding: 8px 12px; color: var(--text-dim); font-weight: 500;">Started</th>
+          <th style="text-align: left; padding: 8px 12px; color: var(--text-dim); font-weight: 500;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in recent_runs %}
+        <tr style="border-bottom: 1px solid var(--border); transition: background 0.1s;"
+            onmouseover="this.style.background='var(--bg)'" onmouseout="this.style.background=''">
+          <td style="padding: 8px 12px; font-family: monospace; font-size: 12px; color: var(--accent);">
+            <a href="/runs/{{ run.run_id }}" style="color: inherit;">{{ run.run_id[:12] }}…</a>
+          </td>
+          <td style="padding: 8px 12px;">
+            {% if run.status == 'completed' %}
+            <span style="color: var(--green); font-size: 12px;">● Completed</span>
+            {% elif run.status == 'running' %}
+            <span style="color: var(--yellow); font-size: 12px;">● Running</span>
+            {% elif run.status == 'failed' %}
+            <span style="color: var(--red); font-size: 12px;">● Failed</span>
+            {% else %}
+            <span style="color: var(--text-dim); font-size: 12px;">{{ run.status }}</span>
+            {% endif %}
+          </td>
+          <td style="padding: 8px 12px; color: var(--text-dim); font-size: 12px;">{{ run.workflow_type }}</td>
+          <td style="padding: 8px 12px; text-align: right; font-family: monospace; font-size: 12px;">
+            ${{ "%.4f"|format(run.cost_usd) }}
+          </td>
+          <td style="padding: 8px 12px; text-align: right; font-size: 12px; color: var(--text-dim);">
+            {{ run.steps_completed }}/{{ run.steps_total }}
+          </td>
+          <td style="padding: 8px 12px; font-size: 11px; color: var(--text-dim);">
+            {{ run.start_time[:19] if run.start_time else '—' }}
+          </td>
+          <td style="padding: 8px 12px; text-align: right;">
+            <a href="/runs/{{ run.run_id }}" style="font-size: 12px; color: var(--accent);">View →</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div style="margin-top: 12px; text-align: right;">
+    <a href="/runs" style="font-size: 13px; color: var(--accent);">View all runs →</a>
+  </div>
+  {% else %}
+  <p style="color: var(--text-dim); font-size: 14px;">No run data available yet.</p>
+  {% endif %}
+</div>
+
 {% endif %}
+
+<style>
+.health-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.health-indicator.up .health-dot   { background: var(--green, #22c55e); }
+.health-indicator.up .health-text  { color: var(--green, #22c55e); }
+.health-indicator.down .health-dot { background: var(--red, #ef4444); }
+.health-indicator.down .health-text { color: var(--red, #ef4444); }
+.health-indicator.loading .health-dot { background: var(--yellow, #eab308); }
+</style>
 {% endblock %}
 
 {% block scripts %}

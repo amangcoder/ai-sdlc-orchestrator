@@ -96,7 +96,6 @@ tr:hover td { background: var(--bg-hover); }
 
 /* Grid */
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-@media (max-width: 768px) { .grid-2 { grid-template-columns: 1fr; } }
 
 /* Charts */
 .chart-container { position: relative; height: 300px; }
@@ -146,6 +145,19 @@ tr:hover td { background: var(--bg-hover); }
 
 /* Empty state */
 .empty { text-align: center; padding: 48px; color: var(--text-dim); }
+
+/* Visually hidden — accessible to screen readers, invisible to sighted users */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* Forms */
 .form-group { margin-bottom: 16px; }
@@ -219,3 +231,977 @@ tr:hover td { background: var(--bg-hover); }
 .btn-danger:hover { background: rgba(218, 54, 51, 0.4); }
 .btn-small { padding: 4px 10px; font-size: 12px; }
 .form-actions { display: flex; align-items: center; gap: 12px; margin-top: 16px; }
+
+/* Inline form validation error (TASK-004) */
+.form-error {
+  display: none;
+  font-size: 12px;
+  color: #f85149;
+  margin-top: 4px;
+}
+.form-error[role="alert"] { display: block; }
+
+/* Advanced options collapsible (TASK-004) */
+.advanced-toggle {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 8px 0;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.advanced-toggle:hover { text-decoration: underline; }
+.advanced-section {
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+  margin-top: 8px;
+}
+
+/* Toast notification (TASK-004) */
+.toast {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 9999;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: none;
+}
+.toast-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.toast-success {
+  background: rgba(35, 134, 54, 0.95);
+  color: #fff;
+  border: 1px solid var(--green);
+}
+.toast-error {
+  background: rgba(218, 54, 51, 0.95);
+  color: #fff;
+  border: 1px solid var(--red);
+}
+
+/* ============================================================
+   Navigation — full nav bar (TASK-012)
+   ============================================================ */
+
+/* nav-drawer: on desktop, inline flex row (links list + CTA) */
+.nav-drawer {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 0;
+}
+
+/* Nav links list */
+.nav-links {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex: 1;
+}
+
+.nav-links li {
+  display: flex;
+  align-items: center;
+}
+
+/* Nav link base */
+.nav-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 14px;
+  text-decoration: none;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.nav-links a:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+  text-decoration: none;
+}
+
+.nav-links a.active {
+  color: var(--text);
+  background: rgba(88, 166, 255, 0.12);
+}
+
+/* Keyboard focus — visible outline (WCAG 2.1 AA) */
+.nav-links a:focus-visible,
+.nav-hamburger:focus-visible,
+.nav-new-run:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Nav icon inline with link text */
+.nav-icon {
+  flex-shrink: 0;
+}
+
+/* Alert badge — small red circle on Alerts link */
+.nav-alert-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  margin-left: 4px;
+}
+
+/* New Run CTA button — positioned after the nav links */
+.nav-new-run {
+  margin-left: 12px;
+  white-space: nowrap;
+  flex-shrink: 0;
+  text-decoration: none !important;
+}
+
+/* Hamburger button — hidden on desktop, shown on mobile */
+.nav-hamburger {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s;
+  flex-shrink: 0;
+}
+
+.nav-hamburger:hover {
+  background: var(--bg-hover);
+}
+
+/* ============================================================
+   Mobile nav drawer (viewports < 768px)
+   ============================================================ */
+@media (max-width: 767px) {
+  /* Keep nav as a single row: brand | hamburger */
+  .nav {
+    position: relative;       /* anchor for absolute drawer */
+  }
+
+  /* Show hamburger button */
+  .nav-hamburger {
+    display: flex;
+  }
+
+  /* Hide the drawer by default */
+  .nav-drawer {
+    display: none;
+  }
+
+  /* Open drawer: full-width column below nav bar */
+  .nav.nav-open .nav-drawer {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 16px 14px;
+    z-index: 200;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    animation: nav-slide-down 0.2s ease-out;
+  }
+
+  /* Links stack vertically inside open drawer */
+  .nav.nav-open .nav-links {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 2px;
+    width: 100%;
+  }
+
+  .nav.nav-open .nav-links li {
+    width: 100%;
+  }
+
+  .nav.nav-open .nav-links a {
+    width: 100%;
+    padding: 12px 10px;
+  }
+
+  /* New Run CTA at bottom of drawer */
+  .nav.nav-open .nav-new-run {
+    margin: 10px 0 0;
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+}
+
+@keyframes nav-slide-down {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ============================================================
+   Alerts page (TASK-011)
+   ============================================================ */
+
+/* Status badges for alerts */
+.badge-active   { background: rgba(218, 54, 51, 0.2); color: #f85149; }
+.badge-resolved { background: rgba(35, 134, 54, 0.2); color: #3fb950; }
+
+/* Severity icons */
+.severity-icon {
+  font-size: 12px;
+  display: inline-block;
+  margin-right: 4px;
+  vertical-align: middle;
+  line-height: 1;
+}
+.severity-critical { color: #f85149; }
+.severity-warning  { color: #d29922; }
+.severity-info     { color: #58a6ff; }
+
+/* Alerts page header — title + filter row */
+.alerts-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.alerts-header h1 { margin-bottom: 0; }
+
+/* Filter row */
+.alert-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.filter-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.filter-select {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 10px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+.filter-select:hover  { border-color: var(--accent); }
+.filter-select:focus  { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Hint text above table */
+.alert-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* Clickable alert rows */
+.alert-row {
+  cursor: pointer;
+}
+.alert-row:focus-visible td {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.alert-severity-cell {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* Expandable detail row */
+.alert-detail-row td,
+.alert-detail-cell {
+  padding: 0 !important;
+  background: var(--bg) !important;
+}
+.alert-detail-row[hidden] { display: none; }
+
+.alert-payload {
+  padding: 12px 16px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.alert-payload-label {
+  display: block;
+  font-size: 12px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 8px;
+}
+.alert-json {
+  font-size: 12px;
+  color: var(--text-dim);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 14px;
+  overflow: auto;
+  max-height: 320px;
+  white-space: pre;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  tab-size: 2;
+}
+
+/* ============================================================
+   Site-wide critical alert banner (TASK-011)
+   ============================================================ */
+
+.critical-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 24px;
+  background: linear-gradient(
+    90deg,
+    rgba(218, 54, 51, 0.18) 0%,
+    rgba(210, 153, 34, 0.12) 100%
+  );
+  border-bottom: 1px solid rgba(218, 54, 51, 0.35);
+  font-size: 14px;
+  position: sticky;
+  top: 57px;   /* sits directly below the fixed nav bar */
+  z-index: 90;
+}
+.critical-banner[hidden] { display: none; }
+
+.critical-banner-icon {
+  color: #f85149;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+#critical-banner-text {
+  flex: 1;
+  color: var(--text);
+}
+.critical-banner-link {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.critical-banner-dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1;
+  padding: 2px 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+}
+.critical-banner-dismiss:hover {
+  color: var(--text);
+  background: var(--bg-hover);
+}
+.critical-banner-dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (max-width: 767px) {
+  .alerts-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .critical-banner {
+    top: 0;         /* no sticky offset on mobile — nav is not sticky there */
+    flex-wrap: wrap;
+  }
+}
+
+/* ============================================================
+   TASK-015 — Responsive breakpoints & WCAG 2.1 AA
+   ============================================================ */
+
+/* ── Skip-to-content link ──────────────────────────────────── */
+.skip-to-content {
+  position: absolute;
+  top: -100px;
+  left: 16px;
+  z-index: 9999;
+  padding: 10px 18px;
+  background: var(--accent);
+  color: #0d1117;
+  font-weight: 700;
+  font-size: 14px;
+  border-radius: 0 0 8px 8px;
+  text-decoration: none;
+  transition: top 0.15s ease;
+}
+.skip-to-content:focus {
+  top: 0;
+  outline: 2px solid #0d1117;
+  outline-offset: 2px;
+}
+
+/* ── Status icons on badges (WCAG: color is never sole indicator) ── */
+/* ::before pseudo-elements add icons so color alone isn't required   */
+.badge::before {
+  display: inline-block;
+  margin-right: 3px;
+  font-style: normal;
+  font-weight: normal;
+  speak: never;                  /* hide from TTS; aria-label carries meaning */
+}
+/* success variants */
+.badge-completed::before,
+.badge-success::before,
+.badge-run_complete::before,
+.badge-resolved::before    { content: "✓\00a0"; }
+/* failure variants */
+.badge-failed::before,
+.badge-error::before,
+.badge-phase_failed::before,
+.badge-budget_exceeded::before { content: "✗\00a0"; }
+/* running */
+.badge-running::before     { content: "⏳\00a0"; font-size: 9px; }
+/* pending / skipped (dash) */
+.badge-pending::before,
+.badge-skipped::before     { content: "–\00a0"; }
+/* warning / at-risk */
+.badge-warning::before,
+.badge-budget_warning::before,
+.badge-active::before      { content: "⚠\00a0"; }
+/* crash restart */
+.badge-crash_restart::before { content: "↩\00a0"; }
+
+/* ── Global :focus-visible — visible keyboard focus (WCAG 2.1 AA) ── */
+/* Buttons */
+.btn:focus-visible,
+.advanced-toggle:focus-visible,
+.settings-tab:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* Generic anchors not already covered by nav-links */
+a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+/* Form inputs — restore :focus-visible outline (previously removed by outline: none) */
+.form-group textarea:focus-visible,
+.form-group input:focus-visible,
+.form-group select:focus-visible,
+.form-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 0;
+}
+
+/* ── aria-busy loading state visual cue ───────────────────── */
+[aria-busy="true"] {
+  cursor: progress;
+  opacity: 0.75;
+  pointer-events: none;
+}
+
+/* ── Tablet breakpoint: 768px – 1279px ────────────────────── */
+@media (max-width: 1279px) {
+
+  /* .grid-2 collapses to single column on tablet */
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stats cards wrap to 2-per-row */
+  .stats {
+    flex-wrap: wrap;
+  }
+  .stat {
+    flex: 0 1 calc(50% - 8px);
+    min-width: calc(50% - 8px);
+  }
+
+  /* Nav: tighter spacing, smaller font */
+  .nav {
+    gap: 12px;
+    padding: 10px 16px;
+  }
+  .nav-links a {
+    font-size: 13px;
+    padding: 5px 8px;
+    gap: 4px;
+  }
+
+  /* Tables: reduced padding */
+  th { padding: 8px 10px; }
+  td { padding: 8px 10px; }
+}
+
+/* ── Mobile breakpoint: < 768px ───────────────────────────── */
+@media (max-width: 767px) {
+
+  /* Single-column layout everywhere */
+  .grid-2 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Stats stack vertically */
+  .stats {
+    flex-direction: column;
+  }
+  .stat {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+
+  /* Tighter container padding on small screens */
+  .container {
+    padding: 16px;
+  }
+
+  /* Form rows stack vertically */
+  .form-row {
+    flex-direction: column;
+  }
+  .form-row .form-group {
+    min-width: 100%;
+  }
+
+  /* ── Touch-friendly targets — minimum 44×44px (WCAG 2.5.5) ── */
+  .btn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 16px;
+  }
+  .btn-small {
+    min-height: 44px;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+  .form-group input[type="text"],
+  .form-group input[type="number"],
+  .form-group input[type="url"],
+  .form-group input[type="email"],
+  .form-group select,
+  .form-group textarea,
+  .form-input,
+  .filter-select {
+    min-height: 44px;
+    padding: 10px 12px;
+  }
+  .checkbox {
+    min-height: 44px;
+    align-items: center;
+    padding: 4px 0;
+  }
+
+  /* ── Responsive table → card / stacked view ───────────────
+     Each <tr> becomes a card; each <td> shows label:value.
+     Requires data-label attribute on every <td> in templates. */
+
+  .container table,
+  .container thead,
+  .container tbody,
+  .container th,
+  .container td,
+  .container tr {
+    display: block;
+    width: 100%;
+  }
+
+  /* Visually hide the header row without removing it from a11y tree */
+  .container thead tr {
+    position: absolute;
+    top: -9999px;
+    left: -9999px;
+    visibility: hidden;
+  }
+
+  /* Each body row becomes a card */
+  .container tbody tr {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    background: var(--bg-card);
+  }
+
+  /* Cells: label on the left, value on the right */
+  .container td {
+    position: relative;
+    padding: 10px 12px 10px 44%;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    min-height: 44px;
+    font-size: 14px;
+    word-break: break-word;
+    box-sizing: border-box;
+  }
+  .container td:last-child {
+    border-bottom: none;
+  }
+
+  /* data-label pseudo-element */
+  .container td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 12px;
+    top: 10px;
+    width: 38%;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* Remove row hover highlight since rows are now cards */
+  .container tr:hover td {
+    background: inherit;
+  }
+
+  /* ── Alert detail expansion row — keep it clean ── */
+  /* The hidden attribute already hides it; when revealed,
+     display as a flat block without card borders */
+  .container .alert-detail-row {
+    border: none !important;
+    border-radius: 0 !important;
+    margin-bottom: 0 !important;
+    background: var(--bg) !important;
+  }
+  .container .alert-detail-cell {
+    padding: 0 !important;
+    border-bottom: none !important;
+    min-height: 0 !important;
+  }
+  .container .alert-detail-cell::before {
+    display: none !important;
+  }
+}
+
+/* ============================================================
+   Live Run View — TASK-005
+   Phase stepper, two-column layout, prompt card, event log
+   ============================================================ */
+
+/* ---- Phase stepper wrapper ---- */
+.phase-stepper-wrapper {
+  overflow-x: auto;
+  margin-bottom: 20px;
+  padding-bottom: 4px;
+  /* allow horizontal scroll on narrow viewports */
+  -webkit-overflow-scrolling: touch;
+}
+
+.phase-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  min-width: max-content;   /* prevent wrapping — scroll instead */
+  padding: 12px 0 4px;
+}
+
+/* ---- Individual step ---- */
+.phase-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+
+.phase-step-circle {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  border: 2px solid;
+  transition: background 0.25s, border-color 0.25s, color 0.25s;
+  position: relative;
+}
+
+.phase-step-label {
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  max-width: 90px;
+  text-align: center;
+  line-height: 1.2;
+  transition: color 0.25s;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Completed — green */
+.phase-step-completed .phase-step-circle {
+  background: rgba(35, 134, 54, 0.15);
+  border-color: #3fb950;
+  color: #3fb950;
+}
+.phase-step-completed .phase-step-label { color: #3fb950; }
+
+/* Running / current — amber pulsing */
+.phase-step-running .phase-step-circle {
+  background: rgba(210, 153, 34, 0.15);
+  border-color: #d29922;
+  color: #d29922;
+  animation: phase-step-pulse 1.8s ease-in-out infinite;
+}
+.phase-step-running .phase-step-label { color: #d29922; font-weight: 700; }
+
+@keyframes phase-step-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(210, 153, 34, 0.45); }
+  50%       { box-shadow: 0 0 0 6px rgba(210, 153, 34, 0); }
+}
+
+/* Failed — red */
+.phase-step-failed .phase-step-circle {
+  background: rgba(218, 54, 51, 0.15);
+  border-color: #f85149;
+  color: #f85149;
+}
+.phase-step-failed .phase-step-label { color: #f85149; }
+
+/* Pending — grey */
+.phase-step-pending .phase-step-circle {
+  background: rgba(110, 118, 129, 0.1);
+  border-color: var(--border);
+  color: var(--text-dim);
+}
+.phase-step-pending .phase-step-label { color: var(--text-dim); }
+
+/* Running pulse dot (tiny amber dot inside circle) */
+.phase-pulse-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #d29922;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+/* Step number for pending steps */
+.phase-step-number {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ---- Connectors between steps ---- */
+.phase-connector {
+  height: 2px;
+  width: 32px;
+  background: var(--border);
+  flex-shrink: 0;
+  margin-bottom: 18px;  /* align vertically with circles */
+  transition: background 0.3s;
+}
+
+.phase-connector-active {
+  background: #3fb950;
+}
+
+/* ---- Two-column layout ---- */
+.live-layout {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 20px;
+  align-items: start;
+}
+
+.live-main {
+  min-width: 0; /* prevent grid blowout */
+}
+
+.live-sidebar {
+  position: sticky;
+  top: 80px; /* offset below sticky nav */
+}
+
+/* ---- Event log ---- */
+.live-event-list {
+  max-height: 520px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+}
+
+.live-log-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+/* ---- Floating "Scroll to Bottom" button ---- */
+.scroll-to-bottom-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: #0d1117;
+  border: none;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+  transition: background 0.15s, transform 0.15s;
+  z-index: 10;
+}
+
+.scroll-to-bottom-btn:hover {
+  background: #79bfff;
+  transform: translateY(-1px);
+}
+
+/* ---- Prompt card ---- */
+.prompt-card {
+  border-color: #d29922;
+  animation: prompt-card-in 0.25s ease-out;
+}
+
+@keyframes prompt-card-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.prompt-card-header {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.prompt-agent-label {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.prompt-question-text {
+  font-size: 15px;
+  line-height: 1.6;
+  margin-bottom: 12px;
+}
+
+/* ---- Run metadata sidebar ---- */
+.run-meta-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 6px 12px;
+  font-size: 13px;
+  margin-bottom: 0;
+}
+
+.run-meta-list dt {
+  color: var(--text-dim);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  align-self: center;
+  white-space: nowrap;
+}
+
+.run-meta-list dd {
+  margin: 0;
+  word-break: break-all;
+}
+
+.run-id-code {
+  font-size: 11px;
+  color: var(--accent);
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ============================================================
+   Live Run View — Responsive breakpoints
+   ============================================================ */
+
+/* Tablet: narrow sidebar */
+@media (max-width: 1024px) and (min-width: 640px) {
+  .live-layout {
+    grid-template-columns: 1fr 220px;
+    gap: 16px;
+  }
+}
+
+/* Mobile: stack to single column */
+@media (max-width: 639px) {
+  .live-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .live-sidebar {
+    position: static;
+  }
+
+  .phase-connector {
+    width: 20px;
+  }
+
+  .phase-step-label {
+    max-width: 64px;
+    font-size: 10px;
+  }
+
+  .live-event-list {
+    max-height: 360px;
+  }
+}

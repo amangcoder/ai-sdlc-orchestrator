@@ -2,10 +2,13 @@
 {% block content %}
 <h1>
   Run {{ run.run_id[:8] }}...
-  <span class="badge badge-{{ run.status }}">{{ run.status }}</span>
+  <span
+    class="badge badge-{{ run.status }}"
+    aria-label="Status: {{ run.status }}"
+  >{{ run.status }}</span>
   {% if run.status == "running" %}
   <a href="/runs/{{ run.run_id }}/live" style="font-size: 14px; margin-left: 12px;">
-    <span class="live-dot"></span>Live View
+    <span class="live-dot" aria-hidden="true"></span>Live View
   </a>
   {% endif %}
 </h1>
@@ -16,6 +19,12 @@
   <button class="btn btn-primary btn-small" onclick="resumeRun('{{ run.run_id }}')">Resume This Run</button>
 </div>
 {% endif %}
+
+<div style="margin-bottom: 16px;">
+  <a href="/runs/{{ run.run_id }}/log-analysis" class="btn btn-small" aria-label="View log analysis for this run">
+    View Log Analysis
+  </a>
+</div>
 
 <div class="stats">
   <div class="stat">
@@ -40,18 +49,32 @@
   <!-- Phase breakdown -->
   <div class="card">
     <h2>Phase Breakdown</h2>
-    <table>
+    <table aria-label="Phase breakdown for this run">
       <thead>
-        <tr><th>Phase</th><th>Status</th><th>Cost</th><th>Model</th><th>Error</th></tr>
+        <tr>
+          <th scope="col">Phase</th>
+          <th scope="col">Status</th>
+          <th scope="col">Cost</th>
+          <th scope="col">Model</th>
+          <th scope="col">Error</th>
+        </tr>
       </thead>
       <tbody>
         {% for name, phase in run.phases.items() %}
+        {% set phase_status = phase.status if phase.status is string else phase.get('status', 'pending') %}
         <tr>
-          <td>{{ name }}</td>
-          <td><span class="badge badge-{{ phase.status if phase.status is string else phase.get('status', 'pending') }}">{{ phase.status if phase.status is string else phase.get('status', 'pending') }}</span></td>
-          <td>${{ "%.4f"|format(phase.cost_usd if phase.cost_usd is defined else phase.get('cost_usd', 0)) }}</td>
-          <td>{{ phase.model_tier if phase.model_tier is defined else phase.get('model_tier', '-') }}</td>
-          <td style="color: var(--red); font-size: 12px;">{{ (phase.error if phase.error is defined else phase.get('error', ''))[:60] if (phase.error if phase.error is defined else phase.get('error', '')) else '-' }}</td>
+          <td data-label="Phase">{{ name }}</td>
+          <td data-label="Status">
+            <span
+              class="badge badge-{{ phase_status }}"
+              aria-label="Phase status: {{ phase_status }}"
+            >{{ phase_status }}</span>
+          </td>
+          <td data-label="Cost">${{ "%.4f"|format(phase.cost_usd if phase.cost_usd is defined else phase.get('cost_usd', 0)) }}</td>
+          <td data-label="Model">{{ phase.model_tier if phase.model_tier is defined else phase.get('model_tier', '-') }}</td>
+          <td data-label="Error" style="color: var(--red); font-size: 12px;">
+            {{ (phase.error if phase.error is defined else phase.get('error', ''))[:60] if (phase.error if phase.error is defined else phase.get('error', '')) else '-' }}
+          </td>
         </tr>
         {% endfor %}
       </tbody>
@@ -70,7 +93,7 @@
 <!-- Event log -->
 <div class="card">
   <h2>Event Log ({{ run.events|length }} events)</h2>
-  <div class="event-list">
+  <div class="event-list" role="log" aria-label="Run event log" aria-live="off">
     {% for event in run.events %}
     <div class="event-item">
       <span class="event-time">{{ event.ts[:19] if event.ts else '' }}</span>
@@ -92,19 +115,31 @@
     <a href="/api/runs/{{ run.run_id }}/timeline" target="_blank">View timeline JSON</a>
   </p>
   {% if run.timeline.entries %}
-  <table>
+  <table aria-label="Execution timeline">
     <thead>
-      <tr><th>Task</th><th>Agent</th><th>Step</th><th>Duration</th><th>Status</th><th>Cost</th></tr>
+      <tr>
+        <th scope="col">Task</th>
+        <th scope="col">Agent</th>
+        <th scope="col">Step</th>
+        <th scope="col">Duration</th>
+        <th scope="col">Status</th>
+        <th scope="col">Cost</th>
+      </tr>
     </thead>
     <tbody>
       {% for entry in run.timeline.entries %}
       <tr>
-        <td>{{ entry.task_id }}</td>
-        <td>{{ entry.agent }}</td>
-        <td>{{ entry.step }}</td>
-        <td>{{ entry.duration_seconds }}s</td>
-        <td><span class="badge badge-{{ entry.status }}">{{ entry.status }}</span></td>
-        <td>${{ "%.4f"|format(entry.cost_usd) }}</td>
+        <td data-label="Task">{{ entry.task_id }}</td>
+        <td data-label="Agent">{{ entry.agent }}</td>
+        <td data-label="Step">{{ entry.step }}</td>
+        <td data-label="Duration">{{ entry.duration_seconds }}s</td>
+        <td data-label="Status">
+          <span
+            class="badge badge-{{ entry.status }}"
+            aria-label="Status: {{ entry.status }}"
+          >{{ entry.status }}</span>
+        </td>
+        <td data-label="Cost">${{ "%.4f"|format(entry.cost_usd) }}</td>
       </tr>
       {% endfor %}
     </tbody>

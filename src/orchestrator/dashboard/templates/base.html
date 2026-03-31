@@ -8,20 +8,142 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 </head>
 <body>
-  <nav class="nav">
-    <span class="nav-brand">Orchestrator</span>
-    <a href="/runs" {% if page_title == "All Runs" %}class="active"{% endif %}>Runs</a>
-    <a href="/metrics" {% if page_title == "Metrics" %}class="active"{% endif %}>Metrics</a>
-    <a href="/alerts" {% if page_title == "Alerts" %}class="active"{% endif %}>Alerts</a>
-    <a href="/cost-analytics" {% if page_title == "Cost Analytics" %}class="active"{% endif %}>💰 Cost Analytics</a>
-    <a href="/artifacts" {% if page_title and page_title.startswith("Artifacts") %}class="active"{% endif %}>📦 Artifacts</a>
-    <a href="/slo" {% if page_title == "SLO Compliance" %}class="active"{% endif %}>📊 SLO</a>
-    <a href="/observability" {% if page_title == "Observability" %}class="active"{% endif %}>🔍 Observability</a>
-    <a href="/new-run" {% if page_title == "New Run" %}class="active"{% endif %} style="color: var(--accent); font-weight: 600;">New Run</a>
+  <!-- Skip-to-content: first focusable element — visible on keyboard focus (WCAG 2.4.1) -->
+  <a href="#main-content" class="skip-to-content">Skip to main content</a>
+
+  <nav class="nav" id="main-nav" aria-label="Main navigation">
+    <a class="nav-brand" href="/dashboard" aria-label="Orchestrator — go to dashboard">Orchestrator</a>
+
+    <!-- Hamburger button: visible only on viewports < 768px -->
+    <button
+      class="nav-hamburger"
+      id="nav-hamburger"
+      type="button"
+      aria-label="Open navigation menu"
+      aria-expanded="false"
+      aria-controls="nav-drawer"
+    >
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true" focusable="false">
+        <rect y="3"  width="20" height="2" rx="1"/>
+        <rect y="9"  width="20" height="2" rx="1"/>
+        <rect y="15" width="20" height="2" rx="1"/>
+      </svg>
+    </button>
+
+    <!--
+      nav-drawer: on desktop this is a normal flex row (links + CTA).
+      On mobile it is a full-width slide-down drawer toggled by .nav-open on <nav>.
+    -->
+    <div class="nav-drawer" id="nav-drawer">
+      <!-- Primary nav links list -->
+      <ul class="nav-links" id="nav-links" role="list">
+        <li>
+          <a
+            href="/dashboard"
+            {% if request.url.path == '/dashboard' %}class="active" aria-current="page"{% endif %}
+          >
+            <svg class="nav-icon" width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true" focusable="false">
+              <path d="M8.354 1.146a.5.5 0 0 0-.708 0l-6 6A.5.5 0 0 0 1.5 7.5v7a.5.5 0 0 0 .5.5h4.5a.5.5 0 0 0 .5-.5v-4h2v4a.5.5 0 0 0 .5.5H14a.5.5 0 0 0 .5-.5v-7a.5.5 0 0 0-.146-.354L13 5.793V2.5a.5.5 0 0 0-.5-.5h-1a.5.5 0 0 0-.5.5v1.293L8.354 1.146Z"/>
+            </svg>
+            Dashboard
+          </a>
+        </li>
+        <li>
+          <a
+            href="/runs"
+            {% if request.url.path.startswith('/runs') %}class="active" aria-current="page"{% endif %}
+          >Runs</a>
+        </li>
+        <li>
+          <a
+            href="/cost-analytics"
+            {% if request.url.path == '/cost-analytics' %}class="active" aria-current="page"{% endif %}
+          >Cost Analytics</a>
+        </li>
+        <li>
+          <a
+            href="/artifacts"
+            {% if request.url.path.startswith('/artifacts') %}class="active" aria-current="page"{% endif %}
+          >Artifacts</a>
+        </li>
+        <li>
+          <a
+            href="/slo"
+            {% if request.url.path == '/slo' %}class="active" aria-current="page"{% endif %}
+          >SLO</a>
+        </li>
+        <li>
+          <a
+            href="/observability"
+            {% if request.url.path == '/observability' %}class="active" aria-current="page"{% endif %}
+          >Observability</a>
+        </li>
+        <li>
+          <a
+            href="/metrics"
+            {% if request.url.path == '/metrics' %}class="active" aria-current="page"{% endif %}
+          >Metrics</a>
+        </li>
+        <li>
+          <a
+            href="/alerts"
+            class="nav-alerts-link{% if request.url.path == '/alerts' %} active{% endif %}"
+            {% if request.url.path == '/alerts' %}aria-current="page"{% endif %}
+          >
+            Alerts
+            <span
+              class="nav-alert-badge"
+              id="nav-alert-badge"
+              role="status"
+              aria-live="polite"
+              hidden
+            ></span>
+          </a>
+        </li>
+        <li>
+          <a
+            href="/settings"
+            {% if request.url.path == '/settings' %}class="active" aria-current="page"{% endif %}
+          >Settings</a>
+        </li>
+      </ul>
+
+      <!-- New Run CTA — prominent, positioned after nav links -->
+      <a href="/new-run" class="btn btn-primary nav-new-run" aria-label="Start a new orchestration run">
+        New Run
+      </a>
+    </div>
   </nav>
-  <div class="container">
-    {% block content %}{% endblock %}
+
+  <!-- Site-wide critical alert banner — shown when critical alerts are active.
+       Injected/shown by initCriticalAlertBanner() in app.js on DOMContentLoaded.
+       Dismissed per-session via sessionStorage flag. -->
+  <div
+    id="critical-alert-banner"
+    class="critical-banner"
+    role="alert"
+    aria-live="assertive"
+    aria-atomic="true"
+    hidden
+  >
+    <span class="critical-banner-icon" aria-hidden="true">&#9888;</span>
+    <span id="critical-banner-text"></span>
+    <a href="/alerts" class="critical-banner-link">View Alerts</a>
+    <button
+      id="critical-banner-dismiss"
+      class="critical-banner-dismiss"
+      type="button"
+      aria-label="Dismiss critical alert banner"
+    >&times;</button>
   </div>
+
+  <main class="container" id="main-content" tabindex="-1">
+    {% block content %}{% endblock %}
+  </main>
+
+  <!-- Global toast notification region -->
+  <div id="toast-notification" class="toast" role="status" aria-live="polite" aria-atomic="true"></div>
+
   <script src="/static/app.js"></script>
   {% block scripts %}{% endblock %}
 </body>

@@ -18,6 +18,60 @@
 </div>
 {% endif %}
 
+<!-- Overall summary banner -->
+{% if banner_status == 'passing' %}
+<div style="
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #22c55e;
+  font-weight: 600;
+  font-size: 1rem;
+">
+  <span style="font-size: 1.25rem;">✓</span>
+  All SLIs Passing
+</div>
+{% elif banner_status == 'at_risk' %}
+<div style="
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+  font-weight: 600;
+  font-size: 1rem;
+">
+  <span style="font-size: 1.25rem;">⚠</span>
+  {{ at_risk_count }} SLI{{ 's' if at_risk_count != 1 else '' }} At Risk
+</div>
+{% else %}
+<div style="
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 20px;
+  border-radius: 8px;
+  margin-bottom: 24px;
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #ef4444;
+  font-weight: 600;
+  font-size: 1rem;
+">
+  <span style="font-size: 1.25rem;">✗</span>
+  {{ breached_count }} SLI{{ 's' if breached_count != 1 else '' }} Breached
+</div>
+{% endif %}
+
 <!-- Summary stats -->
 <div class="stats">
   <div class="stat">
@@ -61,19 +115,23 @@
       <tr>
         <th>SLI Name</th>
         <th>Target</th>
-        <th>Actual</th>
+        <th>Current Value</th>
         <th>Status</th>
+        <th>Error Budget Remaining</th>
       </tr>
     </thead>
     <tbody>
       {% for sli in slis %}
       <tr>
         <td>
+          <span style="font-weight: 500; color: var(--text);">{{ sli.display_name }}</span>
+          <br>
           <code style="
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             background: #1e2a35;
-            padding: 2px 6px;
-            border-radius: 4px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            color: var(--text-dim);
           ">{{ sli.name }}</code>
         </td>
         <td>{{ sli.target_display }}</td>
@@ -87,12 +145,7 @@
               color: #22c55e;
               font-weight: 600;
             ">
-              <span style="
-                width: 8px; height: 8px;
-                border-radius: 50%;
-                background: #22c55e;
-                display: inline-block;
-              "></span>
+              <span style="font-size: 1.1em;">✓</span>
               Passing
             </span>
           {% elif sli.budget_color == 'yellow' %}
@@ -103,12 +156,7 @@
               color: #f59e0b;
               font-weight: 600;
             ">
-              <span style="
-                width: 8px; height: 8px;
-                border-radius: 50%;
-                background: #f59e0b;
-                display: inline-block;
-              "></span>
+              <span style="font-size: 1.1em;">⚠</span>
               At Risk
             </span>
           {% else %}
@@ -119,20 +167,49 @@
               color: #ef4444;
               font-weight: 600;
             ">
-              <span style="
-                width: 8px; height: 8px;
-                border-radius: 50%;
-                background: #ef4444;
-                display: inline-block;
-              "></span>
-              Failing
+              <span style="font-size: 1.1em;">✗</span>
+              Breached
             </span>
           {% endif %}
+        </td>
+        <td>
+          <!-- Mini inline progress bar -->
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 140px;">
+            <div style="
+              flex: 1;
+              height: 8px;
+              background: #1e2a35;
+              border-radius: 4px;
+              overflow: hidden;
+            " role="progressbar"
+               aria-valuenow="{{ sli.budget_pct | int }}"
+               aria-valuemin="0"
+               aria-valuemax="100"
+               aria-label="{{ sli.display_name }} error budget">
+              <div style="
+                width: {{ sli.budget_pct | int }}%;
+                height: 100%;
+                border-radius: 4px;
+                transition: width 0.4s ease;
+                {% if sli.budget_color == 'green' %}background: #22c55e;
+                {% elif sli.budget_color == 'yellow' %}background: #f59e0b;
+                {% else %}background: #ef4444;{% endif %}
+              "></div>
+            </div>
+            <span style="
+              font-size: 0.8rem;
+              font-weight: 600;
+              white-space: nowrap;
+              {% if sli.budget_color == 'green' %}color: #22c55e;
+              {% elif sli.budget_color == 'yellow' %}color: #f59e0b;
+              {% else %}color: #ef4444;{% endif %}
+            ">{{ "%.1f"|format(sli.budget_pct) }}%</span>
+          </div>
         </td>
       </tr>
       {% else %}
       <tr>
-        <td colspan="4" style="text-align: center; color: var(--text-dim); padding: 32px;">
+        <td colspan="5" style="text-align: center; color: var(--text-dim); padding: 32px;">
           No SLI data available.
         </td>
       </tr>
@@ -159,11 +236,14 @@
         margin-bottom: 6px;
       ">
         <span style="font-size: 0.875rem; color: var(--text);">
+          {{ sli.display_name }}
           <code style="
             background: #1e2a35;
             padding: 2px 6px;
             border-radius: 4px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
+            color: var(--text-dim);
+            margin-left: 4px;
           ">{{ sli.name }}</code>
         </span>
         <span style="
@@ -187,7 +267,7 @@
          aria-valuenow="{{ sli.budget_pct | int }}"
          aria-valuemin="0"
          aria-valuemax="100"
-         aria-label="{{ sli.name }} error budget">
+         aria-label="{{ sli.display_name }} error budget">
         <div style="
           width: {{ sli.budget_pct | int }}%;
           height: 100%;
@@ -225,11 +305,14 @@
       {% for v in violations %}
       <tr>
         <td>
+          <span style="font-weight: 500; color: var(--text);">{{ v.display_name }}</span>
+          <br>
           <code style="
-            font-size: 0.85rem;
+            font-size: 0.75rem;
             background: #1e2a35;
-            padding: 2px 6px;
-            border-radius: 4px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            color: var(--text-dim);
           ">{{ v.name }}</code>
         </td>
         <td>{{ v.target_display }}</td>
@@ -261,7 +344,7 @@
           {% if v.budget_color == 'yellow' %}
             <span style="color: #f59e0b;">⚠ At Risk</span>
           {% else %}
-            <span style="color: #ef4444;">✗ Critical</span>
+            <span style="color: #ef4444;">✗ Breached</span>
           {% endif %}
         </td>
       </tr>

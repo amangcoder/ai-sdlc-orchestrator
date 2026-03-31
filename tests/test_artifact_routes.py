@@ -566,7 +566,8 @@ class TestArtifactsHtml:
     def test_html_has_version_history_modal(self):
         client = _client()
         resp = client.get(f"/runs/{RUN_A}/artifacts-view")
-        assert "version-modal" in resp.text
+        # TASK-007: replaced centre modal with right-side slide-over panel
+        assert "version-slideover" in resp.text or "slideover" in resp.text
 
     def test_html_has_diff_viewer(self):
         client = _client()
