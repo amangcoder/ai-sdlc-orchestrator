@@ -21,12 +21,67 @@
 </div>
 {% endif %}
 
-<!-- Run ID filter bar -->
+<!-- ================================================================
+     Section 0: Service Status Cards
+     ================================================================ -->
+<div class="card" style="margin-bottom: 24px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+    <h2 style="margin: 0; display: flex; align-items: center; gap: 8px;">
+      <span style="font-size: 20px;">🩺</span> Service Status
+    </h2>
+    <button
+      id="refresh-health-btn"
+      type="button"
+      onclick="fetchHealthStatus()"
+      style="background: var(--accent); color: #000; border: none; border-radius: 4px; padding: 6px 16px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px;"
+      aria-label="Refresh service health status"
+    >
+      <span id="refresh-icon">↻</span> Refresh Status
+    </button>
+  </div>
+
+  <div id="health-cards" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;">
+    {% for svc in monitoring_services %}
+    <div class="health-card" id="health-card-{{ svc.key }}" data-service="{{ svc.key }}" data-port="{{ svc.port }}">
+      <div class="health-card-header">
+        <span class="health-card-name">{{ svc.name }}</span>
+        <span class="health-indicator loading" id="indicator-{{ svc.key }}" aria-label="{{ svc.name }} status: checking">
+          <span class="health-dot"></span>
+          <span class="health-text">Checking…</span>
+        </span>
+      </div>
+      <div class="health-card-port">Port {{ svc.port }}</div>
+      <div class="health-card-rt" id="rt-{{ svc.key }}" style="font-size: 11px; color: var(--text-dim); margin-top: 4px;"></div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <p style="margin-top: 12px; font-size: 12px; color: var(--text-dim);" id="health-last-updated"></p>
+</div>
+
+<!-- ================================================================
+     Run ID Filter Dropdown
+     ================================================================ -->
 <div class="card" style="margin-bottom: 24px;">
   <form method="get" action="/observability" style="display: flex; gap: 12px; align-items: center; flex-wrap: wrap;">
-    <label for="run_id_input" style="color: var(--text-dim); font-size: 14px; white-space: nowrap;">Filter by Run ID:</label>
+    <label for="run_id_select" style="color: var(--text-dim); font-size: 14px; white-space: nowrap;">Filter by Run ID:</label>
+    {% if runs %}
+    <select
+      id="run_id_select"
+      name="run_id"
+      onchange="this.form.submit()"
+      style="background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 6px 10px; font-size: 13px; font-family: monospace; flex: 1; min-width: 240px;"
+    >
+      <option value="">— All runs —</option>
+      {% for r in runs %}
+      <option value="{{ r.run_id }}" {% if run_id == r.run_id %}selected{% endif %}>
+        {{ r.run_id[:16] }}… ({{ r.label.split(' — ')[1] if ' — ' in r.label else '' }})
+      </option>
+      {% endfor %}
+    </select>
+    {% else %}
     <input
-      id="run_id_input"
+      id="run_id_select"
       type="text"
       name="run_id"
       value="{{ run_id }}"
@@ -34,6 +89,7 @@
       style="background: var(--bg); border: 1px solid var(--border); border-radius: 4px; color: var(--text); padding: 6px 10px; font-size: 13px; font-family: monospace; flex: 1; min-width: 200px;"
     />
     <button type="submit" style="background: var(--accent); color: #000; border: none; border-radius: 4px; padding: 6px 16px; font-size: 13px; cursor: pointer; white-space: nowrap;">Apply</button>
+    {% endif %}
     {% if run_id %}
     <a href="/observability" style="font-size: 13px; color: var(--text-dim);">Clear</a>
     {% endif %}
@@ -65,7 +121,7 @@
   {% else %}
   <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 12px;">
 
-    <a href="{{ urls.grafana_run_overview }}" target="_blank" rel="noopener noreferrer"
+    <a id="dl-grafana-overview" href="{{ urls.grafana_run_overview }}" target="_blank" rel="noopener noreferrer"
        class="obs-link-card">
       <div class="obs-link-icon">📈</div>
       <div>
@@ -74,7 +130,7 @@
       </div>
     </a>
 
-    <a href="{{ urls.grafana_cost_analysis }}" target="_blank" rel="noopener noreferrer"
+    <a id="dl-grafana-cost" href="{{ urls.grafana_cost_analysis }}" target="_blank" rel="noopener noreferrer"
        class="obs-link-card">
       <div class="obs-link-icon">💰</div>
       <div>
@@ -83,7 +139,7 @@
       </div>
     </a>
 
-    <a href="{{ urls.grafana_agent_performance }}" target="_blank" rel="noopener noreferrer"
+    <a id="dl-grafana-agents" href="{{ urls.grafana_agent_performance }}" target="_blank" rel="noopener noreferrer"
        class="obs-link-card">
       <div class="obs-link-icon">🤖</div>
       <div>
@@ -92,7 +148,7 @@
       </div>
     </a>
 
-    <a href="{{ urls.grafana_error_analysis }}" target="_blank" rel="noopener noreferrer"
+    <a id="dl-grafana-errors" href="{{ urls.grafana_error_analysis }}" target="_blank" rel="noopener noreferrer"
        class="obs-link-card">
       <div class="obs-link-icon">🔴</div>
       <div>
@@ -101,7 +157,7 @@
       </div>
     </a>
 
-    <a href="{{ urls.grafana_slo_overview }}" target="_blank" rel="noopener noreferrer"
+    <a id="dl-grafana-slo" href="{{ urls.grafana_slo_overview }}" target="_blank" rel="noopener noreferrer"
        class="obs-link-card">
       <div class="obs-link-icon">🎯</div>
       <div>
@@ -110,6 +166,15 @@
       </div>
     </a>
 
+  </div>
+  {% endif %}
+
+  {% if grafana_url %}
+  <div style="margin-top: 12px;">
+    <a href="{{ grafana_url }}" target="_blank" rel="noopener noreferrer"
+       class="btn" style="font-size: 12px; padding: 6px 14px;">
+      Open Grafana UI ↗
+    </a>
   </div>
   {% endif %}
 </div>
@@ -131,7 +196,7 @@
     Traces are exported via OpenTelemetry when <code>tracing_enabled: true</code>.
   </p>
   {% else %}
-  <a href="{{ urls.jaeger_trace_search }}" target="_blank" rel="noopener noreferrer"
+  <a id="dl-jaeger-traces" href="{{ urls.jaeger_trace_search }}" target="_blank" rel="noopener noreferrer"
      class="obs-link-card" style="display: flex; max-width: 480px;">
     <div class="obs-link-icon">🔎</div>
     <div>
@@ -146,6 +211,14 @@
     Trace IDs are emitted as <code>trace_id</code> in pipeline event logs and
     can be correlated with Loki log entries.
   </p>
+  {% if jaeger_ui_url %}
+  <div style="margin-top: 12px;">
+    <a href="{{ jaeger_ui_url }}" target="_blank" rel="noopener noreferrer"
+       class="btn" style="font-size: 12px; padding: 6px 14px;">
+      Open Jaeger UI ↗
+    </a>
+  </div>
+  {% endif %}
   {% endif %}
 </div>
 
@@ -170,7 +243,7 @@
   <div style="display: flex; flex-direction: column; gap: 12px;">
 
     {% if urls.loki_explore %}
-    <a href="{{ urls.loki_explore }}" target="_blank" rel="noopener noreferrer"
+    <a id="dl-loki-explore" href="{{ urls.loki_explore }}" target="_blank" rel="noopener noreferrer"
        class="obs-link-card" style="max-width: 600px;">
       <div class="obs-link-icon">🖥️</div>
       <div>
@@ -186,7 +259,7 @@
     {% endif %}
 
     {% if urls.loki_query_api %}
-    <a href="{{ urls.loki_query_api }}" target="_blank" rel="noopener noreferrer"
+    <a id="dl-loki-api" href="{{ urls.loki_query_api }}" target="_blank" rel="noopener noreferrer"
        class="obs-link-card" style="max-width: 600px;">
       <div class="obs-link-icon">⚡</div>
       <div>
@@ -223,6 +296,55 @@
 </div>
 
 <style>
+/* ---- Health cards ---- */
+.health-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  transition: border-color 0.2s;
+}
+.health-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.health-card-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.health-card-port {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.health-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+}
+.health-indicator.up .health-dot   { background: var(--green, #22c55e); }
+.health-indicator.up .health-text  { color: var(--green, #22c55e); }
+.health-indicator.down .health-dot { background: var(--red, #ef4444); }
+.health-indicator.down .health-text { color: var(--red, #ef4444); }
+.health-indicator.loading .health-dot { background: var(--yellow, #eab308); animation: pulse 1.2s infinite; }
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+/* ---- Obs link cards ---- */
 .obs-link-card {
   display: flex;
   align-items: flex-start;
@@ -258,4 +380,76 @@
   line-height: 1.4;
 }
 </style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // URLs from server (used to rebuild deep-links when run_id changes)
+  const _serverUrls = {{ urls_json | safe }};
+  const _currentRunId = {{ ('"' ~ run_id ~ '"') if run_id else 'null' }};
+
+  // ---- Health status fetch ----
+  async function fetchHealthStatus() {
+    const btn = document.getElementById('refresh-health-btn');
+    const icon = document.getElementById('refresh-icon');
+    if (btn) btn.disabled = true;
+    if (icon) icon.textContent = '⟳';
+
+    try {
+      const resp = await fetch('/api/v1/monitoring/health');
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      const services = await resp.json();
+      updateHealthCards(services);
+      const ts = new Date().toLocaleTimeString();
+      const el = document.getElementById('health-last-updated');
+      if (el) el.textContent = 'Last updated: ' + ts;
+    } catch (err) {
+      console.error('Health fetch failed:', err);
+      // Mark all cards as unknown
+      document.querySelectorAll('.health-indicator').forEach(function(ind) {
+        ind.className = 'health-indicator loading';
+        const txt = ind.querySelector('.health-text');
+        if (txt) txt.textContent = 'Error';
+      });
+    } finally {
+      if (btn) btn.disabled = false;
+      if (icon) icon.textContent = '↻';
+    }
+  }
+
+  function updateHealthCards(services) {
+    services.forEach(function(svc) {
+      const key = svc.service;
+      const ind = document.getElementById('indicator-' + key);
+      const rt  = document.getElementById('rt-' + key);
+      if (!ind) return;
+
+      const isUp = svc.status === 'up';
+      ind.className = 'health-indicator ' + (isUp ? 'up' : 'down');
+      ind.setAttribute('aria-label', svc.service + ' status: ' + (isUp ? 'Running' : 'Unreachable'));
+      const txt = ind.querySelector('.health-text');
+      if (txt) txt.textContent = isUp ? 'Running' : 'Unreachable';
+
+      if (rt) {
+        rt.textContent = isUp && svc.response_time_ms >= 0
+          ? svc.response_time_ms + ' ms'
+          : '';
+      }
+
+      // Style the card border
+      const card = document.getElementById('health-card-' + key);
+      if (card) {
+        card.style.borderColor = isUp ? 'var(--green, #22c55e)' : 'var(--border)';
+      }
+    });
+  }
+
+  // Auto-fetch on page load
+  fetchHealthStatus();
+
+  // Export for button onclick
+  window.fetchHealthStatus = fetchHealthStatus;
+})();
+</script>
 {% endblock %}

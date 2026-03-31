@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>
+  Log Analysis
+  <span style="font-size: 0.75em; color: var(--text-dim); font-weight: normal;">Run {{ run_id[:8] }}...</span>
+</h1>
+<p style="color: var(--text-dim); margin-bottom: 20px;">
+  <a href="/runs/{{ run_id }}">&larr; Back to Run Detail</a>
+</p>
+
+<!-- ================================================================
+     Identified Patterns
+     ================================================================ -->
+<div class="card" aria-labelledby="patterns-heading">
+  <h2 id="patterns-heading">Identified Patterns</h2>
+  {% if patterns %}
+  <ul class="log-analysis-list" role="list" aria-label="Identified patterns">
+    {% for pattern in patterns %}
+    {% set pattern_items = pattern['items'] if 'items' in pattern else [] %}
+    <li class="log-analysis-item">
+      <div class="log-analysis-item-header">
+        <span class="badge badge-running" aria-label="Pattern type: {{ pattern.type }}">{{ pattern.type | replace('_', ' ') | title }}</span>
+        {% if pattern_items %}
+        <span class="log-analysis-count" aria-label="{{ pattern_items | length }} occurrences">
+          {{ pattern_items | length }} occurrence{% if pattern_items | length != 1 %}s{% endif %}
+        </span>
+        {% endif %}
+      </div>
+      {% if pattern_items %}
+      <ul class="log-analysis-sublist" aria-label="Pattern occurrences">
+        {% for item in pattern_items %}
+        <li class="log-analysis-subitem">
+          {% if item is mapping %}
+            {% for k, v in item.items() %}
+              <span class="log-analysis-key">{{ k }}:</span>
+              <span class="log-analysis-val">{{ v }}</span>
+            {% endfor %}
+          {% else %}
+            {{ item }}
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state" style="color: var(--text-dim); padding: 16px 0;">
+    No patterns detected for this run.
+  </p>
+  {% endif %}
+</div>
+
+<!-- ================================================================
+     Errors Found
+     ================================================================ -->
+<div class="card" aria-labelledby="errors-heading">
+  <h2 id="errors-heading">Errors Found</h2>
+  {% if errors %}
+  <table aria-label="Errors found in log">
+    <thead>
+      <tr>
+        <th scope="col">Severity</th>
+        <th scope="col">Message</th>
+        <th scope="col">Timestamp</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for err in errors %}
+      {% set severity = err.severity if err.severity is defined else err.get('severity', 'error') %}
+      {% set message  = err.message  if err.message  is defined else err.get('message',  err.get('text', '')) %}
+      {% set ts       = err.ts       if err.ts       is defined else err.get('ts',       err.get('timestamp', '')) %}
+      <tr>
+        <td data-label="Severity">
+          <span
+            class="badge badge-{% if severity == 'critical' %}failed{% elif severity == 'warning' %}running{% else %}failed{% endif %}"
+            aria-label="Severity: {{ severity }}"
+          >{{ severity }}</span>
+        </td>
+        <td data-label="Message" style="word-break: break-word;">{{ message }}</td>
+        <td data-label="Timestamp" style="white-space: nowrap; color: var(--text-dim); font-size: 12px;">
+          {{ ts[:19] if ts else '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty-state" style="color: var(--text-dim); padding: 16px 0;">
+    No errors found in the log for this run.
+  </p>
+  {% endif %}
+</div>
+
+<!-- ================================================================
+     Recommendations
+     ================================================================ -->
+<div class="card" aria-labelledby="recommendations-heading">
+  <h2 id="recommendations-heading">Recommendations</h2>
+  {% if recommendations %}
+  <ul class="log-analysis-list" role="list" aria-label="Actionable recommendations">
+    {% for rec in recommendations %}
+    {% set rec_type = rec.type if rec.type is defined else rec.get('type', 'suggestion') %}
+    {% set rec_text = rec.text if rec.text is defined else rec.get('text', '') %}
+    <li class="log-analysis-rec-item">
+      <span class="log-analysis-rec-icon" aria-hidden="true">&#9658;</span>
+      {% if rec_type == 'high_cost_step' %}
+        <strong>High Cost Step:</strong>
+        {% if rec.agent is defined or rec.get('agent') %}
+          Agent <em>{{ rec.agent if rec.agent is defined else rec.get('agent') }}</em>
+        {% endif %}
+        {% if rec.step is defined or rec.get('step') %}
+          step <em>{{ rec.step if rec.step is defined else rec.get('step') }}</em>
+        {% endif %}
+        {% if rec.cost_usd is defined or rec.get('cost_usd') %}
+          — ${{ "%.4f"|format(rec.cost_usd if rec.cost_usd is defined else rec.get('cost_usd', 0)) }}
+        {% endif %}
+        {% if rec_text %}— {{ rec_text }}{% endif %}
+      {% else %}
+        {{ rec_text if rec_text else rec }}
+      {% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="empty-state" style="color: var(--text-dim); padding: 16px 0;">
+    No recommendations available for this run.
+  </p>
+  {% endif %}
+</div>
+
+{% endblock %}

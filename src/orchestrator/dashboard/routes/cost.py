@@ -50,6 +50,22 @@ def create_cost_router(
     async def cost_analytics_page(request: Request) -> HTMLResponse:
         """Render the cost analytics dashboard page with Chart.js charts."""
         analytics = reader.get_cost_analytics()
+
+        # --- Compute KPI card values ---
+        cost_trend = analytics.get("cost_trend", [])
+        total_spend = round(sum(d["cost"] for d in cost_trend), 4)
+
+        runs = reader.list_runs()
+        total_runs = len(runs)
+        avg_cost_per_run = round(total_spend / total_runs, 4) if total_runs else 0.0
+
+        by_agent = analytics.get("by_agent", {})
+        most_expensive_agent = (
+            max(by_agent.items(), key=lambda kv: kv[1].get("cost", 0))[0]
+            if by_agent
+            else "\u2014"
+        )
+
         return templates.TemplateResponse(
             "cost_analytics.html",
             {
@@ -57,6 +73,10 @@ def create_cost_router(
                 "analytics": analytics,
                 "analytics_json": json.dumps(analytics, default=str),
                 "page_title": "Cost Analytics",
+                "total_spend": total_spend,
+                "total_runs": total_runs,
+                "avg_cost_per_run": avg_cost_per_run,
+                "most_expensive_agent": most_expensive_agent,
             },
         )
 

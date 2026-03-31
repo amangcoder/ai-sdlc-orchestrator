@@ -1,0 +1,906 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; flex-wrap: wrap; gap: 12px;">
+  <h1 style="margin-bottom: 0;">Settings</h1>
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <span id="config-path-label" style="font-size: 12px; color: var(--text-dim);">
+      Config: <code>{{ config_path_display }}</code>
+    </span>
+    {% if not has_config %}
+    <span class="badge badge-warning">Read-only — no config path</span>
+    {% endif %}
+  </div>
+</div>
+
+{% if not has_config %}
+<div class="card" style="border-color: var(--yellow); margin-bottom: 24px;">
+  <h2 style="color: var(--yellow); margin-bottom: 8px;">⚠ Config File Not Configured</h2>
+  <p style="color: var(--text-dim); font-size: 14px;">
+    The dashboard was started without a <code>--config</code> path.
+    Settings are read-only. Restart with <code>--config path/to/config.yaml</code> to enable saving.
+  </p>
+</div>
+{% endif %}
+
+<!-- ── Tab bar ──────────────────────────────────────────────────────────── -->
+<div class="settings-tabs" role="tablist" aria-label="Settings sections">
+  <button
+    class="settings-tab active"
+    id="tab-btn-monitoring"
+    role="tab"
+    aria-selected="true"
+    aria-controls="tab-monitoring"
+    data-tab="monitoring"
+    type="button"
+  >Monitoring</button>
+  <button
+    class="settings-tab"
+    id="tab-btn-artifacts"
+    role="tab"
+    aria-selected="false"
+    aria-controls="tab-artifacts"
+    data-tab="artifacts"
+    type="button"
+  >Artifacts</button>
+  <button
+    class="settings-tab"
+    id="tab-btn-slos"
+    role="tab"
+    aria-selected="false"
+    aria-controls="tab-slos"
+    data-tab="slos"
+    type="button"
+  >SLOs</button>
+  <button
+    class="settings-tab"
+    id="tab-btn-advanced"
+    role="tab"
+    aria-selected="false"
+    aria-controls="tab-advanced"
+    data-tab="advanced"
+    type="button"
+  >Advanced</button>
+</div>
+
+<form id="settings-form" novalidate>
+
+  <!-- ── Tab: Monitoring ─────────────────────────────────────────────────── -->
+  <div id="tab-monitoring" class="settings-tab-panel" role="tabpanel" aria-labelledby="tab-btn-monitoring">
+    <div class="card">
+      <h2 style="margin-bottom: 20px;">Monitoring Configuration</h2>
+
+      <!-- Metrics Enabled -->
+      <div class="form-row">
+        <div class="form-group toggle-group">
+          <label class="toggle-label" for="monitoring_metrics_enabled">
+            <span class="form-label">Metrics Enabled</span>
+            <span class="form-hint">Expose Prometheus metrics endpoint</span>
+          </label>
+          <label class="toggle-switch" aria-label="Toggle metrics enabled">
+            <input
+              type="checkbox"
+              id="monitoring_metrics_enabled"
+              name="monitoring.metrics_enabled"
+              data-original=""
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Prometheus URL -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="monitoring_prometheus_url">Prometheus URL</label>
+          <span class="form-hint">Base URL of the Prometheus server (e.g. http://localhost:9090)</span>
+          <input
+            type="url"
+            id="monitoring_prometheus_url"
+            name="monitoring.prometheus_url"
+            class="form-input"
+            placeholder="http://localhost:9090"
+            data-original=""
+          />
+          <span class="field-error" id="err-monitoring_prometheus_url" hidden></span>
+        </div>
+      </div>
+
+      <!-- Grafana URL -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="monitoring_grafana_url">Grafana URL</label>
+          <span class="form-hint">Base URL of the Grafana instance (e.g. http://localhost:3000)</span>
+          <input
+            type="url"
+            id="monitoring_grafana_url"
+            name="monitoring.grafana_url"
+            class="form-input"
+            placeholder="http://localhost:3000"
+            data-original=""
+          />
+          <span class="field-error" id="err-monitoring_grafana_url" hidden></span>
+        </div>
+      </div>
+
+      <!-- Jaeger UI URL -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="monitoring_jaeger_ui_url">Jaeger UI URL</label>
+          <span class="form-hint">Base URL of the Jaeger UI (e.g. http://localhost:16686)</span>
+          <input
+            type="url"
+            id="monitoring_jaeger_ui_url"
+            name="monitoring.jaeger_ui_url"
+            class="form-input"
+            placeholder="http://localhost:16686"
+            data-original=""
+          />
+          <span class="field-error" id="err-monitoring_jaeger_ui_url" hidden></span>
+        </div>
+      </div>
+
+      <!-- Loki Endpoint -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="monitoring_loki_endpoint">Loki Endpoint</label>
+          <span class="form-hint">Loki push endpoint (e.g. http://localhost:3100)</span>
+          <input
+            type="url"
+            id="monitoring_loki_endpoint"
+            name="monitoring.loki_endpoint"
+            class="form-input"
+            placeholder="http://localhost:3100"
+            data-original=""
+          />
+          <span class="field-error" id="err-monitoring_loki_endpoint" hidden></span>
+        </div>
+      </div>
+
+      <!-- Tracing Enabled -->
+      <div class="form-row">
+        <div class="form-group toggle-group">
+          <label class="toggle-label" for="monitoring_tracing_enabled">
+            <span class="form-label">Tracing Enabled</span>
+            <span class="form-hint">OpenTelemetry distributed tracing</span>
+          </label>
+          <label class="toggle-switch" aria-label="Toggle tracing enabled">
+            <input
+              type="checkbox"
+              id="monitoring_tracing_enabled"
+              name="monitoring.tracing_enabled"
+              data-original=""
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Tracing Endpoint -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="monitoring_tracing_endpoint">Tracing Endpoint</label>
+          <span class="form-hint">OpenTelemetry gRPC endpoint (e.g. http://localhost:4317)</span>
+          <input
+            type="url"
+            id="monitoring_tracing_endpoint"
+            name="monitoring.tracing_endpoint"
+            class="form-input"
+            placeholder="http://localhost:4317"
+            data-original=""
+          />
+          <span class="field-error" id="err-monitoring_tracing_endpoint" hidden></span>
+        </div>
+      </div>
+
+    </div><!-- /card -->
+  </div><!-- /tab-monitoring -->
+
+  <!-- ── Tab: Artifacts ──────────────────────────────────────────────────── -->
+  <div id="tab-artifacts" class="settings-tab-panel" role="tabpanel" aria-labelledby="tab-btn-artifacts" hidden>
+    <div class="card">
+      <h2 style="margin-bottom: 20px;">Artifact Management</h2>
+
+      <!-- Versioning Enabled -->
+      <div class="form-row">
+        <div class="form-group toggle-group">
+          <label class="toggle-label" for="artifacts_versioning_enabled">
+            <span class="form-label">Versioning Enabled</span>
+            <span class="form-hint">Keep version history of each artifact (v1, v2, …)</span>
+          </label>
+          <label class="toggle-switch" aria-label="Toggle versioning enabled">
+            <input
+              type="checkbox"
+              id="artifacts_versioning_enabled"
+              name="artifacts.versioning_enabled"
+              data-original=""
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Retention Enabled -->
+      <div class="form-row">
+        <div class="form-group toggle-group">
+          <label class="toggle-label" for="artifacts_retention_enabled">
+            <span class="form-label">Retention / Auto-GC Enabled</span>
+            <span class="form-hint">Automatically prune old artifact versions on each run</span>
+          </label>
+          <label class="toggle-switch" aria-label="Toggle auto retention enabled">
+            <input
+              type="checkbox"
+              id="artifacts_retention_enabled"
+              name="artifacts.retention_enabled"
+              data-original=""
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Retention max_age_days -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="artifacts_retention_max_age_days">Max Age (days)</label>
+          <span class="form-hint">Delete artifact versions older than this many days (1–3650)</span>
+          <input
+            type="number"
+            id="artifacts_retention_max_age_days"
+            name="artifacts.retention_max_age_days"
+            class="form-input form-input-sm"
+            min="1"
+            max="3650"
+            step="1"
+            placeholder="90"
+            data-original=""
+          />
+          <span class="field-error" id="err-artifacts_retention_max_age_days" hidden></span>
+        </div>
+      </div>
+
+      <!-- Retention max_runs -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="artifacts_retention_max_runs">Max Runs to Retain</label>
+          <span class="form-hint">Keep at most this many runs' worth of artifacts (1–10000)</span>
+          <input
+            type="number"
+            id="artifacts_retention_max_runs"
+            name="artifacts.retention_max_runs"
+            class="form-input form-input-sm"
+            min="1"
+            max="10000"
+            step="1"
+            placeholder="200"
+            data-original=""
+          />
+          <span class="field-error" id="err-artifacts_retention_max_runs" hidden></span>
+        </div>
+      </div>
+
+      <!-- Retention keep_failed -->
+      <div class="form-row">
+        <div class="form-group toggle-group">
+          <label class="toggle-label" for="artifacts_retention_keep_failed">
+            <span class="form-label">Keep Failed Runs</span>
+            <span class="form-hint">Never auto-delete artifacts from failed runs</span>
+          </label>
+          <label class="toggle-switch" aria-label="Toggle keep failed runs">
+            <input
+              type="checkbox"
+              id="artifacts_retention_keep_failed"
+              name="artifacts.retention_keep_failed"
+              data-original=""
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+    </div><!-- /card -->
+
+    <!-- GC Controls card -->
+    <div class="card" style="margin-top: 16px;">
+      <h2 style="margin-bottom: 12px;">Garbage Collection</h2>
+      <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 16px;">
+        Manually run the artifact retention policy. Preview shows what <em>would</em> be deleted
+        before committing. The current retention values above are used for the preview/run.
+      </p>
+
+      <div style="display: flex; gap: 12px; flex-wrap: wrap; align-items: center;">
+        <button
+          type="button"
+          id="gc-preview-btn"
+          class="btn btn-secondary"
+        >Preview GC</button>
+        <button
+          type="button"
+          id="gc-run-btn"
+          class="btn btn-danger"
+          disabled
+          aria-disabled="true"
+        >Run GC</button>
+        <span id="gc-status" style="font-size: 13px; color: var(--text-dim);"></span>
+      </div>
+
+      <!-- Preview results -->
+      <div id="gc-preview-results" hidden style="margin-top: 16px;">
+        <div style="display: flex; gap: 24px; margin-bottom: 12px;">
+          <div class="stat" style="min-width: 120px;">
+            <div class="stat-value" id="gc-candidate-count">0</div>
+            <div class="stat-label">Versions to delete</div>
+          </div>
+          <div class="stat" style="min-width: 120px;">
+            <div class="stat-value" id="gc-retained-count">0</div>
+            <div class="stat-label">Versions retained</div>
+          </div>
+        </div>
+        <div id="gc-paths-container" style="display: none;">
+          <p style="font-size: 13px; color: var(--text-dim); margin-bottom: 8px;">
+            Artifact versions that would be deleted:
+          </p>
+          <div
+            id="gc-paths-list"
+            style="
+              max-height: 200px;
+              overflow-y: auto;
+              background: var(--bg);
+              border: 1px solid var(--border);
+              border-radius: 6px;
+              padding: 8px 12px;
+              font-size: 12px;
+              font-family: monospace;
+              color: var(--text-dim);
+            "
+          ></div>
+        </div>
+      </div>
+
+    </div><!-- /gc card -->
+  </div><!-- /tab-artifacts -->
+
+  <!-- ── Tab: SLOs ────────────────────────────────────────────────────────── -->
+  <div id="tab-slos" class="settings-tab-panel" role="tabpanel" aria-labelledby="tab-btn-slos" hidden>
+    <div class="card">
+      <h2 style="margin-bottom: 8px;">Service Level Objectives</h2>
+      <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 20px;">
+        Target values for the six core SLIs. These are evaluated over the rolling
+        <strong>evaluation window</strong> defined below.
+      </p>
+
+      <!-- SLO Enabled toggle -->
+      <div class="form-row">
+        <div class="form-group toggle-group">
+          <label class="toggle-label" for="slo_enabled">
+            <span class="form-label">SLO Tracking Enabled</span>
+            <span class="form-hint">Enable SLI/SLO compliance evaluation</span>
+          </label>
+          <label class="toggle-switch" aria-label="Toggle SLO tracking">
+            <input
+              type="checkbox"
+              id="slo_enabled"
+              name="monitoring.slo.enabled"
+              data-original=""
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Pipeline success rate -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="slo_pipeline_success_rate">Pipeline Success Rate</label>
+          <span class="form-hint">Target: fraction of runs that must succeed (0–1, e.g. 0.95)</span>
+          <input
+            type="number"
+            id="slo_pipeline_success_rate"
+            name="monitoring.slo.pipeline_success_rate"
+            class="form-input form-input-sm"
+            min="0"
+            max="1"
+            step="0.01"
+            placeholder="0.95"
+            data-original=""
+          />
+          <span class="field-error" id="err-slo_pipeline_success_rate" hidden></span>
+        </div>
+      </div>
+
+      <!-- Phase duration p95 seconds -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="slo_phase_duration_p95_seconds">Phase Duration p95 (seconds)</label>
+          <span class="form-hint">Target: 95th-percentile phase duration budget in seconds (e.g. 300)</span>
+          <input
+            type="number"
+            id="slo_phase_duration_p95_seconds"
+            name="monitoring.slo.phase_duration_p95_seconds"
+            class="form-input form-input-sm"
+            min="1"
+            max="86400"
+            step="1"
+            placeholder="300"
+            data-original=""
+          />
+          <span class="field-error" id="err-slo_phase_duration_p95_seconds" hidden></span>
+        </div>
+      </div>
+
+      <!-- Cost per run p50 USD -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="slo_cost_per_run_p50_usd">Cost Per Run p50 (USD)</label>
+          <span class="form-hint">Target: median cost budget per run in USD (e.g. 0.50)</span>
+          <input
+            type="number"
+            id="slo_cost_per_run_p50_usd"
+            name="monitoring.slo.cost_per_run_p50_usd"
+            class="form-input form-input-sm"
+            min="0"
+            max="1000"
+            step="0.01"
+            placeholder="0.50"
+            data-original=""
+          />
+          <span class="field-error" id="err-slo_cost_per_run_p50_usd" hidden></span>
+        </div>
+      </div>
+
+      <!-- Artifact validation rate -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="slo_artifact_validation_rate">Artifact Validation Rate</label>
+          <span class="form-hint">Target: fraction of artifact writes that must pass schema validation (0–1, e.g. 0.99)</span>
+          <input
+            type="number"
+            id="slo_artifact_validation_rate"
+            name="monitoring.slo.artifact_validation_rate"
+            class="form-input form-input-sm"
+            min="0"
+            max="1"
+            step="0.01"
+            placeholder="0.99"
+            data-original=""
+          />
+          <span class="field-error" id="err-slo_artifact_validation_rate" hidden></span>
+        </div>
+      </div>
+
+      <!-- Max errors per run -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="slo_max_errors_per_run">Max Errors Per Run</label>
+          <span class="form-hint">Target: maximum number of errors allowed in a single run (e.g. 2)</span>
+          <input
+            type="number"
+            id="slo_max_errors_per_run"
+            name="monitoring.slo.max_errors_per_run"
+            class="form-input form-input-sm"
+            min="0"
+            max="10000"
+            step="1"
+            placeholder="2"
+            data-original=""
+          />
+          <span class="field-error" id="err-slo_max_errors_per_run" hidden></span>
+        </div>
+      </div>
+
+      <!-- Recovery success rate -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="slo_recovery_success_rate">Recovery Success Rate</label>
+          <span class="form-hint">Target: fraction of failed runs that are successfully recovered (0–1, e.g. 0.90)</span>
+          <input
+            type="number"
+            id="slo_recovery_success_rate"
+            name="monitoring.slo.recovery_success_rate"
+            class="form-input form-input-sm"
+            min="0"
+            max="1"
+            step="0.01"
+            placeholder="0.90"
+            data-original=""
+          />
+          <span class="field-error" id="err-slo_recovery_success_rate" hidden></span>
+        </div>
+      </div>
+
+      <!-- Evaluation window hours -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="slo_evaluation_window_hours">Evaluation Window (hours)</label>
+          <span class="form-hint">Sliding window in hours over which SLIs are evaluated (e.g. 24)</span>
+          <input
+            type="number"
+            id="slo_evaluation_window_hours"
+            name="monitoring.slo.evaluation_window_hours"
+            class="form-input form-input-sm"
+            min="1"
+            max="8760"
+            step="1"
+            placeholder="24"
+            data-original=""
+          />
+          <span class="field-error" id="err-slo_evaluation_window_hours" hidden></span>
+        </div>
+      </div>
+
+    </div><!-- /card -->
+  </div><!-- /tab-slos -->
+
+  <!-- ── Tab: Advanced ────────────────────────────────────────────────────── -->
+  <div id="tab-advanced" class="settings-tab-panel" role="tabpanel" aria-labelledby="tab-btn-advanced" hidden>
+    <div class="card">
+      <h2 style="margin-bottom: 20px;">Advanced Configuration</h2>
+
+      <!-- max_budget_usd -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="max_budget_usd">Max Budget (USD)</label>
+          <span class="form-hint">Hard cap on total cost per pipeline run (e.g. 50.0)</span>
+          <input
+            type="number"
+            id="max_budget_usd"
+            name="max_budget_usd"
+            class="form-input form-input-sm"
+            min="0"
+            max="10000"
+            step="0.01"
+            placeholder="50.0"
+            data-original=""
+          />
+          <span class="field-error" id="err-max_budget_usd" hidden></span>
+        </div>
+      </div>
+
+      <!-- max_review_cycles -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="max_review_cycles">Max Review Cycles</label>
+          <span class="form-hint">Maximum number of review-and-fix cycles per pipeline run</span>
+          <input
+            type="number"
+            id="max_review_cycles"
+            name="max_review_cycles"
+            class="form-input form-input-sm"
+            min="1"
+            max="20"
+            step="1"
+            placeholder="3"
+            data-original=""
+          />
+          <span class="field-error" id="err-max_review_cycles" hidden></span>
+        </div>
+      </div>
+
+      <!-- max_concurrent_agents -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="max_concurrent_agents">Max Concurrent Agents</label>
+          <span class="form-hint">Max parallel agents (set to 2–4 on low-resource machines)</span>
+          <input
+            type="number"
+            id="max_concurrent_agents"
+            name="max_concurrent_agents"
+            class="form-input form-input-sm"
+            min="1"
+            max="500"
+            step="1"
+            placeholder="100"
+            data-original=""
+          />
+          <span class="field-error" id="err-max_concurrent_agents" hidden></span>
+        </div>
+      </div>
+
+      <!-- confirm -->
+      <div class="form-row">
+        <div class="form-group toggle-group">
+          <label class="toggle-label" for="confirm">
+            <span class="form-label">Confirm Before Each Agent</span>
+            <span class="form-hint">Review and approve each agent prompt before execution</span>
+          </label>
+          <label class="toggle-switch" aria-label="Toggle confirm mode">
+            <input
+              type="checkbox"
+              id="confirm"
+              name="confirm"
+              data-original=""
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- tech_stack_confirmation -->
+      <div class="form-row">
+        <div class="form-group toggle-group">
+          <label class="toggle-label" for="tech_stack_confirmation">
+            <span class="form-label">Tech Stack Confirmation</span>
+            <span class="form-hint">Pause after Architecture to review proposed tech stack</span>
+          </label>
+          <label class="toggle-switch" aria-label="Toggle tech stack confirmation">
+            <input
+              type="checkbox"
+              id="tech_stack_confirmation"
+              name="tech_stack_confirmation"
+              data-original=""
+            />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+
+      <!-- default_workflow -->
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="default_workflow">Default Workflow</label>
+          <span class="form-hint">Default workflow type for new runs</span>
+          <select
+            id="default_workflow"
+            name="default_workflow"
+            class="form-input"
+            data-original=""
+          >
+            <option value="feature_development">feature_development</option>
+            <option value="bug_fix">bug_fix</option>
+            <option value="refactoring">refactoring</option>
+            <option value="research">research</option>
+            <option value="testing">testing</option>
+          </select>
+          <span class="field-error" id="err-default_workflow" hidden></span>
+        </div>
+      </div>
+
+    </div><!-- /card -->
+  </div><!-- /tab-advanced -->
+
+  <!-- ── Save button bar ─────────────────────────────────────────────────── -->
+  <div class="settings-save-bar">
+    <button
+      type="submit"
+      id="save-btn"
+      class="btn btn-primary"
+      {% if not has_config %}disabled aria-disabled="true"{% endif %}
+    >Save Changes</button>
+    <button
+      type="button"
+      id="reset-btn"
+      class="btn btn-secondary"
+    >Reset to Saved</button>
+    <span id="save-indicator" style="font-size: 13px; color: var(--text-dim);"></span>
+  </div>
+
+</form><!-- /settings-form -->
+
+<style>
+/* ── Tab bar ──────────────────────────────────────────────────────────────── */
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0;
+}
+
+.settings-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: var(--text-dim);
+  cursor: pointer;
+  border-radius: 4px 4px 0 0;
+  margin-bottom: -1px;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.settings-tab:hover {
+  color: var(--text);
+}
+
+.settings-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* ── Form rows ────────────────────────────────────────────────────────────── */
+.form-row {
+  margin-bottom: 20px;
+}
+
+.form-row:last-child {
+  margin-bottom: 0;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.form-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.form-input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 8px 12px;
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.15s;
+  width: 100%;
+  max-width: 480px;
+}
+
+.form-input-sm {
+  max-width: 200px;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.form-input.invalid {
+  border-color: var(--red);
+}
+
+/* ── Toggle switch ───────────────────────────────────────────────────────── */
+.toggle-group {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 480px;
+}
+
+.toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+  flex-shrink: 0;
+  margin-left: 12px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+  position: absolute;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: var(--border);
+  border-radius: 24px;
+  transition: 0.2s;
+}
+
+.toggle-slider:before {
+  content: "";
+  position: absolute;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
+  background: var(--text-dim);
+  border-radius: 50%;
+  transition: 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-slider {
+  background: var(--accent);
+}
+
+.toggle-switch input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+  background: #000;
+}
+
+.toggle-switch input:focus-visible + .toggle-slider {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ── Field validation errors ─────────────────────────────────────────────── */
+.field-error {
+  font-size: 12px;
+  color: var(--red);
+  margin-top: 2px;
+}
+
+/* ── Save bar ────────────────────────────────────────────────────────────── */
+.settings-save-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  flex-wrap: wrap;
+}
+
+/* ── Buttons ─────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #000;
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-secondary {
+  background: var(--bg-hover);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.btn-danger {
+  background: rgba(218, 54, 51, 0.2);
+  color: #f85149;
+  border: 1px solid var(--red);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: rgba(218, 54, 51, 0.35);
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .toggle-group { flex-direction: column; align-items: flex-start; }
+  .toggle-switch { margin-left: 0; margin-top: 8px; }
+  .form-input, .form-input-sm { max-width: 100%; }
+}
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/settings.js"></script>
+{% endblock %}

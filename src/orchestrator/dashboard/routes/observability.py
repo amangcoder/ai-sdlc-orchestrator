@@ -9,6 +9,9 @@ Deep links are generated from MonitoringConfig URL fields:
   - loki_endpoint    → Direct Loki API query link
 
 No iframes are used (per REQ-019).  All links open in a new browser tab.
+
+Service status cards (Prometheus, Grafana, Jaeger, Loki, Promtail) are loaded
+client-side by fetching GET /api/v1/monitoring/health.
 """
 
 from __future__ import annotations
@@ -17,7 +20,7 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Query, Request
@@ -25,13 +28,30 @@ from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
 from orchestrator.dashboard.data import get_observability_urls
+from orchestrator.dashboard.routes.validators import _RUN_ID_RE  # shared pattern
+
+if TYPE_CHECKING:
+    from orchestrator.dashboard.data import RunDataReader
 
 logger = logging.getLogger(__name__)
 
-# Valid run_id pattern: hex characters (8–64 chars), matching the existing
-# _RUN_ID_RE used in mobile_api.  Extra chars (dash/underscore) tolerated for
-# forward-compat.
-_RUN_ID_RE = re.compile(r"^[a-zA-Z0-9_\-]{1,64}$")
+# Display metadata for the five monitored services.
+# Used to pre-render cards while health data is being fetched.
+_SERVICE_DISPLAY: list[dict] = [
+    {"name": "Prometheus", "key": "prometheus", "port": 9090,
+     "deep_link_tpl": "http://localhost:9090"},
+    {"name": "Grafana",    "key": "grafana",    "port": 3000,
+     "deep_link_tpl": "http://localhost:3000"},
+    {"name": "Jaeger",     "key": "jaeger",     "port": 16686,
+     "deep_link_tpl": "http://localhost:16686/search?service=orchestrator"},
+    {"name": "Loki",       "key": "loki",       "port": 3100,
+     "deep_link_tpl": "http://localhost:3100"},
+    {"name": "Promtail",   "key": "promtail",   "port": 9080,
+     "deep_link_tpl": "http://localhost:9080/ready"},
+]
+
+# _RUN_ID_RE is imported from routes.validators (single source of truth).
+# Pattern: hex characters (8–64 chars) plus dashes/underscores for forward-compat.
 
 
 def _load_monitoring_config(config_path: Optional[Path]):  # type: ignore[return]
@@ -58,6 +78,7 @@ def _load_monitoring_config(config_path: Optional[Path]):  # type: ignore[return
 def create_observability_router(
     templates: Jinja2Templates,
     config_path: Optional[Path] = None,
+    reader: Optional["RunDataReader"] = None,
 ) -> APIRouter:
     """Return an APIRouter with the GET /observability endpoint wired up.
 
@@ -65,6 +86,8 @@ def create_observability_router(
         templates: The Jinja2Templates instance shared by the parent app.
         config_path: Optional path to the orchestrator YAML config file.
                      Used to load MonitoringConfig URL fields at request time.
+        reader: Optional RunDataReader.  When provided, the observability page
+                populates the run-ID filter dropdown from available runs.
 
     Returns:
         Configured FastAPI APIRouter.
@@ -116,16 +139,33 @@ def create_observability_router(
             loki_endpoint=loki_endpoint,
         )
 
+        # Build run list for the dropdown (most-recent first, capped at 100).
+        runs: list[dict] = []
+        if reader is not None:
+            try:
+                for r in reader.list_runs()[:100]:
+                    runs.append({
+                        "run_id": r.run_id,
+                        "label": f"{r.run_id[:12]}… — {r.status}",
+                    })
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("Could not load runs for observability dropdown: %s", exc)
+
         return templates.TemplateResponse(
             "observability.html",
             {
                 "request": request,
                 "urls": urls,
+                "urls_json": json.dumps(urls),
                 "run_id": safe_run_id or "",
+                "runs": runs,
                 "config_missing": config_missing,
                 "grafana_configured": grafana_url is not None,
                 "jaeger_configured": jaeger_ui_url is not None,
                 "loki_configured": loki_endpoint is not None,
+                "grafana_url": grafana_url or "",
+                "jaeger_ui_url": jaeger_ui_url or "",
+                "monitoring_services": _SERVICE_DISPLAY,
                 "page_title": "Observability",
             },
         )

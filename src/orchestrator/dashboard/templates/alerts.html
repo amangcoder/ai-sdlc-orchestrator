@@ -1,33 +1,93 @@
 {% extends "base.html" %}
 {% block content %}
-<h1>Alert History</h1>
+<div class="alerts-header">
+  <h1>Alerts</h1>
+
+  <!-- Filter controls — submitted as GET query params -->
+  <form method="get" action="/alerts" id="alert-filter-form" class="alert-filters" role="search" aria-label="Filter alerts">
+    <label for="filter-severity" class="filter-label">Severity</label>
+    <select
+      id="filter-severity"
+      name="severity"
+      class="filter-select"
+      aria-label="Filter by severity"
+      onchange="this.form.submit()"
+    >
+      <option value="all"     {% if not filter_severity or filter_severity == 'all'     %}selected{% endif %}>All</option>
+      <option value="critical"{% if filter_severity == 'critical' %}selected{% endif %}>Critical</option>
+      <option value="warning" {% if filter_severity == 'warning'  %}selected{% endif %}>Warning</option>
+      <option value="info"    {% if filter_severity == 'info'     %}selected{% endif %}>Info</option>
+    </select>
+
+    <label for="filter-status" class="filter-label">Status</label>
+    <select
+      id="filter-status"
+      name="status"
+      class="filter-select"
+      aria-label="Filter by status"
+      onchange="this.form.submit()"
+    >
+      <option value="all"      {% if not filter_status or filter_status == 'all'      %}selected{% endif %}>All</option>
+      <option value="active"   {% if filter_status == 'active'   %}selected{% endif %}>Active</option>
+      <option value="resolved" {% if filter_status == 'resolved' %}selected{% endif %}>Resolved</option>
+    </select>
+  </form>
+</div>
 
 {% if alerts %}
-<table>
+<p class="alert-hint">Click a row to expand the full payload.</p>
+<table id="alerts-table" aria-label="Alerts table">
   <thead>
     <tr>
-      <th>Timestamp</th>
-      <th>Event</th>
-      <th>Run ID</th>
-      <th>Details</th>
+      <th>Severity</th>
+      <th>Name</th>
+      <th>Message</th>
+      <th>Triggered</th>
+      <th>Status</th>
     </tr>
   </thead>
   <tbody>
     {% for alert in alerts %}
-    <tr>
-      <td>{{ alert.ts[:19] if alert.ts else '-' }}</td>
-      <td><span class="badge badge-{{ alert.event }}">{{ alert.event }}</span></td>
-      <td>
-        {% if alert.run_id %}
-        <a href="/runs/{{ alert.run_id }}">{{ alert.run_id[:8] }}...</a>
-        {% else %}-{% endif %}
+    {% set sev = (alert.severity or 'info') | lower %}
+    {% set alert_status = (alert.status or 'active') | lower %}
+    <tr
+      class="alert-row"
+      data-alert-index="{{ loop.index0 }}"
+      aria-expanded="false"
+      role="button"
+      tabindex="0"
+      aria-label="Alert row — click to expand payload"
+    >
+      <td data-label="Severity" class="alert-severity-cell">
+        {% if sev == 'critical' %}
+          <span class="severity-icon severity-critical" aria-hidden="true">&#9679;</span>
+          <span>Critical</span>
+        {% elif sev == 'warning' %}
+          <span class="severity-icon severity-warning" aria-hidden="true">&#9679;</span>
+          <span>Warning</span>
+        {% else %}
+          <span class="severity-icon severity-info" aria-hidden="true">&#8505;</span>
+          <span>Info</span>
+        {% endif %}
       </td>
-      <td style="font-size: 12px;">
-        {% for key, val in alert.items() %}
-          {% if key not in ['ts', 'event', 'run_id'] %}
-            <strong>{{ key }}:</strong> {{ val }}
-          {% endif %}
-        {% endfor %}
+      <td data-label="Name">{{ alert.name or alert.event or '-' }}</td>
+      <td data-label="Message">{{ alert.message or alert.msg or alert.description or '-' }}</td>
+      <td data-label="Triggered">{{ alert.ts[:19] if alert.ts else '-' }}</td>
+      <td data-label="Status">
+        {% if alert_status == 'resolved' %}
+          <span class="badge badge-resolved" aria-label="Alert status: resolved">Resolved</span>
+        {% else %}
+          <span class="badge badge-active" aria-label="Alert status: active">Active</span>
+        {% endif %}
+      </td>
+    </tr>
+    <!-- Expandable detail row — hidden by default -->
+    <tr class="alert-detail-row" id="alert-detail-{{ loop.index0 }}" hidden aria-hidden="true">
+      <td colspan="5" class="alert-detail-cell">
+        <div class="alert-payload">
+          <strong class="alert-payload-label">Full payload</strong>
+          <pre class="alert-json" tabindex="0">{{ alert._json }}</pre>
+        </div>
       </td>
     </tr>
     {% endfor %}
@@ -35,8 +95,14 @@
 </table>
 {% else %}
 <div class="empty">
-  <h2>No alerts</h2>
+  <h2>No alerts{% if filter_severity and filter_severity != 'all' %} for severity "{{ filter_severity }}"{% endif %}{% if filter_status and filter_status != 'all' %} with status "{{ filter_status }}"{% endif %}</h2>
   <p>Configure webhooks in your <code>config/default.yaml</code> to receive alerts.</p>
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  initAlertRowExpand();
+</script>
 {% endblock %}

@@ -52,6 +52,11 @@ WORKFLOW_ALIASES: dict[str, WorkflowType] = {
     "performance_optimization": WorkflowType.PERFORMANCE_OPTIMIZATION,
     "security": WorkflowType.SECURITY_AUDIT,
     "security_audit": WorkflowType.SECURITY_AUDIT,
+    # Dashboard-friendly short aliases (TASK-004)
+    "full": WorkflowType.FEATURE_DEVELOPMENT,
+    "backend": WorkflowType.FEATURE_DEVELOPMENT,
+    "frontend": WorkflowType.FEATURE_DEVELOPMENT,
+    "research": WorkflowType.SECURITY_AUDIT,
 }
 
 

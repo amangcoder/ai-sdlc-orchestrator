@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Dashboard</h1>
+
+<!-- KPI cards grid — values updated in real-time via SSE (dashboard.js) -->
+<div class="stats" aria-label="Key performance indicators" role="region">
+
+  <div class="stat" aria-labelledby="kpi-active-runs-label">
+    <div
+      class="stat-value"
+      id="kpi-active-runs"
+      aria-live="polite"
+      aria-atomic="true"
+    >{{ active_runs }}</div>
+    <div class="stat-label" id="kpi-active-runs-label">Active Runs</div>
+  </div>
+
+  <div class="stat" aria-labelledby="kpi-runs-today-label">
+    <div
+      class="stat-value"
+      id="kpi-runs-today"
+      aria-live="polite"
+      aria-atomic="true"
+    >{{ runs_today }}</div>
+    <div class="stat-label" id="kpi-runs-today-label">Runs Today</div>
+  </div>
+
+  <div class="stat" aria-labelledby="kpi-cost-today-label">
+    <div
+      class="stat-value"
+      id="kpi-cost-today"
+      aria-live="polite"
+      aria-atomic="true"
+    >${{ "%.4f"|format(cost_today) }}</div>
+    <div class="stat-label" id="kpi-cost-today-label">Cost Today (USD)</div>
+  </div>
+
+  <div class="stat" aria-labelledby="kpi-burn-rate-label">
+    <div
+      class="stat-value"
+      id="kpi-burn-rate"
+      aria-live="polite"
+      aria-atomic="true"
+    >${{ "%.4f"|format(burn_rate) }}/hr</div>
+    <div class="stat-label" id="kpi-burn-rate-label">Burn Rate (USD/hr)</div>
+  </div>
+
+</div>
+
+<!-- SLO compliance summary row -->
+<div class="card" aria-label="SLO compliance summary" role="region">
+  <h2>SLO Compliance</h2>
+  <div
+    id="slo-summary-status"
+    class="badge {% if slo_all_passing %}badge-completed{% else %}badge-failed{% endif %}"
+    aria-live="polite"
+    aria-atomic="true"
+    style="margin-bottom: 12px; font-size: 14px; padding: 4px 12px;"
+  >
+    {% if slo_all_passing %}All SLOs passing{% else %}SLO violation detected{% endif %}
+  </div>
+
+  {% if slo_slis %}
+  <ul
+    id="slo-slis-list"
+    style="list-style: none; display: flex; flex-wrap: wrap; gap: 8px;"
+    aria-label="SLI status list"
+  >
+    {% for sli in slo_slis %}
+    <li>
+      <span
+        class="badge {% if sli.passing %}badge-completed{% else %}badge-failed{% endif %}"
+        title="{{ sli.name }}"
+      >{{ sli.name }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p id="slo-slis-list" style="color: var(--text-dim); font-size: 14px;">
+    No SLI data available.
+  </p>
+  {% endif %}
+</div>
+
+<!-- Active alert count card -->
+<div class="card" aria-label="Active alerts" role="region">
+  <h2>Active Alerts</h2>
+  <div style="display: flex; align-items: center; gap: 12px;">
+    <span
+      class="stat-value"
+      id="kpi-active-alerts"
+      aria-live="polite"
+      aria-atomic="true"
+      style="{% if active_alerts > 0 %}color: var(--red);{% endif %}"
+    >{{ active_alerts }}</span>
+    <a href="/alerts" class="btn btn-secondary" style="font-size: 13px; padding: 6px 14px;">View Alerts</a>
+  </div>
+</div>
+
+<!-- Quick links -->
+<div class="grid-2" style="margin-top: 8px;">
+  <div class="card">
+    <h2>Run Management</h2>
+    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 12px;">
+      Start new runs, monitor live progress, or review completed runs.
+    </p>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <a href="/new-run" class="btn btn-primary">New Run</a>
+      <a href="/runs" class="btn btn-secondary">All Runs</a>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Observability</h2>
+    <p style="color: var(--text-dim); font-size: 14px; margin-bottom: 12px;">
+      Explore cost analytics, SLO compliance, and system metrics.
+    </p>
+    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+      <a href="/cost-analytics" class="btn btn-secondary">Cost Analytics</a>
+      <a href="/slo" class="btn btn-secondary">SLO</a>
+      <a href="/metrics" class="btn btn-secondary">Metrics</a>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/dashboard.js"></script>
+{% endblock %}

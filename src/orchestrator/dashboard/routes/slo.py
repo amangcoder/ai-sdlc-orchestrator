@@ -48,6 +48,16 @@ _RATE_SLIS: frozenset[str] = frozenset({
     "recovery_success_rate",
 })
 
+#: Human-readable display names for each canonical SLI name.
+_SLI_DISPLAY_NAMES: dict[str, str] = {
+    "pipeline_success_rate": "Pipeline Success Rate",
+    "phase_duration_p95": "Phase Duration p95",
+    "cost_per_run_p50": "Cost Per Run p50",
+    "artifact_validation_rate": "Artifact Validation Rate",
+    "error_rate": "Error Rate Per Run",
+    "recovery_success_rate": "Recovery Success Rate",
+}
+
 #: SLI names where the unit is seconds.
 _SECONDS_SLIS: frozenset[str] = frozenset({"phase_duration_p95"})
 
@@ -117,6 +127,7 @@ def _enrich_slis(slis: list[Any]) -> list[dict[str, Any]]:
         d["budget_color"] = _budget_color(budget_pct)
         d["target_display"] = _format_sli_value(name, float(d.get("target", 0.0)))
         d["actual_display"] = _format_sli_value(name, float(d.get("actual", 0.0)))
+        d["display_name"] = _SLI_DISPLAY_NAMES.get(name, name)
         enriched.append(d)
     return enriched
 
@@ -174,6 +185,16 @@ def create_slo_router(
         violations = [s for s in slis if not s.get("passing", True)]
         violations.sort(key=lambda s: s.get("budget_pct", 100.0))
 
+        # Derive summary banner: worst status wins (breached > at_risk > passing).
+        breached_count = sum(1 for s in slis if s.get("budget_color") == "red")
+        at_risk_count = sum(1 for s in slis if s.get("budget_color") == "yellow")
+        if breached_count > 0:
+            banner_status = "breached"
+        elif at_risk_count > 0:
+            banner_status = "at_risk"
+        else:
+            banner_status = "passing"
+
         return templates.TemplateResponse(
             "slo.html",
             {
@@ -185,6 +206,9 @@ def create_slo_router(
                 "violations": violations,
                 "data_available": data_available,
                 "page_title": "SLO Compliance",
+                "at_risk_count": at_risk_count,
+                "breached_count": breached_count,
+                "banner_status": banner_status,
             },
         )
 
