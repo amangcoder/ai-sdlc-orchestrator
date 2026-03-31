@@ -540,11 +540,10 @@ class TestConfigYamlLoading:
                 evaluation_window_hours: 12
         """)
         cfg = load_config(cfg_path)
-        # monitoring is stored as dict in OrchestratorConfig — verify raw dict
-        assert isinstance(cfg.monitoring, dict)
-        slo_dict = cfg.monitoring.get("slo", {})
-        assert slo_dict.get("pipeline_success_rate") == 0.99
-        assert slo_dict.get("evaluation_window_hours") == 12
+        # monitoring is now a typed MonitoringConfig — validate as a typed model
+        assert isinstance(cfg.monitoring, MonitoringConfig)
+        assert cfg.monitoring.slo.pipeline_success_rate == 0.99
+        assert cfg.monitoring.slo.evaluation_window_hours == 12
 
     def test_monitoring_config_direct_parse(self):
         """MonitoringConfig can be constructed directly with all new fields."""

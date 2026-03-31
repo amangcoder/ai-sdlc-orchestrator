@@ -7,6 +7,16 @@
         "/Users/amangupta/Projects/knowledge-base-mcp/dist/index.js",
         "serve"
       ]
+    },
+    "claude-flow": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "tsx",
+        "/Users/amangupta/Projects/AITools/ruflo/v3/mcp/server-entry.ts",
+        "--tools",
+        "memory,session,task,workflow,system,coordination,hooks,agent,terminal,browser,progress,performance,neural,embeddings,claims,hive-mind,analyze,config,transfer,wasm,autopilot,guidance,github,ruvllm"
+      ]
     }
   }
 }

@@ -136,6 +136,21 @@ database:
   event_log_sidecar: true    # also write .jsonl event files (disable to save disk)
   run_state_sidecar: true    # also write state.json files (needed for crash recovery)
 
+# --- Trajectory tracking (action→observation→reward per agent) ---
+trajectory:
+  enabled: true                      # track structured trajectories for each agent invocation
+  global_dir: "~/.orchestrator/trajectories"  # cross-run trajectory storage for learning
+  # Future: adaptive routing uses trajectory history to pick optimal model tiers
+
+# --- Claude-flow MCP bridge (Ruflo memory/session/tasks tools) ---
+claude_flow:
+  enabled: true                      # integrate claude-flow MCP tools for cross-agent coordination
+  ruflo_path: ""                     # absolute path to ruflo installation; empty = auto-detect from ~/Projects/AITools/ruflo
+  tools:                             # which tool categories to enable
+    memory: true                     # memory/store, memory/search, memory/list
+    session: true                    # session/save, session/restore, session/list
+    tasks: true                      # tasks/create, tasks/list, tasks/status, tasks/dependencies, etc.
+
 # --- Artifact management (versioning, retention, indexing) ---
 artifacts:
   versioning_enabled: true         # keep version history of artifacts in .versions/

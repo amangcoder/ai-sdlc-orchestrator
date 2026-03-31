@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)

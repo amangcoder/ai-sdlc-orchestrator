@@ -516,7 +516,19 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
         "Glob (not find/ls), Edit (not sed/awk), Write (not echo/cat heredoc). "
         "The Bash tool is ONLY for running tests, git commands, and build tools.\n\n"
     )
-    full_system_prompt = autonomous_prefix + tools_section + (system_prompt or "")
+    # Inject claude-flow tool instructions if bridge is available
+    claude_flow_section = ""
+    try:
+        from orchestrator.claude_flow_bridge import build_claude_flow_prompt_section
+        # Extract role from agent name (e.g., "backend-engineer" -> "backend_engineer")
+        agent_role = invocation.agent_name.replace("-", "_")
+        cf_prompt = build_claude_flow_prompt_section(agent_role)
+        if cf_prompt:
+            claude_flow_section = cf_prompt + "\n\n"
+    except ImportError:
+        pass
+
+    full_system_prompt = autonomous_prefix + tools_section + claude_flow_section + (system_prompt or "")
 
     # Use project root as cwd so the agent can explore the actual codebase.
     # Artifact paths in the prompt are absolute, so cwd only affects exploration.

@@ -7,7 +7,6 @@ import json
 import logging
 import re
 import time
-from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -631,6 +630,7 @@ class WorkflowEngine:
         self.artifact_manager = artifact_manager  # ArtifactManager | None
         self.progress = ProgressTracker(workflow, state)
         self._step_start_times: dict[str, float] = {}
+        self._step_start_costs: dict[str, float] = {}  # cumulative cost snapshot at phase start
         self._knowledge_watcher: KnowledgeWatcher | None = None
         # Temporary storage for agent outputs — used to rescue artifacts
         # when agents output JSON in response text instead of calling Write tool.
@@ -740,6 +740,51 @@ class WorkflowEngine:
             json.dumps(data, indent=2), encoding="utf-8"
         )
 
+    def _emit_phase_complete(
+        self,
+        step: "WorkflowStepDefinition",
+        success: bool,
+        artifact_valid: bool | None = None,
+    ) -> None:
+        """Emit a phase_complete event so MonitoringStack.on_phase_end() is triggered.
+
+        This wires the phase_complete dispatch entry in observability.py, which
+        calls MonitoringStack.on_phase_end() → SLOTracker.record_phase_result() and
+        SLOTracker.record_artifact_validation().  Without this call those two SLIs
+        (phase_duration_p95 and artifact_validation_rate) remain permanently unpopulated.
+
+        Payload keys match what the _phase_complete handler in RunLogger._dispatch_to_monitoring
+        expects:
+            phase        → phase_name (primary key)
+            step         → fallback key
+            success      → success flag
+            duration_s   → elapsed seconds for this phase
+            cost_usd     → cost accumulated during this phase
+            artifact_valid → whether all artifacts passed validation (None = unknown)
+        """
+        if not self.run_logger:
+            return
+
+        now = time.time()
+        duration_s = now - self._step_start_times.get(step.name, now)
+
+        # Phase cost = cumulative_cost_usd delta since phase start
+        start_cost = self._step_start_costs.get(step.name, self.run_logger.cumulative_cost_usd)
+        cost_usd = max(0.0, self.run_logger.cumulative_cost_usd - start_cost)
+
+        try:
+            self.run_logger.log_event("phase_complete", {
+                "phase": step.name,
+                "step": step.name,
+                "success": success,
+                "duration_s": round(duration_s, 3),
+                "cost_usd": round(cost_usd, 6),
+                "artifact_valid": artifact_valid,
+            })
+        except Exception as exc:
+            # Monitoring must never break the pipeline
+            logger.debug(f"Failed to emit phase_complete event for '{step.name}': {exc}")
+
     async def execute(self) -> RunState:
         """Execute the entire workflow from start to finish."""
         logger.info(f"Starting workflow: {self.workflow.name} ({len(self.workflow.steps)} steps)")
@@ -824,6 +869,9 @@ class WorkflowEngine:
         phase_key = self._step_to_phase_key(step)
         self.state.phases[phase_key] = PhaseState(status=PhaseStatus.RUNNING)
         self._step_start_times[step.name] = time.time()
+        self._step_start_costs[step.name] = (
+            self.run_logger.cumulative_cost_usd if self.run_logger else 0.0
+        )
 
         # Initialize artifact cache for this step (phase-scoped lifetime)
         workspace = Path(self.state.workspace_dir)
@@ -878,6 +926,7 @@ class WorkflowEngine:
                     )
             self.state.phases[phase_key].status = PhaseStatus.COMPLETED
             self.state.completed_steps.append(step.name)
+            self._emit_phase_complete(step, success=True, artifact_valid=True)
             return "completed"
 
         # Start knowledge watcher for parallel implementation steps
@@ -1037,11 +1086,13 @@ class WorkflowEngine:
                 missing_files = ", ".join(f"{a}.json" for a in missing_artifacts)
                 self.state.phases[phase_key].status = PhaseStatus.FAILED
                 self.state.phases[phase_key].error = f"Artifact(s) not written to disk: {missing_files}"
+                self._emit_phase_complete(step, success=False, artifact_valid=False)
                 return "failed"
 
             if invalid_artifacts:
                 self.state.phases[phase_key].status = PhaseStatus.FAILED
                 self.state.phases[phase_key].error = f"Artifact validation: {invalid_artifacts}"
+                self._emit_phase_complete(step, success=False, artifact_valid=False)
                 return "failed"
 
             # If an implementation step wrote a review.json that isn't in its
@@ -1059,6 +1110,7 @@ class WorkflowEngine:
 
             self.state.phases[phase_key].status = PhaseStatus.COMPLETED
             self.state.completed_steps.append(step.name)
+            self._emit_phase_complete(step, success=True, artifact_valid=True)
             update_cumulative_context(
                 workspace=workspace,
                 phase_name=step.name,
@@ -1070,6 +1122,7 @@ class WorkflowEngine:
             return "completed"
         else:
             self.state.phases[phase_key].status = PhaseStatus.FAILED
+            self._emit_phase_complete(step, success=False, artifact_valid=None)
             self._task_outputs.clear()
             self._task_written_files.clear()
             return "failed"

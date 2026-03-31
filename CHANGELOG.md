@@ -2,6 +2,48 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.13.0] - 2026-03-31
+
+### Added
+
+**Trajectory Tracking**
+- `src/orchestrator/trajectory.py` — structured action→observation→reward records per agent invocation
+- `TrajectoryStore` with JSONL persistence, per-run and global cross-run storage, and run summary aggregation
+- Trajectory verdict classification (`success`, `failure`, `partial`, `pending`) with cost and token attribution per agent
+- Adaptive routing foundation: trajectory history enables future model-tier selection based on past agent performance
+- Engine integration: trajectory tracking auto-initialized at pipeline start, summary emitted to run metadata on completion
+
+**Claude-flow MCP Bridge**
+- `src/orchestrator/claude_flow_bridge.py` — optional integration with Ruflo/claude-flow MCP tools for cross-agent coordination
+- Auto-discovery of claude-flow installation from `~/Projects/AITools/ruflo` and fallback paths
+- Role-based tool filtering: each agent role receives only the MCP tools relevant to its responsibilities (PM → memory only; engineers → memory + tasks; reviewers → read-only)
+- Allowed tool set: `memory/store`, `memory/search`, `memory/list`, `session/save`, `session/restore`, `tasks/create`, `tasks/list`, `tasks/status`, `tasks/dependencies`, and related task operations
+- Engine integration: claude-flow MCP config injected into all agent invocations when available
+- Agent integration: claude-flow prompt section auto-injected into system prompts per agent role
+
+**Claude Code Developer Tooling** (`.claude/`)
+- Contexts: `dev.md`, `research.md`, `review.md` — role-specific behavioral instructions for Claude Code sessions
+- Hooks: `block-no-verify.sh`, `console-log-check.sh`, `cost-tracker.sh`, `mcp-health-check.sh`, `post-edit-lint.sh`, `pre-push-review.sh`, `secret-detection.sh`, `session-persist.sh`
+- Rules: comprehensive Python and common coding rules covering async patterns, testing, typing, style, packages, security, git workflow, hooks, performance, patterns, and agents
+- Skills: `build-fix`, `checkpoint`, `code-review`, `learn`, `plan`, `refactor-clean`, `security-scan`, `tdd`, `update-docs`, `verify`
+
+**Configuration**
+- `config/default.yaml` — `trajectory` section: `enabled`, `global_dir`
+- `config/default.yaml` — `claude_flow` section: `enabled`, `ruflo_path`, tool category toggles (`memory`, `session`, `tasks`)
+
+### Changed
+
+- `src/orchestrator/engine.py` — trajectory and claude-flow bridge initialization in `PipelineEngine.__init__`; trajectory summary included in run completion metadata
+- `src/orchestrator/agents.py` — claude-flow prompt section injected into agent system prompts when bridge is available
+- `src/orchestrator/models.py` — new config models for `TrajectoryConfig` and `ClaudeFlowConfig`
+- `src/orchestrator/config.py` — `TrajectoryConfig` and `ClaudeFlowConfig` wired into `OrchestratorConfig`
+
+### Tests
+
+- `tests/test_task011_artifact_versioning.py` — artifact versioning and lifecycle tests
+
+---
+
 ## [0.12.0] - 2026-03-27
 
 ### Added

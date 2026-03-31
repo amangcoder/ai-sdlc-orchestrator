@@ -74,8 +74,6 @@ class RunLogger:
         if write_sidecar:
             self._log_path.touch()
         self._cumulative_cost: float = 0.0
-        self._cumulative_input_tokens: int = 0
-        self._cumulative_output_tokens: int = 0
         self._lock = threading.Lock()
         self._log = structlog.get_logger(__name__)
         self._monitoring: MonitoringStack | None = None
@@ -114,13 +112,12 @@ class RunLogger:
         with self._lock:
             return self._cumulative_input_tokens + self._cumulative_output_tokens
 
+
     def log_event(self, event_type: str, data: dict) -> None:
         level = _derive_level(event_type, data)
         with self._lock:
             if event_type == "agent_result":
                 self._cumulative_cost += data.get("cost_usd", 0.0)
-                self._cumulative_input_tokens += data.get("input_tokens", 0)
-                self._cumulative_output_tokens += data.get("output_tokens", 0)
             record = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "run_id": self.run_id,

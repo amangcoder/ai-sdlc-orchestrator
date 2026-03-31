@@ -1,7 +1,18 @@
 {
   "hooks": {
     "PreToolUse": [
-      { "matcher": "Write|Edit|MultiEdit", "command": ".claude/hooks/block-writes.sh" }
+      { "matcher": "Write|Edit|MultiEdit", "command": ".claude/hooks/block-writes.sh" },
+      { "matcher": "Write|Edit", "command": ".claude/hooks/secret-detection.sh" },
+      { "matcher": "Bash", "command": ".claude/hooks/block-no-verify.sh" },
+      { "matcher": "Bash", "command": ".claude/hooks/pre-push-review.sh" }
+    ],
+    "PostToolUse": [
+      { "matcher": "Edit|Write", "command": ".claude/hooks/post-edit-lint.sh", "async": true }
+    ],
+    "Stop": [
+      { "command": ".claude/hooks/console-log-check.sh" },
+      { "command": ".claude/hooks/cost-tracker.sh", "async": true },
+      { "command": ".claude/hooks/session-persist.sh", "async": true }
     ],
     "TaskCompleted": [
       { "command": ".claude/hooks/validate-task-completion.sh" }
