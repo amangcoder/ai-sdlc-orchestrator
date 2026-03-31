@@ -9,6 +9,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from orchestrator.monitoring.config import MonitoringConfig
+
 
 # --- Enums ---
 
@@ -1103,6 +1105,29 @@ class AllowedDirectoryConfig(BaseModel):
     name: str | None = None
 
 
+class TrajectoryConfig(BaseModel):
+    """Configuration for trajectory tracking (action→observation→reward per agent)."""
+
+    enabled: bool = True
+    global_dir: str = "~/.orchestrator/trajectories"
+
+
+class ClaudeFlowToolsConfig(BaseModel):
+    """Fine-grained control over which claude-flow tool categories are enabled."""
+
+    memory: bool = True
+    session: bool = True
+    tasks: bool = True
+
+
+class ClaudeFlowConfig(BaseModel):
+    """Configuration for the claude-flow/Ruflo MCP bridge."""
+
+    enabled: bool = True
+    ruflo_path: str = ""
+    tools: ClaudeFlowToolsConfig = Field(default_factory=ClaudeFlowToolsConfig)
+
+
 class ArtifactsConfig(BaseModel):
     """Configuration for artifact versioning, indexing, and retention.
 
@@ -1165,12 +1190,14 @@ class OrchestratorConfig(BaseModel):
     debate: DebateConfig = Field(default_factory=DebateConfig)
     knowledge: KnowledgeConfig = Field(default_factory=KnowledgeConfig)
     artifacts: ArtifactsConfig = Field(default_factory=ArtifactsConfig)
+    trajectory: TrajectoryConfig = Field(default_factory=TrajectoryConfig)
+    claude_flow: ClaudeFlowConfig = Field(default_factory=ClaudeFlowConfig)
     container: ContainerConfig = Field(default_factory=ContainerConfig)
     knowledge_context: KnowledgeContext | None = None
     test_runner: TestRunnerConfig = Field(default_factory=TestRunnerConfig)
     research_cache: ResearchCacheConfig = Field(default_factory=ResearchCacheConfig)
     research_cache_context: ResearchCacheContext | None = None
-    monitoring: dict[str, Any] = Field(default_factory=dict)
+    monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     routing_mode: str | None = None
     speed_mode: SpeedMode | None = None
 

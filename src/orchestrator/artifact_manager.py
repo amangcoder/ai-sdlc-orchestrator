@@ -19,7 +19,7 @@ Security:
 
 from __future__ import annotations
 
-import fcntl
+import hashlib
 import json
 import logging
 import re
@@ -34,6 +34,20 @@ from orchestrator.models import ArtifactsConfig
 from orchestrator.persistence import atomic_write
 
 log = logging.getLogger(__name__)
+
+# fcntl is Unix-only — guard import for cross-platform compatibility.
+# Follows the project's HAS_*/try-except ImportError pattern (see monitoring/).
+try:
+    import fcntl as _fcntl
+    HAS_FCNTL = True
+except ImportError:  # pragma: no cover — Windows path
+    import threading as _threading
+    _lock_fallback = _threading.Lock()
+    HAS_FCNTL = False
+    log.warning(
+        "fcntl unavailable on this platform — using threading.Lock for "
+        ".index.json protection (process-local only)"
+    )
 
 # Artifact name validation: starts with alphanumeric, followed by alphanumeric/hyphens/underscores
 _NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]*$")
@@ -55,6 +69,7 @@ class ArtifactMetadata(BaseModel):
     created_at: str
     updated_at: str
     size_bytes: int = 0
+    valid: bool = True  # True when the artifact passed schema validation
 
 
 class ArtifactVersion(BaseModel):
@@ -66,6 +81,7 @@ class ArtifactVersion(BaseModel):
     created_at: str
     size_bytes: int = 0
     run_status: str = "unknown"
+    checksum: str = ""  # SHA-256 hex digest of the serialised artifact payload
 
 
 class ArtifactDiff(BaseModel):
@@ -177,7 +193,11 @@ class ArtifactManager:
         # Open (or create) the lock file in append mode — inode stays stable.
         lock_fd = open(lock_path, "a", encoding="utf-8")
         try:
-            fcntl.flock(lock_fd.fileno(), fcntl.LOCK_EX)
+            # Acquire exclusive lock — platform-aware (fcntl on Unix, threading.Lock on Windows).
+            if HAS_FCNTL:
+                _fcntl.flock(lock_fd.fileno(), _fcntl.LOCK_EX)
+            else:  # pragma: no cover — Windows fallback
+                _lock_fallback.acquire()
 
             # Re-read the index AFTER acquiring the lock so we always see the
             # latest version written by the previous lock-holder.
@@ -197,10 +217,13 @@ class ArtifactManager:
             # Write back atomically while still holding the lock.
             atomic_write(self._index_path, json.dumps(index, indent=2, default=str))
         finally:
-            try:
-                fcntl.flock(lock_fd.fileno(), fcntl.LOCK_UN)
-            except OSError:
-                pass
+            if HAS_FCNTL:
+                try:
+                    _fcntl.flock(lock_fd.fileno(), _fcntl.LOCK_UN)
+                except OSError:
+                    pass
+            else:  # pragma: no cover — Windows fallback
+                _lock_fallback.release()
             lock_fd.close()
 
     def _read_index(self) -> dict[str, Any]:
@@ -250,7 +273,9 @@ class ArtifactManager:
         current_path = self._safe_path(f"{name}.json")
 
         payload = json.dumps(data, indent=2, default=str)
-        size_bytes = len(payload.encode("utf-8"))
+        payload_bytes = payload.encode("utf-8")
+        size_bytes = len(payload_bytes)
+        checksum = hashlib.sha256(payload_bytes).hexdigest()
         now = datetime.now(timezone.utc).isoformat()
 
         self.artifacts_dir.mkdir(parents=True, exist_ok=True)
@@ -289,6 +314,7 @@ class ArtifactManager:
                     "created_at": now,
                     "size_bytes": size_bytes,
                     "run_status": "running",
+                    "checksum": checksum,
                 }
 
                 artifacts[name] = {
@@ -433,6 +459,7 @@ class ArtifactManager:
                     created_at=ver_data.get("created_at", ""),
                     size_bytes=ver_data.get("size_bytes", 0),
                     run_status=ver_data.get("run_status", "unknown"),
+                    checksum=ver_data.get("checksum", ""),
                 )
             )
 
@@ -459,7 +486,11 @@ class ArtifactManager:
         history = self.get_artifact_history(run_a, name)
 
         def _find_version(r_id: str) -> int | None:
-            for v in history:
+            # Iterate in reverse (descending version) so the first match is the
+            # *latest* version saved by this run, not the earliest.  A single run
+            # can save the same artifact multiple times (e.g. iterative refinement),
+            # and callers expect the most recent snapshot to be compared.
+            for v in reversed(history):
                 if v.run_id == r_id:
                     return v.version
             return None

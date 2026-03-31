@@ -998,3 +998,220 @@ class TestRunLoggerLogEventTriggersLoki:
 
         enriched = fake_stack.on_log_event.call_args[0][0]
         assert enriched["level"] == "ERROR"
+
+
+# ===========================================================================
+# TASK-002 — WorkflowEngine emits phase_complete via _emit_phase_complete
+# ===========================================================================
+
+
+class TestWorkflowEnginePhaseCompleteEmission:
+    """Verify that WorkflowEngine._emit_phase_complete fires log_event('phase_complete', ...)
+    with all required payload fields and that the dispatch path reaches on_phase_end()."""
+
+    def _make_step(self, name="Test Phase"):
+        from orchestrator.models import WorkflowStepDefinition, AgentRole
+        return WorkflowStepDefinition(
+            name=name,
+            agent_role=AgentRole.BACKEND_ENGINEER,
+            inputs=[],
+            outputs=[],
+        )
+
+    def _make_workflow_engine(self, tmp_path, run_logger=None):
+        """Build a minimal WorkflowEngine that is wired but won't actually execute tasks."""
+        from orchestrator.models import (
+            OrchestratorConfig, RunState, WorkflowDefinition, WorkflowType,
+        )
+        from orchestrator.workflow_engine import WorkflowEngine
+
+        step = self._make_step()
+        workflow = WorkflowDefinition(
+            name="Test Workflow",
+            workflow_type=WorkflowType.FEATURE_DEVELOPMENT,
+            steps=[step],
+        )
+        state = RunState(
+            run_id="test-run-001",
+            workspace_dir=str(tmp_path),
+            workflow_type=WorkflowType.FEATURE_DEVELOPMENT,
+        )
+        config = OrchestratorConfig(workspace_dir=str(tmp_path))
+        engine = WorkflowEngine(
+            workflow=workflow,
+            state=state,
+            config=config,
+            run_logger=run_logger,
+        )
+        return engine, step
+
+    def test_emit_phase_complete_calls_log_event_with_phase_complete_event(self, tmp_path):
+        """_emit_phase_complete must call run_logger.log_event('phase_complete', ...)."""
+        from orchestrator.observability import RunLogger
+
+        run_logger = RunLogger(log_dir=tmp_path / "logs", run_id="test-run-001")
+        logged_events = []
+        original_log_event = run_logger.log_event
+
+        def capturing_log_event(event_type, data):
+            logged_events.append((event_type, data))
+            return original_log_event(event_type, data)
+
+        run_logger.log_event = capturing_log_event
+
+        engine, step = self._make_workflow_engine(tmp_path, run_logger=run_logger)
+        import time
+        engine._step_start_times[step.name] = time.time() - 1.0  # 1 second ago
+        engine._step_start_costs[step.name] = 0.0
+
+        engine._emit_phase_complete(step, success=True, artifact_valid=True)
+
+        assert len(logged_events) == 1
+        event_type, payload = logged_events[0]
+        assert event_type == "phase_complete"
+
+    def test_emit_phase_complete_payload_includes_all_required_fields(self, tmp_path):
+        """phase_complete payload must include: phase, success, duration_s, cost_usd, artifact_valid."""
+        from orchestrator.observability import RunLogger
+
+        run_logger = RunLogger(log_dir=tmp_path / "logs", run_id="test-run-002")
+        logged_payloads = []
+        original = run_logger.log_event
+
+        def capture(event_type, data):
+            if event_type == "phase_complete":
+                logged_payloads.append(data)
+            return original(event_type, data)
+
+        run_logger.log_event = capture
+
+        engine, step = self._make_workflow_engine(tmp_path, run_logger=run_logger)
+        import time
+        engine._step_start_times[step.name] = time.time() - 2.5
+        engine._step_start_costs[step.name] = 0.0
+
+        engine._emit_phase_complete(step, success=True, artifact_valid=True)
+
+        assert len(logged_payloads) == 1
+        payload = logged_payloads[0]
+        # Required fields per TASK-002 acceptance criteria
+        assert "phase" in payload, "payload must contain 'phase' key"
+        assert "success" in payload, "payload must contain 'success' key"
+        assert "duration_s" in payload, "payload must contain 'duration_s' key"
+        assert "cost_usd" in payload, "payload must contain 'cost_usd' key"
+        assert "artifact_valid" in payload, "payload must contain 'artifact_valid' key"
+        assert payload["phase"] == step.name
+        assert payload["success"] is True
+        assert payload["artifact_valid"] is True
+        assert isinstance(payload["duration_s"], float)
+        assert isinstance(payload["cost_usd"], float)
+        assert payload["duration_s"] >= 0.0
+
+    def test_emit_phase_complete_success_false_propagates(self, tmp_path):
+        """Failed phase must emit success=False."""
+        from orchestrator.observability import RunLogger
+
+        run_logger = RunLogger(log_dir=tmp_path / "logs", run_id="test-run-003")
+        logged_payloads = []
+        original = run_logger.log_event
+
+        def capture(event_type, data):
+            if event_type == "phase_complete":
+                logged_payloads.append(data)
+            return original(event_type, data)
+
+        run_logger.log_event = capture
+
+        engine, step = self._make_workflow_engine(tmp_path, run_logger=run_logger)
+        import time
+        engine._step_start_times[step.name] = time.time()
+        engine._step_start_costs[step.name] = 0.0
+
+        engine._emit_phase_complete(step, success=False, artifact_valid=False)
+
+        assert logged_payloads[0]["success"] is False
+        assert logged_payloads[0]["artifact_valid"] is False
+
+    def test_emit_phase_complete_artifact_valid_none_propagates(self, tmp_path):
+        """artifact_valid=None (unknown) must be passed through as None."""
+        from orchestrator.observability import RunLogger
+
+        run_logger = RunLogger(log_dir=tmp_path / "logs", run_id="test-run-004")
+        logged_payloads = []
+        original = run_logger.log_event
+
+        def capture(event_type, data):
+            if event_type == "phase_complete":
+                logged_payloads.append(data)
+            return original(event_type, data)
+
+        run_logger.log_event = capture
+
+        engine, step = self._make_workflow_engine(tmp_path, run_logger=run_logger)
+        import time
+        engine._step_start_times[step.name] = time.time()
+        engine._step_start_costs[step.name] = 0.0
+
+        engine._emit_phase_complete(step, success=False, artifact_valid=None)
+
+        assert logged_payloads[0]["artifact_valid"] is None
+
+    def test_emit_phase_complete_noop_when_no_run_logger(self, tmp_path):
+        """_emit_phase_complete must be a no-op when run_logger is None."""
+        engine, step = self._make_workflow_engine(tmp_path, run_logger=None)
+        # Must not raise
+        engine._emit_phase_complete(step, success=True, artifact_valid=True)
+
+    def test_emit_phase_complete_routes_to_monitoring_on_phase_end(self, tmp_path):
+        """phase_complete event must route through dispatch → MonitoringStack.on_phase_end()."""
+        from orchestrator.observability import RunLogger
+
+        run_logger = RunLogger(log_dir=tmp_path / "logs", run_id="test-run-005")
+        fake_stack = MagicMock()
+        fake_stack.current_trace_id = "test-trace"
+        run_logger.set_monitoring_stack(fake_stack)
+
+        engine, step = self._make_workflow_engine(tmp_path, run_logger=run_logger)
+        import time
+        engine._step_start_times[step.name] = time.time() - 3.0
+        engine._step_start_costs[step.name] = 0.0
+
+        engine._emit_phase_complete(step, success=True, artifact_valid=True)
+
+        # on_phase_end must have been called via the dispatch table
+        fake_stack.on_phase_end.assert_called_once()
+        call_kwargs = fake_stack.on_phase_end.call_args[1]
+        assert call_kwargs["phase_name"] == step.name
+        assert call_kwargs["success"] is True
+        assert call_kwargs["artifact_valid"] is True
+        assert call_kwargs["duration_s"] >= 0.0
+
+    def test_emit_phase_complete_routes_slo_record_phase_result(self, tmp_path):
+        """phase_complete → on_phase_end → SLOTracker.record_phase_result() with duration data."""
+        from orchestrator.observability import RunLogger
+        from orchestrator.monitoring import MonitoringStack
+        from orchestrator.monitoring.config import MonitoringConfig, SLOConfig
+
+        slo_cfg = SLOConfig(enabled=True)
+        config = MonitoringConfig(slo=slo_cfg)
+
+        run_logger = RunLogger(log_dir=tmp_path / "logs", run_id="test-run-006")
+        stack = MonitoringStack(config=config, run_id="test-run-006", workspace=tmp_path)
+
+        # Replace the real SLOTracker with a mock to capture calls
+        fake_slo = MagicMock()
+        stack._slo_tracker = fake_slo
+        run_logger.set_monitoring_stack(stack)
+
+        engine, step = self._make_workflow_engine(tmp_path, run_logger=run_logger)
+        import time
+        engine._step_start_times[step.name] = time.time() - 1.5
+        engine._step_start_costs[step.name] = 0.0
+
+        engine._emit_phase_complete(step, success=True, artifact_valid=True)
+
+        # SLOTracker.record_phase_result must have been called with duration data
+        fake_slo.record_phase_result.assert_called_once()
+        call_kwargs = fake_slo.record_phase_result.call_args[1]
+        assert call_kwargs["phase_name"] == step.name
+        assert call_kwargs["duration_s"] >= 0.0

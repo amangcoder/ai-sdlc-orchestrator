@@ -152,6 +152,8 @@ class OrchestratorEngine:
         rc = self.config.research_cache_context
         if rc and rc.mcp_server_config:
             servers.update(rc.mcp_server_config.get("mcpServers", {}))
+        if self._claude_flow_mcp_config:
+            servers.update(self._claude_flow_mcp_config)
         return servers or None
 
     async def run(
@@ -380,12 +382,10 @@ class OrchestratorEngine:
 
         # Initialize monitoring stack (opt-in)
         self._monitoring = None
-        monitoring_raw = self.config.monitoring
-        if monitoring_raw and any(monitoring_raw.get(k) for k in ("metrics_enabled", "tracing_enabled", "webhooks")):
+        mon_config = self.config.monitoring
+        if mon_config.metrics_enabled or mon_config.tracing_enabled or mon_config.webhooks:
             try:
                 from orchestrator.monitoring import MonitoringStack
-                from orchestrator.monitoring.config import MonitoringConfig
-                mon_config = MonitoringConfig(**monitoring_raw)
                 self._monitoring = MonitoringStack(
                     config=mon_config,
                     run_id=state.run_id,
@@ -395,6 +395,34 @@ class OrchestratorEngine:
                 self.run_logger.set_monitoring_stack(self._monitoring)
             except Exception as e:
                 logger.warning(f"Monitoring stack initialization failed: {e}")
+
+        # Initialize trajectory tracking (action→observation→reward per agent)
+        self._trajectory_store = None
+        if self.config.trajectory.enabled:
+            try:
+                from orchestrator.trajectory import TrajectoryStore
+                global_dir = Path(self.config.trajectory.global_dir.replace("~", str(Path.home())))
+                self._trajectory_store = TrajectoryStore(
+                    run_dir=workspace / "logs",
+                    global_dir=global_dir,
+                )
+                logger.info("Trajectory tracking initialized")
+            except Exception as e:
+                logger.debug(f"Trajectory tracking disabled: {e}")
+
+        # Initialize claude-flow MCP bridge (Ruflo memory/session/tasks tools)
+        self._claude_flow_mcp_config: dict[str, Any] | None = None
+        if self.config.claude_flow.enabled:
+            try:
+                from orchestrator.claude_flow_bridge import get_claude_flow_mcp_config
+                cf_config = get_claude_flow_mcp_config(
+                    ruflo_path=self.config.claude_flow.ruflo_path or None,
+                )
+                if cf_config:
+                    self._claude_flow_mcp_config = cf_config
+                    logger.info("Claude-flow MCP tools configured (memory, session, tasks)")
+            except Exception as e:
+                logger.debug(f"Claude-flow MCP bridge not available: {e}")
 
         # Redact sensitive fields from config before logging
         config_data = self.config.model_dump()
@@ -466,10 +494,16 @@ class OrchestratorEngine:
         await self._crash_manager.stop_heartbeat()
         self._crash_manager.deactivate()
 
+        # Log trajectory summary for the run
+        trajectory_summary: dict[str, Any] = {}
+        if self._trajectory_store:
+            trajectory_summary = self._trajectory_store.get_run_summary()
+
         self.run_logger.log_event("run_complete", {
             "total_cost_usd": state.total_cost_usd,
             "workflow_type": state.workflow_type.value,
             "phases": {k: v.model_dump() for k, v in state.phases.items()},
+            "trajectory_summary": trajectory_summary,
         })
 
         if self._monitoring:

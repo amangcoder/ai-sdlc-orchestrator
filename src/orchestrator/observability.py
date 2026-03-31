@@ -65,8 +65,6 @@ class RunLogger:
         self._log_path = log_dir / f"run-{run_id}.jsonl"
         self._log_path.touch()
         self._cumulative_cost: float = 0.0
-        self._cumulative_input_tokens: int = 0
-        self._cumulative_output_tokens: int = 0
         self._lock = threading.Lock()
         self._log = structlog.get_logger(__name__)
         self._monitoring: MonitoringStack | None = None
@@ -75,27 +73,10 @@ class RunLogger:
         """Attach a MonitoringStack to receive all events."""
         self._monitoring = stack
 
-    @property
-    def cumulative_input_tokens(self) -> int:
-        with self._lock:
-            return self._cumulative_input_tokens
-
-    @property
-    def cumulative_output_tokens(self) -> int:
-        with self._lock:
-            return self._cumulative_output_tokens
-
-    @property
-    def cumulative_total_tokens(self) -> int:
-        with self._lock:
-            return self._cumulative_input_tokens + self._cumulative_output_tokens
-
     def log_event(self, event_type: str, data: dict) -> None:
         with self._lock:
             if event_type == "agent_result":
                 self._cumulative_cost += data.get("cost_usd", 0.0)
-                self._cumulative_input_tokens += data.get("input_tokens", 0)
-                self._cumulative_output_tokens += data.get("output_tokens", 0)
             record = {
                 "ts": datetime.now(timezone.utc).isoformat(),
                 "run_id": self.run_id,

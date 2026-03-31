@@ -1,0 +1,23 @@
+{
+  "tasks": {
+    "task-1774938957023-7hdt32": {
+      "taskId": "task-1774938957023-7hdt32",
+      "type": "feature",
+      "description": "Integrate everything-claude-code features into orchestrator project: rules, hooks, skills, contexts",
+      "priority": "high",
+      "status": "completed",
+      "progress": 100,
+      "assignedTo": [],
+      "tags": [
+        "everything-claude-code",
+        "integration",
+        "completed"
+      ],
+      "createdAt": "2026-03-31T06:35:57.023Z",
+      "startedAt": null,
+      "completedAt": "2026-03-31T06:36:56.338Z",
+      "result": "Completed: Added 14 rules, 8 hooks, 10 skills, 3 contexts with Ruflo MCP integration. Updated .mcp.json with claude-flow server. All skills/contexts now reference Ruflo memory_store, memory_search, session_save, and task_create tools."
+    }
+  },
+  "version": "3.0.0"
+}

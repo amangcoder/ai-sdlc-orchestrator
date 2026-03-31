@@ -117,8 +117,10 @@ class TestEngineInitArtifactManager:
     def test_init_handles_artifact_manager_init_error_gracefully(self):
         """If ArtifactManager.__init__ raises, engine init must not crash."""
         config = _make_config(versioning_enabled=True)
+        # ArtifactManager is imported locally inside engine.__init__, so we
+        # must patch at the source module, not at orchestrator.engine.
         with patch(
-            "orchestrator.engine.ArtifactManager",
+            "orchestrator.artifact_manager.ArtifactManager",
             side_effect=RuntimeError("disk error"),
         ):
             # Should not raise
@@ -678,3 +680,387 @@ class TestRescueArtifactsFromOutput:
         workspace = Path(state.workspace_dir)
         result = engine._rescue_artifacts_from_output(["prd"], workspace)
         assert result == []
+
+
+# ---------------------------------------------------------------------------
+# TASK-008 / AC-008: Backward Compatibility — versioning must not break
+#                    any existing read path
+# ---------------------------------------------------------------------------
+
+
+class TestAC008BackwardCompatibility:
+    """AC-008: ArtifactCache & direct file reads are unaffected by versioning.
+
+    Covers all seven acceptance criteria for TASK-008:
+      1. ArtifactCache.load_artifact('prd') identical with versioning on/off
+      2. Direct file read to artifacts/prd.json returns current version
+      3. ArtifactCache.get() (321 callers) unaffected
+      4. Versioned copies (.versions/) do NOT interfere with direct reads
+      5. save_artifact() writes current-version file before versioned copy
+      6. Identical data returned regardless of whether index is enabled
+      7. Round-trip: save → direct-read → cache-read → all equal
+    """
+
+    # ------------------------------------------------------------------
+    # AC-008-1  ArtifactCache.load_artifact identical with versioning on/off
+    # ------------------------------------------------------------------
+
+    def test_load_artifact_identical_versioning_enabled(self, tmp_path):
+        """ArtifactCache.load_artifact('prd') returns the same data when
+        versioning is enabled and ArtifactManager wrote the file."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        prd_data = {"title": "AC-008 PRD", "requirements": ["REQ-001", "REQ-002"]}
+
+        # Write via ArtifactManager with versioning ON (default)
+        am_with_versioning = ArtifactManager(artifacts_dir)
+        am_with_versioning.save_artifact("run-ac008-v", "prd", prd_data, agent="pm")
+
+        cache = ArtifactCache(tmp_path)
+        loaded = cache.load_artifact("prd")
+        assert loaded == prd_data, (
+            "ArtifactCache.load_artifact must return identical data when versioning is enabled"
+        )
+
+    def test_load_artifact_identical_versioning_disabled(self, tmp_path):
+        """ArtifactCache.load_artifact('prd') returns the same data when
+        versioning is disabled and ArtifactManager wrote the file."""
+        from orchestrator.models import ArtifactsConfig
+
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        prd_data = {"title": "AC-008 PRD", "requirements": ["REQ-001", "REQ-002"]}
+
+        # Write via ArtifactManager with versioning OFF
+        cfg = ArtifactsConfig(versioning_enabled=False, index_enabled=True)
+        am_no_versioning = ArtifactManager(artifacts_dir, config=cfg)
+        am_no_versioning.save_artifact("run-ac008-nv", "prd", prd_data, agent="pm")
+
+        cache = ArtifactCache(tmp_path)
+        loaded = cache.load_artifact("prd")
+        assert loaded == prd_data, (
+            "ArtifactCache.load_artifact must return identical data when versioning is disabled"
+        )
+
+    def test_load_artifact_same_data_versioning_on_vs_off(self, tmp_path):
+        """The data returned by ArtifactCache.load_artifact is identical
+        whether versioning was enabled or disabled at save time."""
+        from orchestrator.models import ArtifactsConfig
+
+        prd_data = {
+            "title": "Consistency Check",
+            "requirements": ["REQ-001"],
+            "unicode": "résumé • 日本語 • emoji 🎉",
+        }
+
+        # Case A: versioning enabled
+        dir_a = tmp_path / "with_versioning" / "artifacts"
+        dir_a.mkdir(parents=True)
+        ArtifactManager(dir_a).save_artifact("run-a", "prd", prd_data)
+        cache_a = ArtifactCache(dir_a.parent)
+        data_a = cache_a.load_artifact("prd")
+
+        # Case B: versioning disabled
+        dir_b = tmp_path / "no_versioning" / "artifacts"
+        dir_b.mkdir(parents=True)
+        cfg = ArtifactsConfig(versioning_enabled=False)
+        ArtifactManager(dir_b, config=cfg).save_artifact("run-b", "prd", prd_data)
+        cache_b = ArtifactCache(dir_b.parent)
+        data_b = cache_b.load_artifact("prd")
+
+        assert data_a == data_b == prd_data, (
+            "ArtifactCache must return identical payloads regardless of versioning flag"
+        )
+
+    # ------------------------------------------------------------------
+    # AC-008-2  Direct file read to artifacts/prd.json still works
+    # ------------------------------------------------------------------
+
+    def test_direct_file_read_returns_current_version(self, tmp_path):
+        """Direct open(artifacts/prd.json) returns the current (latest) version."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        prd_v1 = {"title": "Version 1", "version": 1}
+        prd_v2 = {"title": "Version 2", "version": 2}
+
+        am = ArtifactManager(artifacts_dir)
+        am.save_artifact("run-001", "prd", prd_v1)
+        am.save_artifact("run-002", "prd", prd_v2)  # overwrites current
+
+        # Direct read — simulates legacy code path
+        direct = json.loads((artifacts_dir / "prd.json").read_text(encoding="utf-8"))
+        assert direct == prd_v2, (
+            "Direct read of artifacts/prd.json must return the latest (current) version"
+        )
+        assert direct.get("version") == 2
+
+    def test_direct_read_unaffected_by_versioned_copies(self, tmp_path):
+        """The presence of .versions/ directory does not affect artifacts/prd.json."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        data = {"title": "No Interference"}
+        am = ArtifactManager(artifacts_dir)
+        am.save_artifact("run-001", "prd", data)
+
+        # Confirm .versions/ was created
+        versions_dir = artifacts_dir / ".versions" / "prd"
+        assert versions_dir.exists(), ".versions/prd/ must be created when versioning is on"
+
+        # Direct read of artifacts/prd.json must still be the correct payload
+        direct = json.loads((artifacts_dir / "prd.json").read_text(encoding="utf-8"))
+        assert direct == data
+
+    # ------------------------------------------------------------------
+    # AC-008-3  ArtifactCache.get() — in-memory cache path unaffected
+    # ------------------------------------------------------------------
+
+    def test_cache_get_unaffected_by_versioning(self, tmp_path):
+        """ArtifactCache.get() returns cached data after load — unaffected by versioning."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        tasks_data = {"tasks": [{"id": "TASK-001"}, {"id": "TASK-002"}]}
+        am = ArtifactManager(artifacts_dir)
+        am.save_artifact("run-001", "tasks", tasks_data)
+
+        cache = ArtifactCache(tmp_path)
+        # Before load, get() must return None (not yet loaded)
+        assert cache.get("tasks") is None, "cache.get() must return None before load"
+
+        # Load populates the cache
+        loaded = cache.load_artifact("tasks")
+        assert loaded == tasks_data
+
+        # get() must now return the same in-memory data — no disk access needed
+        cached = cache.get("tasks")
+        assert cached is loaded, "cache.get() must return the same object after load"
+        assert cached == tasks_data
+
+    def test_cache_get_returns_none_for_unloaded_artifact(self, tmp_path):
+        """ArtifactCache.get() returns None for artifacts not yet loaded — existing behaviour."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+        (artifacts_dir / "prd.json").write_text(json.dumps({"title": "exists"}))
+
+        cache = ArtifactCache(tmp_path)
+        # File exists on disk but cache.get() must NOT auto-load — only load_artifact does
+        assert cache.get("prd") is None
+
+    def test_cache_get_signature_unchanged(self, tmp_path):
+        """ArtifactCache.get() accepts a single positional string arg — no signature break."""
+        cache = ArtifactCache(tmp_path)
+        import inspect
+        sig = inspect.signature(cache.get)
+        params = list(sig.parameters.keys())
+        # Must accept artifact_name as first param; no extra required params
+        assert "artifact_name" in params or len(params) == 1, (
+            "ArtifactCache.get() signature must accept a single artifact_name argument"
+        )
+        # Must be callable with a string without TypeError
+        result = cache.get("any_name")
+        assert result is None
+
+    # ------------------------------------------------------------------
+    # AC-008-4  .versions/ copies do NOT interfere with direct reads
+    # ------------------------------------------------------------------
+
+    def test_versions_dir_does_not_shadow_current_file(self, tmp_path):
+        """Multiple versions in .versions/ must not shadow artifacts/prd.json."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        am = ArtifactManager(artifacts_dir)
+        for i in range(1, 6):
+            am.save_artifact("run-00" + str(i), "prd", {"iteration": i})
+
+        # The current file must be the LAST written (iteration 5)
+        direct = json.loads((artifacts_dir / "prd.json").read_text(encoding="utf-8"))
+        assert direct["iteration"] == 5, (
+            "artifacts/prd.json must always hold the latest version, "
+            "even after multiple versioned saves"
+        )
+
+        # All 5 versions must exist in .versions/
+        versions_dir = artifacts_dir / ".versions" / "prd"
+        version_files = sorted(versions_dir.glob("v*.json"))
+        assert len(version_files) == 5, (
+            f"Expected 5 versioned copies, found {len(version_files)}"
+        )
+
+    def test_cache_reads_current_not_versioned(self, tmp_path):
+        """ArtifactCache always reads artifacts/{name}.json, never .versions/."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        am = ArtifactManager(artifacts_dir)
+        v1_data = {"title": "v1 — should not be returned by cache"}
+        v2_data = {"title": "v2 — current version"}
+        am.save_artifact("run-001", "prd", v1_data)
+        am.save_artifact("run-002", "prd", v2_data)
+
+        cache = ArtifactCache(tmp_path)
+        loaded = cache.load_artifact("prd")
+        assert loaded == v2_data, (
+            "ArtifactCache must read the current file, not a versioned copy"
+        )
+        assert loaded.get("title") != v1_data["title"]
+
+    # ------------------------------------------------------------------
+    # AC-008-5  save_artifact() writes current-version file first (safety)
+    # ------------------------------------------------------------------
+
+    def test_current_file_written_before_versioned_copy(self, tmp_path):
+        """artifacts/{name}.json must be created by save_artifact() — verified by
+        checking it exists and matches .versions/prd/v1.json content."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        prd_data = {"title": "Write Order Test"}
+        am = ArtifactManager(artifacts_dir)
+        am.save_artifact("run-001", "prd", prd_data)
+
+        current_path = artifacts_dir / "prd.json"
+        versioned_path = artifacts_dir / ".versions" / "prd" / "v1.json"
+
+        assert current_path.exists(), "artifacts/prd.json must exist after save_artifact()"
+        assert versioned_path.exists(), ".versions/prd/v1.json must exist after save_artifact()"
+
+        current_data = json.loads(current_path.read_text(encoding="utf-8"))
+        versioned_data = json.loads(versioned_path.read_text(encoding="utf-8"))
+
+        assert current_data == versioned_data == prd_data, (
+            "Current file and versioned copy must contain identical data"
+        )
+
+    def test_current_file_always_present_even_with_index_disabled(self, tmp_path):
+        """When index is disabled, artifacts/{name}.json is still written."""
+        from orchestrator.models import ArtifactsConfig
+
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        cfg = ArtifactsConfig(versioning_enabled=True, index_enabled=False)
+        am = ArtifactManager(artifacts_dir, config=cfg)
+        data = {"title": "No Index"}
+        am.save_artifact("run-001", "prd", data)
+
+        current_path = artifacts_dir / "prd.json"
+        assert current_path.exists(), (
+            "artifacts/prd.json must be written even when index_enabled=False"
+        )
+        assert json.loads(current_path.read_text()) == data
+
+    # ------------------------------------------------------------------
+    # AC-008-6  Full round-trip: save → direct-read → cache-read all equal
+    # ------------------------------------------------------------------
+
+    def test_full_round_trip_versioning_enabled(self, tmp_path):
+        """End-to-end: save via ArtifactManager, read via direct file I/O and
+        ArtifactCache — all three must return identical data (versioning ON)."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        prd_data = {
+            "title": "Round-Trip PRD",
+            "requirements": ["REQ-001", "REQ-002", "REQ-003"],
+            "constraints": ["backward compatible", "no breaking changes"],
+        }
+
+        # 1. Save via ArtifactManager (versioning enabled)
+        am = ArtifactManager(artifacts_dir)
+        metadata = am.save_artifact("run-ac008", "prd", prd_data, agent="pm")
+        assert metadata.current_version == 1
+
+        # 2. Direct file read (simulates legacy code paths — 321 callers)
+        direct_read = json.loads((artifacts_dir / "prd.json").read_text(encoding="utf-8"))
+
+        # 3. ArtifactCache read
+        cache = ArtifactCache(tmp_path)
+        cache_read = cache.load_artifact("prd")
+
+        # 4. ArtifactManager.load_artifact (current version)
+        manager_read = am.load_artifact("run-ac008", "prd")
+
+        # All must be identical
+        assert direct_read == prd_data, "Direct file read must match saved data"
+        assert cache_read == prd_data, "ArtifactCache.load_artifact must match saved data"
+        assert manager_read == prd_data, "ArtifactManager.load_artifact must match saved data"
+        assert direct_read == cache_read == manager_read, (
+            "All three read paths must return identical data"
+        )
+
+    def test_full_round_trip_after_multiple_versions(self, tmp_path):
+        """After multiple saves (v1 → v2 → v3), all read paths return v3."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        v1 = {"title": "Draft 1", "version": 1}
+        v2 = {"title": "Draft 2", "version": 2}
+        v3 = {"title": "Final", "version": 3}
+
+        am = ArtifactManager(artifacts_dir)
+        am.save_artifact("run-001", "prd", v1)
+        am.save_artifact("run-002", "prd", v2)
+        am.save_artifact("run-003", "prd", v3)
+
+        # All read paths must return v3
+        direct = json.loads((artifacts_dir / "prd.json").read_text(encoding="utf-8"))
+        cache = ArtifactCache(tmp_path)
+        cached = cache.load_artifact("prd")
+        via_manager = am.load_artifact("run-003", "prd")
+
+        assert direct == v3, "Direct read must return latest version"
+        assert cached == v3, "ArtifactCache must return latest version"
+        assert via_manager == v3, "ArtifactManager.load_artifact must return latest"
+
+        # Historical versions still accessible via ArtifactManager
+        assert am.load_artifact("run-001", "prd", version=1) == v1
+        assert am.load_artifact("run-002", "prd", version=2) == v2
+
+    # ------------------------------------------------------------------
+    # AC-008-7  Edge cases: empty, unicode, large payloads
+    # ------------------------------------------------------------------
+
+    def test_round_trip_with_unicode_and_special_chars(self, tmp_path):
+        """Artifacts with unicode content survive the save/read round-trip unchanged."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        edge_data = {
+            "unicode": "日本語テスト résumé naïve",
+            "emoji": "🚀 ✅ ❌ 🎉",
+            "special": "null\x00byte removed by json",
+            "nested": {"key": "value with 'single' and \"double\" quotes"},
+        }
+
+        am = ArtifactManager(artifacts_dir)
+        am.save_artifact("run-unicode", "prd", edge_data)
+
+        cache = ArtifactCache(tmp_path)
+        loaded = cache.load_artifact("prd")
+
+        # JSON serialization normalises null bytes; compare what survives serialisation
+        expected = json.loads(json.dumps(edge_data))
+        assert loaded == expected
+
+    def test_round_trip_large_artifact(self, tmp_path):
+        """Large artifacts (>100 KB) survive the round-trip without truncation."""
+        artifacts_dir = tmp_path / "artifacts"
+        artifacts_dir.mkdir()
+
+        large_data = {
+            "title": "Large PRD",
+            "items": [{"id": i, "value": "x" * 100} for i in range(1000)],
+        }
+
+        am = ArtifactManager(artifacts_dir)
+        am.save_artifact("run-large", "prd", large_data)
+
+        cache = ArtifactCache(tmp_path)
+        loaded = cache.load_artifact("prd")
+        assert loaded == large_data
+        assert len(loaded["items"]) == 1000
