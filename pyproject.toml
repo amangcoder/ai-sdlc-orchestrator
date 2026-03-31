@@ -42,8 +42,14 @@ observability = [
     "httpx>=0.24.0",
     "prometheus-client>=0.20",
 ]
+database = [
+    "sqlalchemy[asyncio]>=2.0",
+    "alembic>=1.13",
+    "asyncpg>=0.29",      # PostgreSQL async driver
+    "aiosqlite>=0.20",    # SQLite async driver (dev/testing)
+]
 all = [
-    "ai-sdlc-orchestrator[monitoring,dashboard,mobile-api,observability]",
+    "ai-sdlc-orchestrator[monitoring,dashboard,mobile-api,observability,database]",
 ]
 dev = [
     "pytest>=8.0",
@@ -53,6 +59,8 @@ dev = [
     "starlette>=0.27",
     "fastapi>=0.110",
     "pyyaml>=6.0",
+    "sqlalchemy[asyncio]>=2.0",
+    "aiosqlite>=0.20",
 ]
 
 [project.scripts]

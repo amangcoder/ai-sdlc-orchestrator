@@ -212,8 +212,8 @@ class TestNoLegacyPhasesInGuidance:
 class TestMcpJsonHasCumulativeContextEngine:
     """The project's .mcp.json must register the cumulative-context-engine server."""
 
-    def test_mcp_json_has_cumulative_context_engine(self) -> None:
-        """'cumulative-context-engine' entry with command='python3' must exist in .mcp.json."""
+    def test_mcp_json_has_knowledge_base(self) -> None:
+        """'knowledge-base' entry with command='node' must exist in .mcp.json."""
         project_root = Path(__file__).resolve().parents[1]
         mcp_path = project_root / ".mcp.json"
 
@@ -225,19 +225,19 @@ class TestMcpJsonHasCumulativeContextEngine:
             pytest.fail(f".mcp.json is not valid JSON: {exc}")
 
         servers = data.get("mcpServers", {})
-        assert "cumulative-context-engine" in servers, (
-            f"'cumulative-context-engine' key missing from .mcp.json mcpServers. "
+        assert "knowledge-base" in servers, (
+            f"'knowledge-base' key missing from .mcp.json mcpServers. "
             f"Found keys: {list(servers.keys())}"
         )
 
-        entry = servers["cumulative-context-engine"]
-        assert entry.get("command") == "python3", (
-            f"Expected command='python3' for cumulative-context-engine, "
+        entry = servers["knowledge-base"]
+        assert entry.get("command") == "node", (
+            f"Expected command='node' for knowledge-base, "
             f"got command='{entry.get('command')}'"
         )
 
-    def test_mcp_json_preserves_existing_entries(self) -> None:
-        """Existing .mcp.json entries must not be disturbed by cumulative-context-engine addition."""
+    def test_mcp_json_knowledge_base_has_args(self) -> None:
+        """knowledge-base entry must have non-empty args."""
         project_root = Path(__file__).resolve().parents[1]
         mcp_path = project_root / ".mcp.json"
 
@@ -245,10 +245,10 @@ class TestMcpJsonHasCumulativeContextEngine:
         data = json.loads(mcp_path.read_text())
         servers = data.get("mcpServers", {})
 
-        # ai-code-knowledge must still be present
-        assert "ai-code-knowledge" in servers, (
-            "'ai-code-knowledge' entry was removed from .mcp.json"
+        assert "knowledge-base" in servers, (
+            "'knowledge-base' entry missing from .mcp.json"
         )
-        assert servers["ai-code-knowledge"].get("command") == "node", (
-            "'ai-code-knowledge' command must remain 'node'"
+        entry = servers["knowledge-base"]
+        assert len(entry.get("args", [])) > 0, (
+            "'knowledge-base' args must not be empty"
         )

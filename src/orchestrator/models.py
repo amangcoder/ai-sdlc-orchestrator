@@ -1143,6 +1143,31 @@ class ContainerConfig(BaseModel):
     extra_tmpfs: list[str] = Field(default_factory=list)
 
 
+class DatabaseConfig(BaseModel):
+    """Configuration for the centralized PostgreSQL/SQLite persistence layer.
+
+    When ``url`` is empty (the default) the orchestrator uses the legacy
+    file-based storage and no DB libraries are imported.  Set ``url`` to a
+    SQLAlchemy async URL to enable DB mode:
+
+      - PostgreSQL: ``postgresql+asyncpg://user:pass@host/dbname``
+      - SQLite (dev/test): ``sqlite+aiosqlite:///path/to/local.db``
+    """
+
+    url: str = ""
+    pool_size: int = Field(default=5, ge=1, le=100)
+    max_overflow: int = Field(default=10, ge=0, le=100)
+    echo: bool = False
+    migrate_on_start: bool = True
+    # Keep filesystem sidecars alongside DB writes (belt-and-suspenders)
+    event_log_sidecar: bool = True    # keep .jsonl files
+    run_state_sidecar: bool = True    # keep state.json files (needed by crash recovery)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.url)
+
+
 class OrchestratorConfig(BaseModel):
     workspace_dir: str = "workspace"
     workspace_root: str | None = None
@@ -1173,6 +1198,7 @@ class OrchestratorConfig(BaseModel):
     monitoring: dict[str, Any] = Field(default_factory=dict)
     routing_mode: str | None = None
     speed_mode: SpeedMode | None = None
+    database: DatabaseConfig = Field(default_factory=DatabaseConfig)
 
     # ── Mobile API dynamic directory browsing ──────────────────────────────
     # Root directory exposed for dynamic tree browsing on the mobile app.

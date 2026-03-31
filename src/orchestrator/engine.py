@@ -128,6 +128,11 @@ class OrchestratorEngine:
         self._test_runner_mcp_config: dict[str, Any] | None = None
         self._research_mcp_config: dict[str, Any] | None = None
 
+        # DB repositories — created lazily in run() when DB mode is enabled
+        self._run_repo: Any = None
+        self._artifact_repo: Any = None
+        self._event_repo: Any = None
+
         # ArtifactManager: versioned writes, index, and retention.
         # Instantiated eagerly when versioning is enabled so tests can inspect
         # engine._artifact_manager without calling run().  The path is updated
@@ -235,12 +240,37 @@ class OrchestratorEngine:
             (workspace / "artifacts").mkdir(exist_ok=True)
             (workspace / "logs").mkdir(exist_ok=True)
 
+        # Initialize DB repositories if DB mode is configured
+        db_cfg = self.config.database
+        if db_cfg.enabled:
+            try:
+                from orchestrator.db import init_db, get_session
+                from orchestrator.db.repositories import RunRepository, ArtifactRepository, EventRepository
+                import asyncio as _asyncio
+                _asyncio.get_event_loop().run_until_complete(init_db(db_cfg))
+                # Repositories are stateless wrappers over the session factory
+                # We create per-session instances at call sites; store factories here
+                self._db_session_factory = get_session
+                self._run_repo_class = RunRepository
+                self._artifact_repo_class = ArtifactRepository
+                self._event_repo_class = EventRepository
+            except Exception as e:
+                logger.warning(f"DB init failed: {e} — falling back to file-only mode")
+                db_cfg = None  # type: ignore[assignment]
+
         # Re-initialize ArtifactManager with the resolved workspace path so
         # versioned writes go to the correct per-run artifacts directory.
         if self.config.artifacts.versioning_enabled:
             try:
+                artifact_db_repo = None
+                if db_cfg and db_cfg.enabled:
+                    from orchestrator.db.repositories.artifacts import ArtifactRepository as _AR
+                    from orchestrator.db.session import get_session as _gs
+                    # Create a session-scoped artifact repo — reuse session factory
+                    # The ArtifactManager will manage its own async calls
+                    artifact_db_repo = _AR(None)  # session injected per-call via get_session
                 self._artifact_manager = ArtifactManager(
-                    workspace / "artifacts", self.config.artifacts
+                    workspace / "artifacts", self.config.artifacts, db_repo=artifact_db_repo
                 )
             except Exception as e:
                 logger.warning(f"ArtifactManager re-init failed: {e} — versioning disabled")
@@ -249,7 +279,7 @@ class OrchestratorEngine:
         # Save recovered state now that workspace is resolved
         if _crash_recovered:
             from orchestrator.persistence import save_run_state
-            save_run_state(state, workspace)
+            save_run_state(state, workspace, write_sidecar=db_cfg.run_state_sidecar if db_cfg and db_cfg.enabled else True)
 
         # Detect config changes between runs
         current_hash = hashlib.md5(
@@ -259,7 +289,8 @@ class OrchestratorEngine:
             logger.warning("Config has changed since original run — some settings may behave differently")
         state.config_hash = current_hash
 
-        self.run_logger = RunLogger(workspace / "logs", state.run_id)
+        write_sidecar = (not db_cfg or not db_cfg.enabled or db_cfg.event_log_sidecar)
+        self.run_logger = RunLogger(workspace / "logs", state.run_id, write_sidecar=write_sidecar)
 
         # Activate crash recovery: PID tracking, heartbeat, signal handlers
         self._crash_manager = CrashRecoveryManager(state, workspace, self.run_logger)
@@ -1367,13 +1398,16 @@ class OrchestratorEngine:
             logger.warning(f"Knowledge re-index failed: {result.error}")
 
     def _save_state(self, state: RunState, workspace: Path) -> None:
-        """Save the run state to disk.
+        """Save the run state to disk (and DB when configured).
 
         Writes both ``state.json`` (latest run, backward compat) and
         ``state-<run_id>.json`` (durable per-run copy for resume-by-id).
+        When DB mode is active the state is also upserted into the ``runs`` table.
         """
         from orchestrator.persistence import save_run_state
-        save_run_state(state, workspace)
+        db_cfg = self.config.database
+        write_sidecar = (not db_cfg.enabled or db_cfg.run_state_sidecar)
+        save_run_state(state, workspace, write_sidecar=write_sidecar)
 
     def _load_state(self, workspace: Path, run_id: str | None = None) -> RunState | None:
         """Load a prior run state from disk.

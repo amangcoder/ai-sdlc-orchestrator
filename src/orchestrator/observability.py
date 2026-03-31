@@ -12,6 +12,7 @@ import structlog
 
 if TYPE_CHECKING:
     from orchestrator.monitoring import MonitoringStack
+    from orchestrator.db.repositories.events import EventRepository
 
 
 # ---------------------------------------------------------------------------
@@ -59,21 +60,44 @@ def _derive_level(event_type: str, data: dict) -> str:
 
 
 class RunLogger:
-    def __init__(self, log_dir: Path, run_id: str) -> None:
+    def __init__(
+        self,
+        log_dir: Path,
+        run_id: str,
+        event_repo: "EventRepository | None" = None,
+        write_sidecar: bool = True,
+    ) -> None:
         self.run_id = run_id
+        self._write_sidecar = write_sidecar
         log_dir.mkdir(parents=True, exist_ok=True)
         self._log_path = log_dir / f"run-{run_id}.jsonl"
-        self._log_path.touch()
+        if write_sidecar:
+            self._log_path.touch()
         self._cumulative_cost: float = 0.0
         self._cumulative_input_tokens: int = 0
         self._cumulative_output_tokens: int = 0
         self._lock = threading.Lock()
         self._log = structlog.get_logger(__name__)
         self._monitoring: MonitoringStack | None = None
+        # DB write-behind queue — set by set_event_repo()
+        self._event_repo: EventRepository | None = None
+        if event_repo is not None:
+            self.set_event_repo(event_repo)
 
     def set_monitoring_stack(self, stack: MonitoringStack) -> None:
         """Attach a MonitoringStack to receive all events."""
         self._monitoring = stack
+
+    def set_event_repo(self, event_repo: "EventRepository") -> None:
+        """Attach a DB ``EventRepository`` and start its write-behind drain task."""
+        self._event_repo = event_repo
+        import asyncio
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                event_repo.start_drain_task()
+        except RuntimeError:
+            pass  # no event loop yet — drain task will be started later
 
     @property
     def cumulative_input_tokens(self) -> int:
@@ -91,6 +115,7 @@ class RunLogger:
             return self._cumulative_input_tokens + self._cumulative_output_tokens
 
     def log_event(self, event_type: str, data: dict) -> None:
+        level = _derive_level(event_type, data)
         with self._lock:
             if event_type == "agent_result":
                 self._cumulative_cost += data.get("cost_usd", 0.0)
@@ -102,8 +127,13 @@ class RunLogger:
                 "event": event_type,
                 **data,
             }
-            with self._log_path.open("a") as f:
-                f.write(json.dumps(record, default=str) + "\n")
+            # DB write-behind (non-blocking — push onto queue)
+            if self._event_repo is not None:
+                self._event_repo.push_sync(event_type, data, level=level)
+            # Filesystem sidecar (controlled by write_sidecar config)
+            if self._write_sidecar:
+                with self._log_path.open("a") as f:
+                    f.write(json.dumps(record, default=str) + "\n")
         self._log.info(event_type, **data)
 
         # Delegate to monitoring stack

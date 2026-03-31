@@ -122,6 +122,20 @@ comms_log:
     max_recall_results: 10         # max past messages returned per recall query
     similarity_threshold: 0.7      # minimum relevance score for recall results
 
+# --- Centralized database (PostgreSQL or SQLite) ---
+# Leave url empty to use file-based storage (default, no DB dependencies loaded).
+# Set url to enable DB mode:
+#   PostgreSQL: postgresql+asyncpg://user:pass@host/dbname
+#   SQLite:     sqlite+aiosqlite:///path/to/local.db
+database:
+  url: ""                    # empty = file-only mode
+  pool_size: 5               # async connection pool size (PostgreSQL only)
+  max_overflow: 10           # SQLAlchemy max_overflow (PostgreSQL only)
+  echo: false                # log all SQL statements (dev only)
+  migrate_on_start: true     # run alembic upgrade head on startup (idempotent)
+  event_log_sidecar: true    # also write .jsonl event files (disable to save disk)
+  run_state_sidecar: true    # also write state.json files (needed for crash recovery)
+
 # --- Artifact management (versioning, retention, indexing) ---
 artifacts:
   versioning_enabled: true         # keep version history of artifacts in .versions/

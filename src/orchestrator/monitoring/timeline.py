@@ -7,6 +7,10 @@ import html as html_module
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from orchestrator.db.repositories.timeline import TimelineRepository
 
 
 @dataclass
@@ -27,10 +31,16 @@ class TimelineEntry:
 class TimelineRecorder:
     """Records execution timeline entries and exports to JSON/HTML."""
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        run_id: str = "",
+        timeline_repo: "TimelineRepository | None" = None,
+    ) -> None:
         self._entries: dict[str, TimelineEntry] = {}
         self._run_start: str | None = None
         self._run_end: str | None = None
+        self._run_id = run_id
+        self._timeline_repo = timeline_repo
 
     def set_run_start(self) -> None:
         self._run_start = datetime.now(timezone.utc).isoformat()
@@ -77,14 +87,30 @@ class TimelineRecorder:
         return list(self._entries.values())
 
     def export_json(self, path: Path) -> None:
+        entries = [asdict(e) for e in self._entries.values()]
         data = {
             "run_start": self._run_start,
             "run_end": self._run_end,
-            "entries": [asdict(e) for e in self._entries.values()],
+            "entries": entries,
         }
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w") as f:
             json.dump(data, f, indent=2, default=str)
+
+        # DB sync (best-effort)
+        if self._timeline_repo is not None and self._run_id:
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                for entry in entries:
+                    coro = self._timeline_repo.upsert_entry(self._run_id, entry)
+                    if loop.is_running():
+                        asyncio.ensure_future(coro)
+                    else:
+                        loop.run_until_complete(coro)
+            except Exception as exc:
+                import logging
+                logging.getLogger(__name__).debug("DB timeline upsert failed: %s", exc)
 
     def export_html(self, path: Path) -> None:
         entries = sorted(self._entries.values(), key=lambda e: e.start_time)

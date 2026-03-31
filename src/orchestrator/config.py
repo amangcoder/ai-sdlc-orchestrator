@@ -11,6 +11,7 @@ from orchestrator.models import (
     AgentConfig,
     ArtifactsConfig,
     ContainerConfig,
+    DatabaseConfig,
     DebateConfig,
     ExplorationConfig,
     KnowledgeConfig,
@@ -146,6 +147,13 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
     except ValidationError as exc:
         raise ConfigurationError(_format_validation_error("artifacts", exc)) from exc
 
+    # Parse database config
+    database_raw = raw.get("database", {})
+    try:
+        database_config = DatabaseConfig(**database_raw) if database_raw else DatabaseConfig()
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("database", exc)) from exc
+
     try:
         workspace_root = raw.get("workspace_root")
         project_name = raw.get("project_name") or Path.cwd().name
@@ -178,6 +186,7 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             test_runner=test_runner_config,
             artifacts=artifacts_config,
             container=container_config,
+            database=database_config,
             monitoring=raw.get("monitoring", {}),
             allowed_directories=allowed_directories,
             # Dynamic directory browsing (new mobile API features)

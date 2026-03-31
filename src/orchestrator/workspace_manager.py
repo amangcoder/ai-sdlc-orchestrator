@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from orchestrator.db.repositories.runs import RunRepository
 
 
 class WorkspaceManager:
@@ -22,7 +25,13 @@ class WorkspaceManager:
             latest -> runs/run_id   <-- convenience symlink
     """
 
-    def __init__(self, workspace_root: Path, project_name: str, project_root: Path | None = None):
+    def __init__(
+        self,
+        workspace_root: Path,
+        project_name: str,
+        project_root: Path | None = None,
+        run_repo: "RunRepository | None" = None,
+    ):
         self.workspace_root = workspace_root.resolve()
         self.project_name = project_name
         # project_root is the actual project directory (cwd when orchestrate runs).
@@ -30,6 +39,8 @@ class WorkspaceManager:
         # to the workspace_dir (which may be a subdir of project_root), but
         # older runs or different configs may have written to project_root directly.
         self.project_root = project_root.resolve() if project_root is not None else None
+        # When set, DB is queried first for run discovery (hosted mode)
+        self._run_repo: RunRepository | None = run_repo
 
     @property
     def project_workspace(self) -> Path:
@@ -90,10 +101,25 @@ class WorkspaceManager:
         return None
 
     def list_runs(self) -> list[dict[str, Any]]:
-        """Scan new-style, old-style, and flat-root layouts for runs.
+        """Return all runs, sorted newest-first.
 
-        Returns metadata sorted newest-first.
+        When a ``RunRepository`` is configured, queries the DB (authoritative).
+        Falls back to filesystem scan for legacy/file-only deployments.
         """
+        if self._run_repo is not None:
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if not loop.is_running():
+                    return loop.run_until_complete(
+                        self._run_repo.list(
+                            limit=200,
+                            project_name=self.project_name or None,
+                        )
+                    )
+            except Exception:
+                pass  # fall through to filesystem scan
+
         import json
         runs = []
         seen_ids: set[str] = set()

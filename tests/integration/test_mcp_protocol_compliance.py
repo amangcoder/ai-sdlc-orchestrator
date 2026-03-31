@@ -1020,29 +1020,29 @@ class TestMCPJsonConfiguration:
         parsed = json.loads(mcp_json.read_text())
         assert "mcpServers" in parsed, f"'mcpServers' key missing from .mcp.json: {parsed}"
 
-    def test_mcp_tc_058_test_runner_registered_in_mcp_json(self):
-        """MCP-TC-058 — test-runner server is registered in .mcp.json."""
+    def test_mcp_tc_058_knowledge_base_registered_in_mcp_json(self):
+        """MCP-TC-058 — knowledge-base server is registered in .mcp.json."""
         mcp_json = _REPO_ROOT / ".mcp.json"
         parsed = json.loads(mcp_json.read_text())
         servers = parsed.get("mcpServers", {})
-        assert "test-runner" in servers, (
-            f"'test-runner' not in mcpServers. Registered: {list(servers.keys())}"
+        assert "knowledge-base" in servers, (
+            f"'knowledge-base' not in mcpServers. Registered: {list(servers.keys())}"
         )
-        entry = servers["test-runner"]
-        assert "args" in entry, "test-runner must have 'args'"
-        assert len(entry["args"]) > 0, "test-runner args must not be empty"
+        entry = servers["knowledge-base"]
+        assert "args" in entry, "knowledge-base must have 'args'"
+        assert len(entry["args"]) > 0, "knowledge-base args must not be empty"
 
-    def test_mcp_tc_059_ai_code_knowledge_registered_in_mcp_json(self):
-        """MCP-TC-059 — ai-code-knowledge server registered with KNOWLEDGE_ROOT env."""
+    def test_mcp_tc_059_knowledge_base_uses_node_command(self):
+        """MCP-TC-059 — knowledge-base server uses 'node' command."""
         mcp_json = _REPO_ROOT / ".mcp.json"
         parsed = json.loads(mcp_json.read_text())
         servers = parsed.get("mcpServers", {})
-        assert "ai-code-knowledge" in servers, (
-            f"'ai-code-knowledge' not in mcpServers. Registered: {list(servers.keys())}"
+        assert "knowledge-base" in servers, (
+            f"'knowledge-base' not in mcpServers. Registered: {list(servers.keys())}"
         )
-        entry = servers["ai-code-knowledge"]
-        assert "KNOWLEDGE_ROOT" in entry.get("env", {}), (
-            "ai-code-knowledge must have KNOWLEDGE_ROOT in env"
+        entry = servers["knowledge-base"]
+        assert entry.get("command") == "node", (
+            "knowledge-base must use 'node' command"
         )
 
     def test_mcp_tc_060_all_registered_server_binaries_exist(self):

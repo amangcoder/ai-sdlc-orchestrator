@@ -19,6 +19,7 @@ Security:
 
 from __future__ import annotations
 
+import asyncio
 import fcntl
 import json
 import logging
@@ -26,12 +27,15 @@ import re
 from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Generator
+from typing import TYPE_CHECKING, Any, Generator
 
 from pydantic import BaseModel
 
 from orchestrator.models import ArtifactsConfig
 from orchestrator.persistence import atomic_write
+
+if TYPE_CHECKING:
+    from orchestrator.db.repositories.artifacts import ArtifactRepository
 
 log = logging.getLogger(__name__)
 
@@ -119,10 +123,13 @@ class ArtifactManager:
         self,
         artifacts_dir: Path,
         config: ArtifactsConfig | None = None,
+        db_repo: "ArtifactRepository | None" = None,
     ) -> None:
         self.artifacts_dir: Path = artifacts_dir.resolve()
         self.config: ArtifactsConfig = config or ArtifactsConfig()
         self._index_path: Path = self.artifacts_dir / ".index.json"
+        # When set, all save/load/search operations also hit the DB.
+        self._db_repo: ArtifactRepository | None = db_repo
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -322,7 +329,7 @@ class ArtifactManager:
                 )
                 atomic_write(versioned_path, payload)
 
-        return ArtifactMetadata(
+        metadata = ArtifactMetadata(
             name=name,
             current_version=version_num,
             run_id=run_id,
@@ -333,6 +340,26 @@ class ArtifactManager:
             size_bytes=size_bytes,
         )
 
+        # DB dual-write (best-effort — never block the pipeline on DB errors)
+        if self._db_repo is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                coro = self._db_repo.save(
+                    run_id=run_id,
+                    name=name,
+                    data=data,
+                    agent=agent,
+                    schema_name=schema_name,
+                )
+                if loop.is_running():
+                    asyncio.ensure_future(coro)
+                else:
+                    loop.run_until_complete(coro)
+            except Exception as exc:
+                log.warning("DB artifact save failed for %s/%s: %s", run_id, name, exc)
+
+        return metadata
+
     def load_artifact(
         self,
         run_id: str,
@@ -341,24 +368,45 @@ class ArtifactManager:
     ) -> dict[str, Any] | None:
         """Load an artifact, returning the current version or a specific one.
 
+        When a ``db_repo`` is configured, tries the DB first and falls back
+        to the filesystem (handles the window where agent has written the file
+        but the DB hasn't been updated yet).
+
         Args:
             run_id:  Run identifier (informational when version=None).
             name:    Artifact name.
             version: Specific version number (positive integer), or None for current.
 
         Returns:
-            Parsed JSON dict, or None if the file does not exist.
+            Parsed JSON dict, or None if not found in DB or filesystem.
 
         Raises:
             ValueError: on invalid name, non-integer version, or path traversal.
         """
         self._validate_name(name)
 
-        if version is not None:
-            if not isinstance(version, int) or version < 1:
-                raise ValueError(
-                    f"version must be a positive integer, got {version!r}"
+        if version is not None and (not isinstance(version, int) or version < 1):
+            raise ValueError(f"version must be a positive integer, got {version!r}")
+
+        # Try DB first
+        if self._db_repo is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                coro = self._db_repo.load(run_id=run_id, name=name, version=version)
+                result = (
+                    asyncio.ensure_future(coro)
+                    if loop.is_running()
+                    else loop.run_until_complete(coro)
                 )
+                # When the loop is running, ensure_future returns a Task not a result.
+                # We can't await here, so fall through to the filesystem for in-flight reads.
+                if not loop.is_running() and result is not None:
+                    return result
+            except Exception as exc:
+                log.warning("DB artifact load failed for %s/%s: %s", run_id, name, exc)
+
+        # Filesystem fallback (always used during agent execution window)
+        if version is not None:
             path = self._safe_path(".versions", name, f"v{version}.json")
         else:
             path = self._safe_path(f"{name}.json")
@@ -565,6 +613,18 @@ class ArtifactManager:
             run_id: Run identifier.
             status: "completed", "failed", or any other string.
         """
+        # DB update (best-effort)
+        if self._db_repo is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                coro = self._db_repo.mark_run_status(run_id, status)
+                if loop.is_running():
+                    asyncio.ensure_future(coro)
+                else:
+                    loop.run_until_complete(coro)
+            except Exception as exc:
+                log.warning("DB mark_run_status failed for %s: %s", run_id, exc)
+
         if not self.config.index_enabled:
             return
 

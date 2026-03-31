@@ -70,6 +70,7 @@ class TestGetResearchMcpConfig:
         assert "PROJECT_RESEARCH_DIR" in server["env"]
         assert "PROJECT_ROOT" in server["env"]
 
+    @patch("orchestrator.research_cache._SEARCH_PATHS", [])
     def test_returns_none_when_server_not_found(self, tmp_path: Path):
         result = get_research_mcp_config("", tmp_path)
         assert result is None

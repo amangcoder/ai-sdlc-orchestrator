@@ -2,16 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 from urllib.parse import quote
 
 from orchestrator.workspace_manager import WorkspaceManager
+
+if TYPE_CHECKING:
+    from orchestrator.db.repositories.runs import RunRepository
+    from orchestrator.db.repositories.events import EventRepository
+    from orchestrator.db.repositories.alerts import AlertRepository
+    from orchestrator.db.repositories.timeline import TimelineRepository
 
 logger = logging.getLogger(__name__)
 
@@ -157,12 +164,27 @@ class RunDetail:
 
 
 class RunDataReader:
-    """Reads orchestrator workspace data for dashboard consumption."""
+    """Reads orchestrator workspace data for dashboard consumption.
 
-    def __init__(self, workspace_manager: WorkspaceManager) -> None:
+    When DB repositories are injected (hosted mode) all queries go to the DB
+    and the filesystem is only used for fallback/legacy runs.
+    """
+
+    def __init__(
+        self,
+        workspace_manager: WorkspaceManager,
+        run_repo: "RunRepository | None" = None,
+        event_repo_factory: Any = None,  # callable(run_id) -> EventRepository
+        alert_repo: "AlertRepository | None" = None,
+        timeline_repo: "TimelineRepository | None" = None,
+    ) -> None:
         self.manager = workspace_manager
         self.workspace = workspace_manager.project_workspace
         self.logs_dir = self.workspace / "logs"
+        self._run_repo = run_repo
+        self._event_repo_factory = event_repo_factory
+        self._alert_repo = alert_repo
+        self._timeline_repo = timeline_repo
 
     def list_runs(self) -> list[RunSummary]:
         """List all runs using WorkspaceManager's discovery logic."""
@@ -279,6 +301,14 @@ class RunDataReader:
     def get_events(
         self, run_id: str, offset: int = 0, limit: int = 100,
     ) -> list[dict[str, Any]]:
+        if self._event_repo_factory is not None:
+            try:
+                repo = self._event_repo_factory(run_id)
+                loop = asyncio.get_event_loop()
+                if not loop.is_running():
+                    return loop.run_until_complete(repo.get_slice(offset=offset, limit=limit))
+            except Exception:
+                pass
         log_file = self._find_log_file(run_id)
         if not log_file:
             return []
@@ -286,6 +316,14 @@ class RunDataReader:
         return events[offset : offset + limit]
 
     def tail_events(self, run_id: str, after_line: int = 0) -> list[dict[str, Any]]:
+        if self._event_repo_factory is not None:
+            try:
+                repo = self._event_repo_factory(run_id)
+                loop = asyncio.get_event_loop()
+                if not loop.is_running():
+                    return loop.run_until_complete(repo.tail(after_seq=after_line))
+            except Exception:
+                pass
         log_file = self._find_log_file(run_id)
         if not log_file:
             return []
@@ -293,6 +331,13 @@ class RunDataReader:
         return events[after_line:]
 
     def get_alert_history(self, limit: int = 100) -> list[dict[str, Any]]:
+        if self._alert_repo is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                if not loop.is_running():
+                    return loop.run_until_complete(self._alert_repo.list(limit=limit))
+            except Exception:
+                pass
         alert_file = self.workspace / "alerts.jsonl"
         if not alert_file.exists():
             return []
@@ -354,6 +399,15 @@ class RunDataReader:
     # --- Internal helpers ---
 
     def _load_timeline(self, run_id: str) -> dict[str, Any] | None:
+        if self._timeline_repo is not None:
+            try:
+                loop = asyncio.get_event_loop()
+                if not loop.is_running():
+                    entries = loop.run_until_complete(self._timeline_repo.get_all(run_id))
+                    if entries:
+                        return {"entries": entries}
+            except Exception:
+                pass
         state_path = self.manager.find_run_state(run_id)
         if not state_path:
             return None
