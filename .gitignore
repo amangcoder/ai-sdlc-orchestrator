@@ -34,10 +34,19 @@ htmlcov/
 workspace/artifacts/
 workspace/logs/
 workspace/*.json
+artifacts/
+
+# Runtime databases
+*.db
+.swarm/
+
+# MCP caches
+.mcp-*-cache.json
 
 # Environment
 .env
 .env.local
+*.env
 
 # OS
 Thumbs.db

@@ -8,6 +8,25 @@
         "serve"
       ]
     },
+    "test-runner": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/amangupta/Projects/sdlc-mcp-servers/test-runner/dist/index.js"
+      ]
+    },
+    "research-cache": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/Users/amangupta/Projects/sdlc-mcp-servers/research-cache/dist/index.js"
+      ],
+      "env": {
+        "GLOBAL_RESEARCH_DIR": "/Users/amangupta/.orchestrator/research",
+        "PROJECT_RESEARCH_DIR": "/Users/amangupta/Projects/Orchestrator/.knowledge/research",
+        "PROJECT_ROOT": "/Users/amangupta/Projects/Orchestrator"
+      }
+    },
     "claude-flow": {
       "type": "stdio",
       "command": "npx",

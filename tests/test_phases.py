@@ -392,9 +392,10 @@ class TestMcpRoleGuidanceResearchCache:
         result = _inject_mcp_role_guidance(config, "product_manager")
         assert "lookup_research" not in result
 
-    def test_no_guidance_when_knowledge_context_none(self):
-        """_inject_mcp_role_guidance returns empty string when knowledge_context is None."""
+    def test_no_aicoder_guidance_when_knowledge_context_none(self):
+        """AICoder tool rows are absent when knowledge_context is None."""
         config = _make_rc_config()  # has rc_context but no knowledge_context
+        config.claude_flow.enabled = False  # isolate: only check AICoder section
         result = _inject_mcp_role_guidance(config, "product_manager")
         assert result == ""
 

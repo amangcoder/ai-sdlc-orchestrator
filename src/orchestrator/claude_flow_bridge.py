@@ -3,8 +3,10 @@
 Discovers the claude-flow MCP server from the local AITools installation and
 configures only the tools that provide real value to the orchestrator pipeline:
 - memory/store, memory/search, memory/list (cross-agent semantic memory)
-- session/save, session/restore (pipeline session persistence)
 - tasks/create, tasks/list, tasks/status, tasks/dependencies (cross-agent task coordination)
+
+Note: session/save, session/restore are reserved for future pipeline session
+persistence but have no backend implementation yet.
 
 Swarm, agent, federation, and SONA tools are excluded — they duplicate
 orchestrator-native functionality or are stubs.
@@ -15,7 +17,10 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from orchestrator.models import ClaudeFlowToolsConfig
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +36,8 @@ _ALLOWED_TOOLS: list[str] = [
     "memory/store",
     "memory/search",
     "memory/list",
-    "session/save",
-    "session/restore",
-    "session/list",
+    # TODO(aman): session/save, session/restore, session/list — reserved for
+    # future pipeline session persistence (not yet implemented)
     "tasks/create",
     "tasks/list",
     "tasks/status",
@@ -62,7 +66,7 @@ ROLE_TOOL_FILTER: dict[str, list[str]] = {
     "backend_code_reviewer": ["memory/search", "memory/list", "tasks/list", "tasks/results"],
     "frontend_code_reviewer": ["memory/search", "memory/list", "tasks/list", "tasks/results"],
     "security_engineer": ["memory/search", "memory/list", "tasks/list"],
-    # Session tools: only exposed to the orchestrator engine, not individual agents
+    # TODO(aman): session tools reserved for future pipeline session persistence
 }
 
 # Default tools for roles not explicitly listed
@@ -85,11 +89,17 @@ def _check_tsx_available() -> bool:
 
 def get_claude_flow_mcp_config(
     ruflo_path: str | None = None,
+    tools_config: ClaudeFlowToolsConfig | None = None,
 ) -> dict[str, Any] | None:
     """Build MCP server config for claude-flow tools.
 
     Returns a dict suitable for merging into the orchestrator's MCP server config,
     or None if claude-flow is not found or tsx is not available.
+
+    Args:
+        ruflo_path: Explicit path to the ruflo installation. None = auto-detect.
+        tools_config: Tool category flags. When provided, categories set to False
+            are filtered out of the tool list passed to the MCP server.
     """
     root = Path(ruflo_path) if ruflo_path else find_claude_flow_root()
     if root is None:
@@ -105,8 +115,17 @@ def get_claude_flow_mcp_config(
         logger.warning("npx not found — cannot start claude-flow MCP server")
         return None
 
-    # Build the tool filter list for the --tools flag
-    tools_csv = ",".join(_ALLOWED_TOOLS)
+    # Build the tool filter list for the --tools flag, respecting config flags
+    active_tools = list(_ALLOWED_TOOLS)
+    if tools_config is not None:
+        if not tools_config.memory:
+            active_tools = [t for t in active_tools if not t.startswith("memory/")]
+        if not tools_config.tasks:
+            active_tools = [t for t in active_tools if not t.startswith("tasks/")]
+    if not active_tools:
+        logger.debug("All claude-flow tool categories disabled by config")
+        return None
+    tools_csv = ",".join(active_tools)
 
     return {
         "claude-flow": {
@@ -185,6 +204,25 @@ def build_claude_flow_prompt_section(agent_role: str) -> str:
         if "tasks/results" in tools:
             sections.append(
                 "- **mcp__claude-flow__tasks_results**: Get the results/output of completed tasks.\n"
+            )
+        if "tasks/list" in tools:
+            sections.append(
+                "- **mcp__claude-flow__tasks_list**: List all tasks with optional status filtering.\n"
+                "  Use this to see the full task board and find tasks relevant to your work.\n"
+            )
+        if "tasks/update" in tools:
+            sections.append(
+                "- **mcp__claude-flow__tasks_update**: Update the status or details of a task.\n"
+                "  Mark tasks as in-progress or completed as you work through them.\n"
+            )
+        if "tasks/cancel" in tools:
+            sections.append(
+                "- **mcp__claude-flow__tasks_cancel**: Cancel a task that is no longer needed.\n"
+            )
+        if "tasks/assign" in tools:
+            sections.append(
+                "- **mcp__claude-flow__tasks_assign**: Assign a task to a specific agent role.\n"
+                "  Use this to delegate work to the appropriate specialist.\n"
             )
 
     return "\n".join(sections)

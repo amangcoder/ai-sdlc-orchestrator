@@ -1058,6 +1058,8 @@ class WorkflowEngine:
                     )
                     _error_marker = "--- ARTIFACT ERROR CONTEXT"
                     for task in tasks:
+                        if task.status == TaskStatus.COMPLETED:
+                            continue  # preserve tasks that already succeeded
                         task.status = TaskStatus.PENDING
                         # Replace any existing error context rather than accumulating duplicates
                         if _error_marker in task.description:

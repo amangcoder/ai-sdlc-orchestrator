@@ -21,6 +21,7 @@ from orchestrator.knowledge import (
     synthesize_brief,
     update_cumulative_context,
 )
+from orchestrator.knowledge_base_mcp import get_knowledge_base_mcp_config
 from orchestrator.test_runner import (
     cleanup_test_runner_mcp_config,
     ensure_test_runner_mcp_config,
@@ -125,6 +126,7 @@ class OrchestratorEngine:
         self.interrupt_manager = interrupt_manager
         self.confirm_callback = confirm_callback
         self.run_logger: RunLogger | None = None
+        self._knowledge_base_mcp_config: dict[str, Any] | None = None
         self._test_runner_mcp_config: dict[str, Any] | None = None
         self._research_mcp_config: dict[str, Any] | None = None
 
@@ -152,6 +154,8 @@ class OrchestratorEngine:
         kc = self.config.knowledge_context
         if kc and kc.mcp_server_config:
             servers.update(kc.mcp_server_config)
+        if self._knowledge_base_mcp_config:
+            servers.update(self._knowledge_base_mcp_config)
         if self._test_runner_mcp_config:
             servers.update(self._test_runner_mcp_config)
         rc = self.config.research_cache_context
@@ -364,6 +368,17 @@ class OrchestratorEngine:
                     "Agents will explore codebase manually."
                 )
 
+        # Configure knowledge-base MCP server (markdown doc search for planning agents)
+        if self.config.knowledge_base_mcp.enabled:
+            kb_config = get_knowledge_base_mcp_config(
+                server_path=self.config.knowledge_base_mcp.server_path,
+            )
+            if kb_config:
+                self._knowledge_base_mcp_config = kb_config
+                logger.info("Knowledge-base MCP server configured")
+            else:
+                logger.debug("knowledge-base-mcp not found — doc search unavailable")
+
         # Configure test-runner MCP server (structured test execution for QA agents)
         if self.config.test_runner.enabled:
             tr_config = get_test_runner_mcp_config(
@@ -448,10 +463,11 @@ class OrchestratorEngine:
                 from orchestrator.claude_flow_bridge import get_claude_flow_mcp_config
                 cf_config = get_claude_flow_mcp_config(
                     ruflo_path=self.config.claude_flow.ruflo_path or None,
+                    tools_config=self.config.claude_flow.tools,
                 )
                 if cf_config:
                     self._claude_flow_mcp_config = cf_config
-                    logger.info("Claude-flow MCP tools configured (memory, session, tasks)")
+                    logger.info("Claude-flow MCP tools configured (memory, tasks)")
             except Exception as e:
                 logger.debug(f"Claude-flow MCP bridge not available: {e}")
 

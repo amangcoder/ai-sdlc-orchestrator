@@ -83,6 +83,16 @@ knowledge:
   watcher_enabled: false             # watch for file changes during implementation and rebuild .knowledge (disabled to prevent cascading rebuilds during implementation phases)
   watcher_debounce_seconds: 5.0      # debounce delay before triggering rebuild after file changes
 
+# --- Knowledge-base MCP server (markdown doc search for planning agents) ---
+knowledge_base_mcp:
+  enabled: true                      # set to false to disable knowledge-base-mcp integration
+  server_path: ""                    # absolute path to index.js; empty = auto-detect from ~/Projects/knowledge-base-mcp
+  source_name: ""                    # scope searches to this source (e.g. "orchestrator-old"); empty = all sources
+  inject_into_phases:                # phases that receive knowledge-base prompt injection
+    - pm
+    - architect
+    - principal_engineer
+
 # --- Test runner MCP server (structured test execution for QA agents) ---
 test_runner:
   enabled: true                      # set to false to disable test-runner MCP integration
@@ -103,6 +113,9 @@ research_cache:
     - pm
     - architect
     - principal_engineer
+    - backend_engineer
+    - frontend_engineer
+    - flutter_engineer
   auto_extract: true                 # automatically extract and cache research from phase artifacts
   cleanup_mcp_config: true           # remove research-cache MCP config from target project after pipeline completes
 
@@ -148,7 +161,7 @@ claude_flow:
   ruflo_path: ""                     # absolute path to ruflo installation; empty = auto-detect from ~/Projects/AITools/ruflo
   tools:                             # which tool categories to enable
     memory: true                     # memory/store, memory/search, memory/list
-    session: true                    # session/save, session/restore, session/list
+    session: false                   # reserved — no backend implementation yet
     tasks: true                      # tasks/create, tasks/list, tasks/status, tasks/dependencies, etc.
 
 # --- Artifact management (versioning, retention, indexing) ---

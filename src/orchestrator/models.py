@@ -994,6 +994,16 @@ class KnowledgeContext(BaseModel):
     file_count: int = 0
 
 
+class KnowledgeBaseMcpConfig(BaseModel):
+    """Configuration for knowledge-base-mcp integration (markdown doc search)."""
+    enabled: bool = True
+    server_path: str = ""            # empty = auto-detect from ~/Projects/knowledge-base-mcp
+    source_name: str = ""            # optional source scope; empty = search all sources
+    inject_into_phases: list[str] = Field(
+        default_factory=lambda: ["pm", "architect", "principal_engineer"]
+    )
+
+
 class TestRunnerConfig(BaseModel):
     """Configuration for test-runner MCP server integration."""
     enabled: bool = True
@@ -1011,7 +1021,12 @@ class ResearchCacheConfig(BaseModel):
     volatile_ttl_days: int = 7
     max_entries: int = 500
     max_inject_bytes: int = 2048
-    inject_into_phases: list[str] = Field(default_factory=lambda: ["pm", "architect", "principal_engineer"])
+    inject_into_phases: list[str] = Field(
+        default_factory=lambda: [
+            "pm", "architect", "principal_engineer",
+            "backend_engineer", "frontend_engineer", "flutter_engineer",
+        ]
+    )
     auto_extract: bool = True
     cleanup_mcp_config: bool = True
 
@@ -1042,7 +1057,7 @@ class ResearchEntry(BaseModel):
 class Finding(BaseModel):
     """An actionable finding flagged during a pipeline run."""
     type: Literal["performance", "architecture", "security", "dependency", "quality"]
-    severity: Literal["high", "medium", "low"]
+    severity: Literal["critical", "high", "medium", "low"]
     finding: str
     recommendation: str
     phase: str
@@ -1116,7 +1131,7 @@ class ClaudeFlowToolsConfig(BaseModel):
     """Fine-grained control over which claude-flow tool categories are enabled."""
 
     memory: bool = True
-    session: bool = True
+    session: bool = False  # reserved — no backend implementation yet
     tasks: bool = True
 
 
@@ -1219,6 +1234,7 @@ class OrchestratorConfig(BaseModel):
     claude_flow: ClaudeFlowConfig = Field(default_factory=ClaudeFlowConfig)
     container: ContainerConfig = Field(default_factory=ContainerConfig)
     knowledge_context: KnowledgeContext | None = None
+    knowledge_base_mcp: KnowledgeBaseMcpConfig = Field(default_factory=KnowledgeBaseMcpConfig)
     test_runner: TestRunnerConfig = Field(default_factory=TestRunnerConfig)
     research_cache: ResearchCacheConfig = Field(default_factory=ResearchCacheConfig)
     research_cache_context: ResearchCacheContext | None = None
