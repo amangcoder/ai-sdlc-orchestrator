@@ -443,20 +443,31 @@ class TaskReadinessTracker:
     wave barriers for independent tasks.
     """
 
-    def __init__(
-        self,
-        tasks: list[WorkflowTaskState],
-        external_completed: set[str] | None = None,
-    ):
+    def __init__(self, tasks: list[WorkflowTaskState]):
         """Initialize tracker with the full task list.
 
-        Args:
-            tasks: Tasks in this step to track.
-            external_completed: Task IDs completed in prior steps. Cross-step
-                dependencies referencing these IDs are treated as satisfied.
+        External dependencies (task IDs referenced but not in this step's task
+        set) are pre-populated as completed.  These come from prior steps that
+        already finished — the workflow engine only advances to this step after
+        all predecessors complete, so treating them as satisfied is correct.
         """
         self.tasks_by_id = {t.task_id: t for t in tasks}
-        self.completed: set[str] = set(external_completed or ())
+        task_ids = set(self.tasks_by_id.keys())
+
+        # Identify cross-step dependencies and treat them as already satisfied
+        external_deps: set[str] = set()
+        for t in tasks:
+            for dep_id in t.dependencies:
+                if dep_id not in task_ids:
+                    external_deps.add(dep_id)
+
+        if external_deps:
+            logger.info(
+                f"TaskReadinessTracker: {len(external_deps)} external dependency(ies) "
+                f"pre-satisfied from prior steps: {sorted(external_deps)}"
+            )
+
+        self.completed: set[str] = external_deps
         self.in_progress: set[str] = set()
         self.pending: set[str] = set()
         for t in tasks:
@@ -530,7 +541,6 @@ class TaskScheduler:
         partition_fn,
         execute_task_fn,
         knowledge_rebuild_fn=None,
-        external_completed: set[str] | None = None,
     ):
         """Initialize scheduler with task list and callbacks.
 
@@ -539,11 +549,9 @@ class TaskScheduler:
             partition_fn: Function to partition tasks by file conflicts
             execute_task_fn: Async callback to execute a single task
             knowledge_rebuild_fn: Optional async callback to rebuild knowledge index
-            external_completed: Task IDs completed in prior workflow steps.
-                Passed to TaskReadinessTracker so cross-step dependencies resolve.
         """
         self.tasks = tasks
-        self.readiness = TaskReadinessTracker(tasks, external_completed=external_completed)
+        self.readiness = TaskReadinessTracker(tasks)
         self.partition_fn = partition_fn
         self.execute_task_fn = execute_task_fn
         self.knowledge_rebuild_fn = knowledge_rebuild_fn
@@ -1921,21 +1929,6 @@ class WorkflowEngine:
             except Exception as e:
                 logger.warning(f"Knowledge rebuild error (non-fatal): {e}")
 
-        # Collect completed task IDs from prior steps so that cross-step
-        # dependencies (e.g. frontend task depending on a backend task from an
-        # earlier step) are treated as satisfied by the readiness tracker.
-        current_step_ids = {t.task_id for t in tasks}
-        external_completed = {
-            t.task_id
-            for t in self.state.workflow_tasks
-            if t.status == TaskStatus.COMPLETED and t.task_id not in current_step_ids
-        }
-        if external_completed:
-            logger.info(
-                f"Pre-seeding {len(external_completed)} completed task(s) from prior steps "
-                f"as satisfied dependencies"
-            )
-
         # Create scheduler and execute all tasks dynamically
         logger.info("Starting dynamic task scheduling (TaskScheduler)...")
         scheduler = TaskScheduler(
@@ -1943,7 +1936,6 @@ class WorkflowEngine:
             partition_fn=self._partition_by_file_conflicts,
             execute_task_fn=execute_task_fn,
             knowledge_rebuild_fn=knowledge_rebuild_fn,
-            external_completed=external_completed or None,
         )
 
         try:
@@ -2442,8 +2434,12 @@ class WorkflowEngine:
         per entry whose assigned_role is in _IMPLEMENTATION_ROLES. Each task
         gets its own agent invocation, enabling true parallelism.
 
-        This is NOT hardcoded to a specific step name — any step with
-        parallel=True will attempt to load and split tasks from tasks.json.
+        When the workflow has multiple parallel steps with different agent
+        roles (e.g. Backend Implementation, Frontend Implementation), each
+        step only claims tasks whose assigned_role resolves to that step's
+        agent_role — preventing the same task from being duplicated across
+        every parallel step.  If only one parallel step exists, all
+        implementation tasks are assigned to it (backward-compatible).
         """
         workspace = Path(self.state.workspace_dir)
         existing_count = len(self.state.workflow_tasks)
@@ -2454,21 +2450,40 @@ class WorkflowEngine:
                 with open(tasks_path) as f:
                     data = json.load(f)
                 task_list = data.get("tasks", [])
+
+                # Determine whether to filter tasks by role: if the workflow
+                # has multiple parallel steps, each one should only take tasks
+                # that match its agent_role.  Unclaimed tasks (whose role
+                # doesn't match any parallel step) are assigned to the first
+                # parallel step so they aren't silently dropped.
+                parallel_steps = [s for s in self.workflow.steps if s.parallel]
+                filter_by_role = len(parallel_steps) > 1
+                parallel_roles = {s.agent_role for s in parallel_steps} if filter_by_role else set()
+                is_first_parallel = filter_by_role and parallel_steps[0].name == step.name
+
                 result = []
                 for i, t in enumerate(task_list):
                     role_str = t.get("assigned_role", "engineer")
-                    if role_str in _IMPLEMENTATION_ROLES:
-                        agent_role = _ROLE_STRING_TO_ENUM.get(role_str, step.agent_role)
-                        result.append(WorkflowTaskState(
-                            task_id=t.get("task_id", f"TASK-{existing_count + i + 1:03d}"),
-                            workflow_step=step.name,
-                            assigned_role=agent_role,
-                            description=t.get("description", t.get("title", "")),
-                            required_inputs=step.inputs,
-                            expected_outputs=step.outputs,
-                            acceptance_criteria=t.get("acceptance_criteria", []),
-                            dependencies=t.get("dependencies", []),
-                        ))
+                    if role_str not in _IMPLEMENTATION_ROLES:
+                        continue
+                    agent_role = _ROLE_STRING_TO_ENUM.get(role_str, step.agent_role)
+                    if filter_by_role:
+                        if agent_role == step.agent_role:
+                            pass  # exact match — claim this task
+                        elif agent_role not in parallel_roles and is_first_parallel:
+                            pass  # unclaimed by any step — first step picks it up
+                        else:
+                            continue
+                    result.append(WorkflowTaskState(
+                        task_id=t.get("task_id", f"TASK-{existing_count + i + 1:03d}"),
+                        workflow_step=step.name,
+                        assigned_role=agent_role,
+                        description=t.get("description", t.get("title", "")),
+                        required_inputs=step.inputs,
+                        expected_outputs=step.outputs,
+                        acceptance_criteria=t.get("acceptance_criteria", []),
+                        dependencies=t.get("dependencies", []),
+                    ))
                 if result:
                     return result
 

@@ -163,6 +163,15 @@ class OrchestratorEngine:
             servers.update(rc.mcp_server_config.get("mcpServers", {}))
         if self._claude_flow_mcp_config:
             servers.update(self._claude_flow_mcp_config)
+        # RAG artifact search tool (TASK-010) — only when rag.enabled=True
+        if getattr(self.config, "rag", None) and self.config.rag.enabled:
+            try:
+                from orchestrator.rag.mcp_tool import get_rag_mcp_config
+                rag_cfg = get_rag_mcp_config(self.config)
+                if rag_cfg:
+                    servers.update(rag_cfg)
+            except Exception:
+                pass  # RAG deps optional — never crash the engine
         return servers or None
 
     async def run(
@@ -471,6 +480,27 @@ class OrchestratorEngine:
             except Exception as e:
                 logger.debug(f"Claude-flow MCP bridge not available: {e}")
 
+        # MCP server health-check (TASK-006): probe all registered servers at startup
+        # so the operator can immediately see which servers are connected or failed.
+        # Failures are logged as warnings but do NOT stop the pipeline.
+        try:
+            from orchestrator.mcp_health import load_mcp_config_from_file, validate_mcp_servers
+            mcp_json_path = self.project_root / ".mcp.json"
+            _mcp_cfg = load_mcp_config_from_file(mcp_json_path)
+            if _mcp_cfg:
+                _mcp_health_results = await validate_mcp_servers(_mcp_cfg)
+                self.run_logger.log_event("mcp_health_check", {
+                    "total": len(_mcp_health_results),
+                    "connected": sum(1 for r in _mcp_health_results if r.ok),
+                    "failed": sum(1 for r in _mcp_health_results if not r.ok),
+                    "results": [
+                        {"server": r.server_name, "status": r.status, "error": r.error}
+                        for r in _mcp_health_results
+                    ],
+                })
+        except Exception as _mcp_exc:
+            logger.debug("MCP health check skipped: %s", _mcp_exc)
+
         # Redact sensitive fields from config before logging
         config_data = self.config.model_dump()
         _redact_sensitive(config_data)
@@ -532,14 +562,62 @@ class OrchestratorEngine:
         # Decide execution mode
         use_legacy = single_phase in PHASE_ORDER or from_phase in PHASE_ORDER
 
-        if use_legacy:
-            await self._run_legacy(state, workspace, feature_request, single_phase, from_phase, resume)
-        else:
-            await self._run_workflow(state, workspace, feature_request, custom_workflow)
+        import time as _time
+        _run_start = _time.monotonic()
+        _run_success = False
+        _run_errors = 0
 
-        # Stop heartbeat and clear crash-recovery fields on clean completion
-        await self._crash_manager.stop_heartbeat()
-        self._crash_manager.deactivate()
+        try:
+            if use_legacy:
+                await self._run_legacy(state, workspace, feature_request, single_phase, from_phase, resume)
+            else:
+                await self._run_workflow(state, workspace, feature_request, custom_workflow)
+            _run_success = True
+        except Exception as _exc:
+            # Record failure but re-raise so callers see the error
+            _run_success = False
+            _run_errors = 1
+            # Update run state to failed so downstream cleanup sees correct status
+            from orchestrator.models import RunStatus as _RunStatus
+            state.status = _RunStatus.FAILED
+            raise
+        finally:
+            _run_duration_s = _time.monotonic() - _run_start
+
+            # Always stop heartbeat and deactivate crash recovery
+            try:
+                await self._crash_manager.stop_heartbeat()
+            except Exception:
+                pass
+            try:
+                self._crash_manager.deactivate()
+            except Exception:
+                pass
+
+            # Always notify monitoring of run completion (success or failure)
+            if self._monitoring:
+                try:
+                    self._monitoring.on_run_complete(
+                        success=_run_success,
+                        total_cost_usd=state.total_cost_usd,
+                        workflow_type=state.workflow_type.value if hasattr(state.workflow_type, "value") else str(state.workflow_type),
+                        duration_s=_run_duration_s,
+                        errors=_run_errors,
+                    )
+                except Exception as _mon_exc:
+                    logger.debug("Monitoring on_run_complete failed: %s", _mon_exc)
+
+            # Always mark artifact run status (prevents permanently-running DB entries)
+            if self._artifact_manager is not None:
+                try:
+                    _final_status = (
+                        state.status.value
+                        if hasattr(state.status, "value")
+                        else str(state.status)
+                    )
+                    self._artifact_manager.mark_run_status(state.run_id, _final_status)
+                except Exception as _art_exc:
+                    logger.debug("ArtifactManager.mark_run_status failed: %s", _art_exc)
 
         # Log trajectory summary for the run
         trajectory_summary: dict[str, Any] = {}
@@ -590,9 +668,14 @@ class OrchestratorEngine:
 
         self._save_state(state, workspace)
 
-        # Update registry with final status
+        # Update registry with actual run status (not hard-coded 'completed')
         from orchestrator.run_registry import update_run
-        update_run(state.run_id, status="completed", total_cost_usd=state.total_cost_usd)
+        _status_str = (
+            state.status.value
+            if hasattr(state.status, "value")
+            else str(state.status)
+        )
+        update_run(state.run_id, status=_status_str, total_cost_usd=state.total_cost_usd)
 
         return state
 

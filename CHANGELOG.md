@@ -2,6 +2,80 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.16.0] - 2026-04-03
+
+### Added
+
+**RAG (Retrieval-Augmented Generation) for Artifact Search**
+- `src/orchestrator/rag/` — new module with semantic search over pipeline artifacts using LlamaIndex or LangChain providers
+- `rag/indexer.py` — FAISS-backed vector indexing with fastembed embeddings
+- `rag/search.py` — top-k semantic search across artifact history
+- `rag/mcp_tool.py` — exposes RAG search as an MCP tool for agents
+- `rag/mcp_server.py` — standalone MCP server for the RAG index
+- `config/default.yaml` — new `rag:` section (disabled by default) with provider, embedding model, chunk size, and top-k settings
+- `pyproject.toml` — new `[rag]` and `[rag-langchain]` optional dependency groups
+- `artifact_manager.py` — post-save RAG indexing callback for real-time index updates
+
+**MCP Server Health Checks**
+- `src/orchestrator/mcp_health.py` — startup health probe for all registered MCP servers; results logged as structured events
+- Engine now validates MCP server connectivity before pipeline execution begins
+
+**Mobile App — Alerts, SLO Compliance, Cost Analytics, Artifact Search Screens**
+- `mobile/lib/screens/alerts_screen.dart` — real-time alert list with severity filtering
+- `mobile/lib/screens/slo_compliance_screen.dart` — SLO compliance dashboard
+- `mobile/lib/screens/cost_analytics_screen.dart` — per-run and per-agent cost breakdowns
+- `mobile/lib/screens/artifact_search_screen.dart` — full-text artifact search UI
+- `mobile/lib/models/` — `alert_model.dart`, `slo_report_model.dart`, `cost_analytics_model.dart`, `artifact_search_result_model.dart`
+- `mobile/lib/providers/` — Riverpod providers for alerts, SLO, cost analytics, artifact search
+- `mobile/lib/app.dart` — route registrations for the four new screens
+
+**Mobile API — New Backend Routes**
+- `src/orchestrator/mobile_api/routes/alerts.py` — alert CRUD with status lifecycle (active/acknowledged/resolved)
+- `src/orchestrator/mobile_api/routes/slo.py` — SLO compliance reporting endpoint
+- `src/orchestrator/mobile_api/routes/cost_analytics.py` — cost aggregation by run, agent, and phase
+- `src/orchestrator/mobile_api/routes/artifact_search.py` — full-text and semantic artifact search
+- `src/orchestrator/mobile_api/routes/metrics.py` — Prometheus-style metrics endpoint
+- `src/orchestrator/mobile_api/routes/observability.py` — structured log and trace query endpoint
+- `src/orchestrator/mobile_api/request_logger.py` — request/response logging middleware
+
+**Database Enhancements**
+- `db/migrations/versions/0002_add_alert_status_phase_duration.py` — adds `status` column to alerts, `duration_seconds` to run phases
+- `db/models.py` — new indexes: `idx_runs_project`, `idx_phases_name`, `idx_artifacts_agent`, `idx_alerts_severity`
+- `Alert` model gains `status` field with lifecycle semantics (active → acknowledged → resolved)
+- `RunPhase` model gains `duration_seconds` for wall-clock phase timing
+
+**Knowledge Base MCP for Implementation Roles**
+- `phases.py` — knowledge-base-mcp prompt injection now supports `backend_engineer`, `frontend_engineer`, `flutter_engineer` in addition to planning roles
+- `config/default.yaml` — `knowledge_base_mcp.inject_into_phases` extended with implementation roles
+
+### Changed
+
+- `engine.py` — run completion now wrapped in try/finally: heartbeat stop, crash recovery deactivation, monitoring notification, and artifact status marking all execute regardless of success/failure
+- `engine.py` — RAG MCP tool injected into agent server config when `rag.enabled=True`
+- `workflow_engine.py` — `TaskReadinessTracker` pre-satisfies external (cross-step) dependencies from prior completed steps
+- `workflow_engine.py` — parallel step task assignment: multi-step workflows now filter tasks by `assigned_role` to prevent duplication across parallel steps
+- `monitoring/loki.py`, `monitoring/tracing.py`, `monitoring/__init__.py` — observability integration improvements
+- `models.py` — `RAGConfig` added to `OrchestratorConfig`; `RunContext` updated for new fields
+- `db/repositories/alerts.py` — `create_alert` accepts `status` parameter; response includes `triggered_at` alias
+- `db/repositories/artifacts.py` — artifact queries support agent-based filtering
+
+### Tests
+
+- `mobile/test/screens/` — widget tests for alerts, SLO compliance, cost analytics, and artifact search screens
+- `tests/test_mobile_alerts_route.py`, `test_mobile_slo_route.py`, `test_mobile_cost_analytics.py`, `test_mobile_artifact_search.py` — API route tests
+- `tests/test_rag_indexer.py`, `tests/test_rag_search.py` — RAG indexing and search unit tests
+- `tests/test_mcp_health.py` — MCP health check validation tests
+- `tests/test_db_migration_0002.py` — migration 0002 schema tests
+- `tests/test_monitoring_event_wiring.py` — monitoring event pipeline tests
+- `tests/integration/test_flutter_api_data_contract.py` — Flutter ↔ API data contract tests
+- `tests/integration/test_mcp_servers_tools_contract.py` — MCP server tool contract tests
+- `tests/integration/test_mobile_monitoring_contract.py` — mobile monitoring integration tests
+- `tests/integration/test_monitoring_pipeline_boundary.py` — monitoring pipeline boundary tests
+- `tests/integration/test_observability_e2e.py` — observability end-to-end tests
+- `tests/integration/test_rag_config_boundary.py` — RAG config boundary tests
+
+---
+
 ## [0.15.0] - 2026-03-31
 
 ### Added

@@ -246,6 +246,7 @@ class MonitoringStack:
         cost_usd: float,
         duration_s: float,
         artifact_valid: bool | None = None,
+        model_tier: str = "",
     ) -> None:
         """Record phase completion with optional artifact validation outcome for SLO tracking.
 
@@ -256,7 +257,16 @@ class MonitoringStack:
             duration_s:     Wall-clock duration in seconds.
             artifact_valid: ``True``/``False`` if an artifact was written and validated;
                             ``None`` if no artifact was produced by this phase.
+            model_tier:     Model tier used (e.g. ``"sonnet"``, ``"opus"``).
         """
+        # Record Prometheus phase duration metric so orchestrator_phase_duration_seconds
+        # gets populated from real pipeline phase_complete events.
+        if self._metrics and duration_s > 0:
+            self._metrics.record_phase_duration(phase_name, model_tier or "unknown", duration_s)
+            if cost_usd > 0 and self._workflow_type:
+                burn_rate = cost_usd / max(duration_s, 1e-6) * 60.0
+                self._metrics.record_burn_rate(self._workflow_type, burn_rate)
+
         if self._slo_tracker is not None:
             self._slo_tracker.record_phase_result(phase_name, duration_s, success)
             if artifact_valid is not None:

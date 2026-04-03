@@ -92,6 +92,9 @@ knowledge_base_mcp:
     - pm
     - architect
     - principal_engineer
+    - backend_engineer               # TASK-007: inject for implementation roles too
+    - frontend_engineer
+    - flutter_engineer
 
 # --- Test runner MCP server (structured test execution for QA agents) ---
 test_runner:
@@ -163,6 +166,18 @@ claude_flow:
     memory: true                     # memory/store, memory/search, memory/list
     session: false                   # reserved — no backend implementation yet
     tasks: true                      # tasks/create, tasks/list, tasks/status, tasks/dependencies, etc.
+
+# --- RAG (Retrieval-Augmented Generation) for artifact semantic search ---
+# Install extras: pip install "ai-sdlc-orchestrator[rag]" (LlamaIndex+FAISS)
+#                 pip install "ai-sdlc-orchestrator[rag-langchain]" (LangChain+FAISS)
+rag:
+  enabled: false                     # set to true to enable RAG indexing and search
+  provider: llamaindex               # "llamaindex" (default) or "langchain"
+  embedding_model: all-MiniLM-L6-v2  # fastembed model name (ONNX-based, ~100MB)
+  vector_store_path: .knowledge/rag  # path for FAISS index persistence
+  chunk_size: 512                    # token chunk size for text splitting
+  chunk_overlap: 50                  # token overlap between adjacent chunks
+  top_k: 5                           # number of results returned by semantic search
 
 # --- Artifact management (versioning, retention, indexing) ---
 artifacts:

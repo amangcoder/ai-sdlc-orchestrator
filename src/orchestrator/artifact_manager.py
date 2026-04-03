@@ -147,6 +147,9 @@ class ArtifactManager:
         self._index_path: Path = self.artifacts_dir / ".index.json"
         # When set, all save/load/search operations also hit the DB.
         self._db_repo: ArtifactRepository | None = db_repo
+        # Optional post-save RAG indexing callback: callable(run_id, name, data, agent) -> None
+        # Set by OrchestratorEngine when rag.enabled=True (TASK-009).
+        self.rag_callback: Any = None
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -384,6 +387,13 @@ class ArtifactManager:
                     loop.run_until_complete(coro)
             except Exception as exc:
                 log.warning("DB artifact save failed for %s/%s: %s", run_id, name, exc)
+
+        # RAG post-save hook (best-effort — never block the pipeline on RAG errors)
+        if self.rag_callback is not None:
+            try:
+                self.rag_callback(run_id, name, data, agent)
+            except Exception as exc:
+                log.debug("RAG callback failed for %s/%s: %s", run_id, name, exc)
 
         return metadata
 

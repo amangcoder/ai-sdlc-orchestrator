@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import queue as _queue_module
 import subprocess
 import tempfile
 import threading
@@ -75,7 +76,12 @@ SERVERS: dict[str, dict] = {
 # ---------------------------------------------------------------------------
 
 class MCPClient:
-    """Communicates with an MCP stdio server via subprocess stdin/stdout."""
+    """Communicates with an MCP stdio server via subprocess stdin/stdout.
+
+    Thread-safe: a background reader thread routes incoming JSON-RPC responses
+    to per-request queues keyed by request ID.  This allows concurrent callers
+    on the same MCPClient instance — each waits only for its own response.
+    """
 
     HANDSHAKE_TIMEOUT = 10.0  # seconds to wait for initialize response
     REQUEST_TIMEOUT = 15.0    # seconds to wait for a tool call response
@@ -84,14 +90,23 @@ class MCPClient:
         self._binary = binary_path
         self._env = {**os.environ, **(env or {})}
         self._proc: subprocess.Popen | None = None
+        # Thread-safe ID counter
         self._id_counter = 0
+        self._id_lock = threading.Lock()
         self._initialized = False
-        self._read_lock = threading.Lock()
+        # Thread-safe send lock (prevents interleaved writes from concurrent threads)
+        self._send_lock = threading.Lock()
+        # Per-request response queues: {req_id: Queue}
+        self._pending: dict[int, _queue_module.Queue] = {}
+        self._pending_lock = threading.Lock()
+        # Background reader thread
+        self._reader_thread: threading.Thread | None = None
+        self._reader_running = False
 
     # ------------------------------------------------------------------ lifecycle
 
     def start(self) -> None:
-        """Spawn the server process."""
+        """Spawn the server process and start the background reader."""
         self._proc = subprocess.Popen(
             ["node", self._binary],
             stdin=subprocess.PIPE,
@@ -109,15 +124,24 @@ class MCPClient:
                 f"Server process exited immediately (code {self._proc.returncode}). "
                 f"stderr: {stderr[:500]}"
             )
+        # Start background reader that routes responses by request ID
+        self._reader_running = True
+        self._reader_thread = threading.Thread(
+            target=self._response_reader, daemon=True, name="mcp-reader"
+        )
+        self._reader_thread.start()
 
     def stop(self) -> None:
-        """Terminate the server process."""
+        """Terminate the server process and stop the background reader."""
+        self._reader_running = False
         if self._proc and self._proc.poll() is None:
             self._proc.terminate()
             try:
                 self._proc.wait(timeout=3.0)
             except subprocess.TimeoutExpired:
                 self._proc.kill()
+        if self._reader_thread:
+            self._reader_thread.join(timeout=2.0)
 
     def __enter__(self) -> "MCPClient":
         self.start()
@@ -126,47 +150,88 @@ class MCPClient:
     def __exit__(self, *_: Any) -> None:
         self.stop()
 
-    # ------------------------------------------------------------------ JSON-RPC helpers
+    # ------------------------------------------------------------------ background reader
 
-    def _next_id(self) -> int:
-        self._id_counter += 1
-        return self._id_counter
-
-    def _send(self, message: dict) -> None:
-        """Write a JSON message to the server's stdin."""
-        assert self._proc and self._proc.stdin
-        line = json.dumps(message) + "\n"
-        self._proc.stdin.write(line)
-        self._proc.stdin.flush()
-
-    def _read_response(self, timeout: float = 15.0) -> dict:
-        """Read a JSON-RPC response line from stdout, with timeout."""
+    def _response_reader(self) -> None:
+        """Background thread: read newline-delimited responses; dispatch by request ID."""
+        import select as _select
         assert self._proc and self._proc.stdout
-
-        deadline = time.monotonic() + timeout
-        with self._read_lock:
-            while time.monotonic() < deadline:
-                # Non-blocking check for data
-                line = self._readline_with_timeout(
-                    max(0.01, deadline - time.monotonic())
-                )
-                if line is None:
+        stdout = self._proc.stdout
+        while self._reader_running:
+            if self._proc.poll() is not None:
+                break
+            try:
+                readable, _, _ = _select.select([stdout], [], [], 0.2)
+                if not readable:
                     continue
+                line = stdout.readline()
+                if not line:
+                    break  # EOF
                 line = line.strip()
                 if not line:
                     continue
                 try:
                     msg = json.loads(line)
-                    # Skip server-sent notifications (no "id")
-                    if "id" not in msg:
-                        continue
-                    return msg
                 except json.JSONDecodeError:
                     continue
-        raise TimeoutError(f"No response from server within {timeout}s")
+                if "id" not in msg:
+                    continue  # notification — no waiting thread
+                req_id = msg["id"]
+                with self._pending_lock:
+                    q = self._pending.get(req_id)
+                if q is not None:
+                    q.put(msg)
+            except Exception:
+                break  # process died or pipe closed
+        # Unblock all pending waiters with a connection-lost error
+        _error = {
+            "jsonrpc": "2.0",
+            "id": None,
+            "error": {"code": -32000, "message": "Server connection lost"},
+        }
+        with self._pending_lock:
+            for q in self._pending.values():
+                q.put(_error)
+
+    # ------------------------------------------------------------------ JSON-RPC helpers
+
+    def _next_id(self) -> int:
+        with self._id_lock:
+            self._id_counter += 1
+            return self._id_counter
+
+    def _send(self, message: dict) -> None:
+        """Write a newline-delimited JSON message to the server's stdin (thread-safe)."""
+        assert self._proc and self._proc.stdin
+        line = json.dumps(message) + "\n"
+        with self._send_lock:
+            self._proc.stdin.write(line)
+            self._proc.stdin.flush()
+
+    def _wait_for_response(self, req_id: int, timeout: float) -> dict:
+        """Register a queue for *req_id*, wait for the background reader to fill it."""
+        q: _queue_module.Queue = _queue_module.Queue()
+        with self._pending_lock:
+            self._pending[req_id] = q
+        try:
+            try:
+                return q.get(timeout=timeout)
+            except _queue_module.Empty:
+                raise TimeoutError(f"No response from server within {timeout}s")
+        finally:
+            with self._pending_lock:
+                self._pending.pop(req_id, None)
+
+    def _read_response(self, timeout: float = 15.0) -> dict:
+        """Legacy single-request path: send has already happened; wait via next-ID queue."""
+        # This is called immediately after _send, so req_id == self._id_counter.
+        # Use _wait_for_response via the last assigned ID.
+        with self._id_lock:
+            current_id = self._id_counter
+        return self._wait_for_response(current_id, timeout)
 
     def _readline_with_timeout(self, timeout: float) -> str | None:
-        """Read one line from stdout within the given timeout."""
+        """Legacy helper — kept for compatibility; background reader now owns readline."""
         import select
         assert self._proc and self._proc.stdout
         fds = [self._proc.stdout]
@@ -193,7 +258,7 @@ class MCPClient:
                 },
             },
         })
-        resp = self._read_response(timeout=self.HANDSHAKE_TIMEOUT)
+        resp = self._wait_for_response(req_id, timeout=self.HANDSHAKE_TIMEOUT)
         # Send initialized notification (no response expected)
         self._send({
             "jsonrpc": "2.0",
@@ -207,13 +272,13 @@ class MCPClient:
         """Send ping and return response."""
         req_id = self._next_id()
         self._send({"jsonrpc": "2.0", "id": req_id, "method": "ping", "params": {}})
-        return self._read_response(timeout=5.0)
+        return self._wait_for_response(req_id, timeout=5.0)
 
     def list_tools(self) -> dict:
         """Call tools/list and return response."""
         req_id = self._next_id()
         self._send({"jsonrpc": "2.0", "id": req_id, "method": "tools/list", "params": {}})
-        return self._read_response(timeout=self.REQUEST_TIMEOUT)
+        return self._wait_for_response(req_id, timeout=self.REQUEST_TIMEOUT)
 
     def call_tool(self, name: str, arguments: dict) -> dict:
         """Call a named tool and return response."""
@@ -224,14 +289,32 @@ class MCPClient:
             "method": "tools/call",
             "params": {"name": name, "arguments": arguments},
         })
-        return self._read_response(timeout=self.REQUEST_TIMEOUT)
+        return self._wait_for_response(req_id, timeout=self.REQUEST_TIMEOUT)
 
     def send_raw(self, raw: str) -> dict:
         """Send a raw string to the server and return the response."""
+        # send_raw uses a special negative ID so it doesn't collide with normal IDs
+        req_id = self._next_id()
         assert self._proc and self._proc.stdin
-        self._proc.stdin.write(raw + "\n")
-        self._proc.stdin.flush()
-        return self._read_response(timeout=5.0)
+        with self._send_lock:
+            self._proc.stdin.write(raw + "\n")
+            self._proc.stdin.flush()
+        # send_raw sends malformed/invalid JSON-RPC; the response will have whatever id
+        # the server echoes back (or None). We wait briefly for any response.
+        q: _queue_module.Queue = _queue_module.Queue()
+        # Register a catch-all: temporarily register under req_id and also id=null
+        with self._pending_lock:
+            self._pending[req_id] = q
+            self._pending[None] = q  # type: ignore[index]
+        try:
+            try:
+                return q.get(timeout=5.0)
+            except _queue_module.Empty:
+                raise TimeoutError("No response from server within 5.0s")
+        finally:
+            with self._pending_lock:
+                self._pending.pop(req_id, None)
+                self._pending.pop(None, None)  # type: ignore[arg-type]
 
     def send_invalid_json(self) -> dict:
         """Send malformed JSON and return the parse-error response."""
@@ -250,7 +333,7 @@ class MCPClient:
             "method": "nonexistent/method/xyz",
             "params": {},
         })
-        return self._read_response(timeout=5.0)
+        return self._wait_for_response(req_id, timeout=5.0)
 
 
 # ---------------------------------------------------------------------------
@@ -1046,7 +1129,12 @@ class TestMCPJsonConfiguration:
         )
 
     def test_mcp_tc_060_all_registered_server_binaries_exist(self):
-        """MCP-TC-060 — all binary paths registered in .mcp.json point to existing files."""
+        """MCP-TC-060 — all absolute binary paths registered in .mcp.json exist on disk.
+
+        Only absolute paths in args[0] are checked — package names / relative paths
+        (e.g., 'tsx', 'npx') are resolved by the shell at runtime and are not validated
+        here.
+        """
         mcp_json = _REPO_ROOT / ".mcp.json"
         parsed = json.loads(mcp_json.read_text())
         missing = []
@@ -1054,7 +1142,9 @@ class TestMCPJsonConfiguration:
             args = entry.get("args", [])
             if args:
                 binary = args[0]
-                if not Path(binary).exists():
+                # Only validate absolute paths — package executables (e.g. 'tsx', 'npx')
+                # are resolved at runtime and are not file-system paths.
+                if Path(binary).is_absolute() and not Path(binary).exists():
                     missing.append((name, binary))
         assert not missing, (
             f"Server binaries registered in .mcp.json but not found on disk: {missing}"
