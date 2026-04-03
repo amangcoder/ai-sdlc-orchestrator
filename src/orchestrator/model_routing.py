@@ -291,13 +291,20 @@ async def auto_classify_speed(feature_request: str, project_root: Path) -> Speed
             max_turns=1,
         )
 
-        # SDK-first invocation with 2-second timeout; fall back to CLI on ImportError.
+        # SDK-first invocation with 10-second timeout; fall back to CLI on ImportError.
         try:
-            result = await asyncio.wait_for(_invoke_via_sdk(invocation), timeout=2.0)
+            result = await asyncio.wait_for(_invoke_via_sdk(invocation), timeout=10.0)
         except ImportError:
-            result = await asyncio.wait_for(_invoke_via_cli(invocation), timeout=2.0)
+            result = await asyncio.wait_for(_invoke_via_cli(invocation), timeout=10.0)
 
         elapsed = time.monotonic() - start
+
+        # Surface the actual SDK/CLI error instead of masking it with a
+        # JSON parse error when the agent failed entirely (e.g. nesting error).
+        if not result.success:
+            raise ValueError(
+                f"Classifier agent failed: {result.error or 'unknown error'}"
+            )
 
         # Extract the first JSON object from the LLM response.
         match = re.search(r"\{.*\}", result.output, re.DOTALL)

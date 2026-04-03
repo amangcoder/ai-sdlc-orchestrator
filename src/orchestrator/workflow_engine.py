@@ -404,6 +404,31 @@ def _has_structural_errors(invalid_artifacts: dict[str, list[str]]) -> bool:
     return False
 
 
+def _extract_missing_fields(invalid_artifacts: dict[str, list[str]]) -> dict[str, list[str]]:
+    """Extract missing top-level field names from structural schema error messages.
+
+    Returns {artifact_name: [field_name, ...]} for artifacts with structural errors.
+    """
+    missing: dict[str, list[str]] = {}
+    for artifact_name, errors in invalid_artifacts.items():
+        fields: list[str] = []
+        for err in errors:
+            m = re.search(r"Schema: '(.+)' is a required property$", err)
+            if m:
+                field = m.group(1)
+                if field not in fields:
+                    fields.append(field)
+                continue
+            m = re.match(r"Model: Field required \(at ([^.]+)\)$", err)
+            if m:
+                field = m.group(1)
+                if field not in fields:
+                    fields.append(field)
+        if fields:
+            missing[artifact_name] = fields
+    return missing
+
+
 # ---------------------------------------------------------------------------
 # Phase 3 optimization: Fine-grained dynamic task scheduling
 # ---------------------------------------------------------------------------
@@ -418,12 +443,30 @@ class TaskReadinessTracker:
     wave barriers for independent tasks.
     """
 
-    def __init__(self, tasks: list[WorkflowTaskState]):
-        """Initialize tracker with the full task list."""
+    def __init__(
+        self,
+        tasks: list[WorkflowTaskState],
+        external_completed: set[str] | None = None,
+    ):
+        """Initialize tracker with the full task list.
+
+        Args:
+            tasks: Tasks in this step to track.
+            external_completed: Task IDs completed in prior steps. Cross-step
+                dependencies referencing these IDs are treated as satisfied.
+        """
         self.tasks_by_id = {t.task_id: t for t in tasks}
-        self.completed: set[str] = set()
+        self.completed: set[str] = set(external_completed or ())
         self.in_progress: set[str] = set()
-        self.pending: set[str] = {t.task_id for t in tasks}
+        self.pending: set[str] = set()
+        for t in tasks:
+            if t.status == TaskStatus.COMPLETED:
+                self.completed.add(t.task_id)
+            elif t.status == TaskStatus.IN_PROGRESS:
+                # Reset in-progress tasks to pending on recovery (they didn't finish)
+                self.pending.add(t.task_id)
+            else:
+                self.pending.add(t.task_id)
 
     def is_ready(self, task: WorkflowTaskState) -> bool:
         """Check if all dependencies of a task are completed."""
@@ -487,6 +530,7 @@ class TaskScheduler:
         partition_fn,
         execute_task_fn,
         knowledge_rebuild_fn=None,
+        external_completed: set[str] | None = None,
     ):
         """Initialize scheduler with task list and callbacks.
 
@@ -495,9 +539,11 @@ class TaskScheduler:
             partition_fn: Function to partition tasks by file conflicts
             execute_task_fn: Async callback to execute a single task
             knowledge_rebuild_fn: Optional async callback to rebuild knowledge index
+            external_completed: Task IDs completed in prior workflow steps.
+                Passed to TaskReadinessTracker so cross-step dependencies resolve.
         """
         self.tasks = tasks
-        self.readiness = TaskReadinessTracker(tasks)
+        self.readiness = TaskReadinessTracker(tasks, external_completed=external_completed)
         self.partition_fn = partition_fn
         self.execute_task_fn = execute_task_fn
         self.knowledge_rebuild_fn = knowledge_rebuild_fn
@@ -1015,16 +1061,37 @@ class WorkflowEngine:
                 if not invalid_artifacts:
                     break  # All artifacts present and valid
 
-                # Structural errors (missing top-level required fields) cannot be fixed
-                # by a repair agent that only sees truncated content — skip repair and
-                # fast-path to full step re-execution immediately.
+                # Structural errors (missing top-level required fields): the partial
+                # artifact contains most of the document — save it and spawn one focused
+                # agent per missing field in parallel, then merge the patches.
                 if _has_structural_errors(invalid_artifacts):
                     logger.warning(
                         f"Structural schema errors detected in {list(invalid_artifacts)} "
-                        f"(missing top-level required fields) — skipping repair retries, "
-                        f"triggering full step re-execution"
+                        f"(missing top-level required fields) — attempting parallel field repair"
                     )
-                    break
+                    repaired = await self._attempt_parallel_field_repair(
+                        step, invalid_artifacts, workspace
+                    )
+                    if repaired:
+                        # Re-validate after merge
+                        invalid_artifacts = {}
+                        for artifact_name in step.outputs:
+                            artifact_path = workspace / "artifacts" / f"{artifact_name}.json"
+                            validation = validate_artifact_file(artifact_path, artifact_name)
+                            if not validation.valid:
+                                invalid_artifacts[artifact_name] = validation.errors
+                        if not invalid_artifacts:
+                            break  # Parallel field repair succeeded
+                        logger.warning(
+                            "Parallel field repair merged but artifact still invalid "
+                            f"{list(invalid_artifacts)} — falling back to full re-execution"
+                        )
+                    else:
+                        logger.warning(
+                            "Parallel field repair produced no patches — "
+                            "falling back to full re-execution"
+                        )
+                    break  # Fall through to full step re-execution
 
                 # Validation failed — try repair if we have retries left
                 if artifact_attempt < max_art_retries:
@@ -1058,8 +1125,8 @@ class WorkflowEngine:
                     )
                     _error_marker = "--- ARTIFACT ERROR CONTEXT"
                     for task in tasks:
-                        if task.status == TaskStatus.COMPLETED:
-                            continue  # preserve tasks that already succeeded
+                        if task.status == TaskStatus.COMPLETED and not invalid_artifacts:
+                            continue  # preserve tasks that already succeeded (only when all artifacts are structurally valid)
                         task.status = TaskStatus.PENDING
                         # Replace any existing error context rather than accumulating duplicates
                         if _error_marker in task.description:
@@ -1364,6 +1431,204 @@ class WorkflowEngine:
             ))
         return retry_tasks
 
+    # ------------------------------------------------------------------
+    # Parallel field-repair: generate missing top-level fields in parallel
+    # then merge with the saved partial artifact.
+    # ------------------------------------------------------------------
+
+    def _save_partial_artifact(self, artifact_name: str, workspace: Path) -> Path | None:
+        """Copy the current (invalid) artifact to {name}.partial.json for repair context."""
+        src = workspace / "artifacts" / f"{artifact_name}.json"
+        dst = workspace / "artifacts" / f"{artifact_name}.partial.json"
+        if src.exists():
+            dst.write_text(src.read_text())
+            return dst
+        return None
+
+    def _create_field_repair_tasks(
+        self,
+        step: WorkflowStepDefinition,
+        artifact_name: str,
+        partial_path: Path,
+        missing_fields: list[str],
+        workspace: Path,
+    ) -> list[WorkflowTaskState]:
+        """Create one parallel task per missing top-level field.
+
+        Each task writes a patch file:
+          artifacts/{artifact_name}.{field}.patch.json
+        containing {"field": "<name>", "value": <generated_content>}.
+        The patch files are later merged with the partial artifact by
+        _merge_field_patches().
+        """
+        artifacts_dir = workspace / "artifacts"
+
+        schema_section = ""
+        from orchestrator.models import ARTIFACT_MODELS  # noqa: PLC0415
+        model_cls = ARTIFACT_MODELS.get(artifact_name)
+        if model_cls:
+            try:
+                schema_json = json.dumps(model_cls.model_json_schema(), indent=2)
+                if len(schema_json) <= 3000:
+                    schema_section = (
+                        f"\n### Required Schema for {artifact_name}\n"
+                        f"```json\n{schema_json}\n```\n"
+                    )
+            except Exception:
+                pass
+
+        try:
+            raw = partial_path.read_text()
+            if len(raw) > 6000:
+                partial_inline = (
+                    f"(File is {len(raw)} bytes — use the Read tool to read "
+                    f"{partial_path} for full context)"
+                )
+            else:
+                partial_inline = f"```json\n{raw}\n```"
+        except OSError:
+            partial_inline = "(Partial content unavailable)"
+
+        tasks: list[WorkflowTaskState] = []
+        for field in missing_fields:
+            patch_path = artifacts_dir / f"{artifact_name}.{field}.patch.json"
+            tasks.append(WorkflowTaskState(
+                task_id=f"FIELD-PATCH-{artifact_name.upper()}-{field.upper()}",
+                workflow_step=step.name,
+                description=(
+                    f"TARGETED FIELD GENERATION — produce the `{field}` section "
+                    f"for {artifact_name}.json\n\n"
+                    f"An artifact was produced but is missing the required top-level "
+                    f"field `{field}`. Your job is to generate ONLY this field.\n\n"
+                    f"## Existing (Partial) Artifact\n\n{partial_inline}\n\n"
+                    f"{schema_section}\n"
+                    f"## Instructions\n\n"
+                    f"1. Study the partial artifact for context.\n"
+                    f"2. Generate a complete, schema-compliant value for the `{field}` field.\n"
+                    f"3. Write a JSON patch file to exactly this path:\n"
+                    f"   {patch_path}\n"
+                    f"   The file must contain:\n"
+                    f'   {{"field": "{field}", "value": <your generated content>}}\n\n'
+                    f"4. Use the Read tool after writing to verify the file exists.\n"
+                    f"5. Do NOT modify {artifact_name}.json — write only the patch file."
+                ),
+                assigned_role=step.agent_role,
+                dependencies=[],
+                expected_outputs=[],  # Patch files checked separately
+                override_max_turns=20,
+            ))
+        return tasks
+
+    def _merge_field_patches(
+        self,
+        artifact_name: str,
+        partial_path: Path,
+        field_patch_pairs: list[tuple[str, Path]],
+        workspace: Path,
+    ) -> bool:
+        """Merge patch files into the partial artifact and write to the final path.
+
+        Returns True if at least one field was successfully patched.
+        """
+        try:
+            base: dict = json.loads(partial_path.read_text())
+        except (OSError, json.JSONDecodeError):
+            base = {}
+
+        patched: list[str] = []
+        for field_name, patch_path in field_patch_pairs:
+            try:
+                patch = json.loads(patch_path.read_text())
+                # Support {"field": "name", "value": ...} or {"field_name": ...} directly
+                if "value" in patch:
+                    base[field_name] = patch["value"]
+                    patched.append(field_name)
+                elif field_name in patch:
+                    base[field_name] = patch[field_name]
+                    patched.append(field_name)
+                else:
+                    logger.warning(
+                        "Patch file for %s/%s has unexpected structure — skipping",
+                        artifact_name,
+                        field_name,
+                    )
+            except (OSError, json.JSONDecodeError) as exc:
+                logger.warning("Could not read patch for %s.%s: %s", artifact_name, field_name, exc)
+
+        if not patched:
+            return False
+
+        output_path = workspace / "artifacts" / f"{artifact_name}.json"
+        output_path.write_text(json.dumps(base, indent=2))
+        logger.info(
+            "Merged %d field patch(es) into %s.json: %s",
+            len(patched), artifact_name, patched,
+        )
+        return True
+
+    async def _attempt_parallel_field_repair(
+        self,
+        step: WorkflowStepDefinition,
+        invalid_artifacts: dict[str, list[str]],
+        workspace: Path,
+    ) -> bool:
+        """Spawn parallel agents for each missing top-level field, then merge.
+
+        Returns True if the merge produced an updated artifact (validation
+        is re-run by the caller; a True return does not guarantee validity).
+        """
+        missing_by_artifact = _extract_missing_fields(invalid_artifacts)
+        if not missing_by_artifact:
+            return False
+
+        all_repair_tasks: list[WorkflowTaskState] = []
+        # (artifact_name, field_name, patch_path)
+        patch_registry: list[tuple[str, str, Path]] = []
+
+        for artifact_name, missing_fields in missing_by_artifact.items():
+            partial_path = self._save_partial_artifact(artifact_name, workspace)
+            if not partial_path:
+                logger.warning(
+                    "No partial artifact on disk for %s — skipping field repair", artifact_name
+                )
+                continue
+            logger.info(
+                "Saved partial artifact for %s → %s. "
+                "Spawning %d field repair agent(s): %s",
+                artifact_name, partial_path.name, len(missing_fields), missing_fields,
+            )
+            field_tasks = self._create_field_repair_tasks(
+                step, artifact_name, partial_path, missing_fields, workspace
+            )
+            artifacts_dir = workspace / "artifacts"
+            for task, field in zip(field_tasks, missing_fields):
+                patch_path = artifacts_dir / f"{artifact_name}.{field}.patch.json"
+                all_repair_tasks.append(task)
+                patch_registry.append((artifact_name, field, patch_path))
+
+        if not all_repair_tasks:
+            return False
+
+        # Execute all field repair tasks — use DAG execution for parallelism
+        try:
+            await self._execute_tasks_dag(step, all_repair_tasks, workspace)
+        finally:
+            await self._stop_knowledge_watcher()
+
+        # Merge patches back into artifacts
+        from collections import defaultdict  # noqa: PLC0415
+        patches_by_artifact: dict[str, list[tuple[str, Path]]] = defaultdict(list)
+        for artifact_name, field_name, patch_path in patch_registry:
+            patches_by_artifact[artifact_name].append((field_name, patch_path))
+
+        any_merged = False
+        for artifact_name, field_patch_pairs in patches_by_artifact.items():
+            partial_path = workspace / "artifacts" / f"{artifact_name}.partial.json"
+            if self._merge_field_patches(artifact_name, partial_path, field_patch_pairs, workspace):
+                any_merged = True
+
+        return any_merged
+
     def _create_validation_repair_tasks(
         self,
         step: WorkflowStepDefinition,
@@ -1656,6 +1921,21 @@ class WorkflowEngine:
             except Exception as e:
                 logger.warning(f"Knowledge rebuild error (non-fatal): {e}")
 
+        # Collect completed task IDs from prior steps so that cross-step
+        # dependencies (e.g. frontend task depending on a backend task from an
+        # earlier step) are treated as satisfied by the readiness tracker.
+        current_step_ids = {t.task_id for t in tasks}
+        external_completed = {
+            t.task_id
+            for t in self.state.workflow_tasks
+            if t.status == TaskStatus.COMPLETED and t.task_id not in current_step_ids
+        }
+        if external_completed:
+            logger.info(
+                f"Pre-seeding {len(external_completed)} completed task(s) from prior steps "
+                f"as satisfied dependencies"
+            )
+
         # Create scheduler and execute all tasks dynamically
         logger.info("Starting dynamic task scheduling (TaskScheduler)...")
         scheduler = TaskScheduler(
@@ -1663,6 +1943,7 @@ class WorkflowEngine:
             partition_fn=self._partition_by_file_conflicts,
             execute_task_fn=execute_task_fn,
             knowledge_rebuild_fn=knowledge_rebuild_fn,
+            external_completed=external_completed or None,
         )
 
         try:
