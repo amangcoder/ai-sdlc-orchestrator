@@ -116,6 +116,16 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
               onPressed: () => context.push('/ssh-terminal'),
             ),
           IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Artifact Search',
+            onPressed: () => context.push('/artifact-search'),
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_outlined),
+            tooltip: 'Alerts',
+            onPressed: () => context.push('/alerts'),
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Settings',
             onPressed: () => context.push('/settings'),
@@ -126,6 +136,64 @@ class _DashboardScreenState extends ConsumerState<DashboardScreen>
             onPressed: () => context.push('/config'),
           ),
         ],
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              child: Text(
+                'Orchestrator',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimary,
+                    ),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.dashboard),
+              title: const Text('Dashboard'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.go('/');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_money),
+              title: const Text('Cost Analytics'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/cost-analytics');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.speed),
+              title: const Text('SLO Compliance'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/slo');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.notifications),
+              title: const Text('Alerts'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/alerts');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.search),
+              title: const Text('Artifact Search'),
+              onTap: () {
+                Navigator.of(context).pop();
+                context.push('/artifact-search');
+              },
+            ),
+          ],
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: _onRefresh,

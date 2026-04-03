@@ -11,6 +11,10 @@ import 'screens/new_run_screen.dart';
 import 'screens/config_editor_screen.dart';
 import 'screens/ssh_terminal_screen.dart';
 import 'screens/project_detail_screen.dart';
+import 'screens/cost_analytics_screen.dart';
+import 'screens/slo_compliance_screen.dart';
+import 'screens/alerts_screen.dart';
+import 'screens/artifact_search_screen.dart';
 
 /// Root widget that configures GoRouter with auth-based redirect logic.
 class OrchestratorApp extends ConsumerStatefulWidget {
@@ -92,6 +96,26 @@ class _OrchestratorAppState extends ConsumerState<OrchestratorApp> {
                 state.uri.queryParameters['name'] ??
                 '',
           ),
+        ),
+        GoRoute(
+          path: '/cost-analytics',
+          name: 'cost-analytics',
+          builder: (context, state) => const CostAnalyticsScreen(),
+        ),
+        GoRoute(
+          path: '/slo',
+          name: 'slo',
+          builder: (context, state) => const SLOComplianceScreen(),
+        ),
+        GoRoute(
+          path: '/alerts',
+          name: 'alerts',
+          builder: (context, state) => const AlertsScreen(),
+        ),
+        GoRoute(
+          path: '/artifact-search',
+          name: 'artifact-search',
+          builder: (context, state) => const GlobalArtifactSearchScreen(),
         ),
         GoRoute(
           path: '/runs/:runId',

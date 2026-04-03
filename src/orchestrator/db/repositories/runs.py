@@ -108,6 +108,8 @@ class RunRepository:
             "retry_count": phase_state.retry_count,
             "error": phase_state.error,
             "error_code": phase_state.error_code,
+            # duration_seconds added in migration 0002; sourced from phase_complete event payload.
+            "duration_seconds": getattr(phase_state, "duration_seconds", None),
         }
         if dialect == "postgresql":
             from sqlalchemy.dialects.postgresql import insert as pg_insert

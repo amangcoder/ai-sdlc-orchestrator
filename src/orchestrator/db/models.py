@@ -88,6 +88,8 @@ class Run(Base):
         Index("idx_runs_status", "status"),
         Index("idx_runs_start", "start_time"),
         Index("idx_runs_updated", "updated_at"),
+        # Supports project_name= filter in RunRepository.list (multi-project deployments).
+        Index("idx_runs_project", "project_name"),
     )
 
 
@@ -109,12 +111,17 @@ class RunPhase(Base):
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Wall-clock duration in seconds; populated by WorkflowEngine on phase completion.
+    # Null for phases that pre-date migration 0002 or that are still running.
+    duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     run: Mapped[Run] = relationship("Run", back_populates="phases")
 
     __table_args__ = (
         UniqueConstraint("run_id", "phase_name", name="uq_run_phases_run_phase"),
         Index("idx_phases_run", "run_id"),
+        # Supports GROUP BY phase_name for cost-by-agent / duration aggregations.
+        Index("idx_phases_name", "phase_name"),
     )
 
 
@@ -146,6 +153,8 @@ class Artifact(Base):
         Index("idx_artifacts_name", "name"),
         Index("idx_artifacts_run_name", "run_id", "name"),
         Index("idx_artifacts_run_name_ver", "run_id", "name", "version"),
+        # Supports agent= filter in the global artifact search endpoint.
+        Index("idx_artifacts_agent", "agent"),
     )
 
 
@@ -176,7 +185,16 @@ class RunEvent(Base):
 
 
 class Alert(Base):
-    """Alert history (replaces workspace/alerts.jsonl)."""
+    """Alert history (replaces workspace/alerts.jsonl).
+
+    ``status`` tracks the lifecycle of each alert:
+      - 'active'       — newly fired, requires attention
+      - 'acknowledged' — an operator has seen it but not yet resolved it
+      - 'resolved'     — the underlying condition is no longer present
+
+    ``created_at`` is surfaced as ``triggered_at`` in API responses so that
+    mobile and dashboard consumers get a semantically clear field name.
+    """
 
     __tablename__ = "alerts"
 
@@ -188,6 +206,8 @@ class Alert(Base):
     severity: Mapped[str] = mapped_column(Text, nullable=False, default="info")
     message: Mapped[str] = mapped_column(Text, nullable=False)
     data: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    # Lifecycle status added in migration 0002.
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="active")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=_utcnow
     )
@@ -195,6 +215,8 @@ class Alert(Base):
     __table_args__ = (
         Index("idx_alerts_created", "created_at"),
         Index("idx_alerts_run", "run_id"),
+        # Supports severity= filter in mobile/dashboard alert list endpoints.
+        Index("idx_alerts_severity", "severity"),
     )
 
 

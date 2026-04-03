@@ -198,15 +198,27 @@ class ArtifactRepository:
 
     @staticmethod
     def _to_metadata(row: Artifact) -> dict[str, Any]:
+        # Artifacts are immutable per (run_id, name, version).  The "last write"
+        # time is therefore the creation time of the latest version row, which is
+        # what callers receive after the latest-version join in list_for_run /
+        # search.  We surface it as both ``created_at`` (legacy) and
+        # ``updated_at`` / ``artifact_name`` / ``schema`` (mobile API contract).
+        ts = row.created_at.isoformat() if row.created_at else None
         return {
+            # Legacy keys (dashboard, internal consumers)
             "name": row.name,
             "current_version": row.version,
             "run_id": row.run_id,
             "agent": row.agent,
             "schema_name": row.schema_name,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            "created_at": ts,
             "size_bytes": row.size_bytes,
             "run_status": row.run_status,
+            # Mobile API / artifact-search contract keys (AC-003, REQ-006)
+            "artifact_name": row.name,
+            "schema": row.schema_name,
+            "version": row.version,
+            "updated_at": ts,
         }
 
     @staticmethod

@@ -9,6 +9,10 @@ import '../models/directory_children_response.dart';
 import '../models/ssh_config_response.dart';
 import '../models/project_entry.dart';
 import '../models/pending_prompt.dart';
+import '../models/cost_analytics_model.dart';
+import '../models/slo_report_model.dart';
+import '../models/alert_model.dart';
+import '../models/artifact_search_result_model.dart';
 import '../services/secure_storage_service.dart';
 import '../providers/auth_provider.dart';
 
@@ -496,6 +500,73 @@ class ApiService {
           'response': response,
         },
       );
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  // ── Monitoring & Analytics API ────────────────────────────────────────────
+
+  /// Returns cost analytics from GET /api/v1/cost-analytics.
+  Future<CostAnalytics> getCostAnalytics() async {
+    try {
+      final Response<dynamic> response =
+          await _dio.get<dynamic>('/api/v1/cost-analytics');
+      return CostAnalytics.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// Returns SLO compliance report from GET /api/v1/slo.
+  Future<SloReport> getSloReport() async {
+    try {
+      final Response<dynamic> response =
+          await _dio.get<dynamic>('/api/v1/slo');
+      return SloReport.fromJson(response.data as Map<String, dynamic>);
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// Returns alerts list from GET /api/v1/alerts.
+  Future<List<Alert>> getAlerts() async {
+    try {
+      final Response<dynamic> response =
+          await _dio.get<dynamic>('/api/v1/alerts');
+      final Map<String, dynamic> data = response.data as Map<String, dynamic>;
+      final List<dynamic> list = data['alerts'] as List<dynamic>? ?? [];
+      return list
+          .map((dynamic e) => Alert.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } on DioException catch (e) {
+      throw _mapError(e);
+    }
+  }
+
+  /// Searches artifacts globally via GET /api/v1/artifacts/search.
+  ///
+  /// [query] is required. [type] and [agent] are optional filters.
+  Future<List<ArtifactSearchResult>> searchArtifacts(
+    String query, {
+    String? type,
+    String? agent,
+  }) async {
+    try {
+      final Map<String, dynamic> params = <String, dynamic>{'q': query};
+      if (type != null && type.isNotEmpty) params['type'] = type;
+      if (agent != null && agent.isNotEmpty) params['agent'] = agent;
+
+      final Response<dynamic> response = await _dio.get<dynamic>(
+        '/api/v1/artifacts/search',
+        queryParameters: params,
+      );
+      final Map<String, dynamic> data = response.data as Map<String, dynamic>;
+      final List<dynamic> list = data['results'] as List<dynamic>? ?? [];
+      return list
+          .map((dynamic e) =>
+              ArtifactSearchResult.fromJson(e as Map<String, dynamic>))
+          .toList();
     } on DioException catch (e) {
       throw _mapError(e);
     }

@@ -1,0 +1,22 @@
+{
+  "sessions": {
+    "term-1774968818577-dmn2kx": {
+      "id": "term-1774968818577-dmn2kx",
+      "name": "Default Terminal",
+      "status": "active",
+      "createdAt": "2026-03-31T14:53:38.577Z",
+      "lastActivity": "2026-03-31T14:53:38.577Z",
+      "workingDir": "/Users/amangupta/Projects/orchestrator-for-mobile-ui",
+      "history": [
+        {
+          "command": "cd /Users/amangupta/Projects/orchestrator-for-mobile-ui && python -m pytest --tb=short -q 2>&1",
+          "output": "[STATE TRACKING] Command recorded: cd /Users/amangupta/Projects/orchestrator-for-mobile-ui && python -m pytest --tb=short -q 2>&1",
+          "timestamp": "2026-03-31T14:53:38.577Z",
+          "exitCode": 0
+        }
+      ],
+      "env": {}
+    }
+  },
+  "version": "3.0.0"
+}

@@ -1131,7 +1131,8 @@ class ClaudeFlowToolsConfig(BaseModel):
     """Fine-grained control over which claude-flow tool categories are enabled."""
 
     memory: bool = True
-    session: bool = False  # reserved — no backend implementation yet
+    # session tools are reserved for future pipeline session persistence.
+    # No backend implementation exists yet — not included in active tool list.
     tasks: bool = True
 
 
@@ -1141,6 +1142,26 @@ class ClaudeFlowConfig(BaseModel):
     enabled: bool = True
     ruflo_path: str = ""
     tools: ClaudeFlowToolsConfig = Field(default_factory=ClaudeFlowToolsConfig)
+
+
+class RAGConfig(BaseModel):
+    """Configuration for the RAG (Retrieval-Augmented Generation) indexing pipeline.
+
+    When enabled, artifacts are indexed into a FAISS vector store and can be
+    retrieved semantically by pipeline agents via the artifact_rag_search MCP tool.
+
+    Install extras:
+      pip install "ai-sdlc-orchestrator[rag]"          # LlamaIndex + FAISS
+      pip install "ai-sdlc-orchestrator[rag-langchain]" # LangChain + FAISS
+    """
+
+    enabled: bool = False
+    provider: Literal["llamaindex", "langchain"] = "llamaindex"
+    embedding_model: str = "all-MiniLM-L6-v2"
+    vector_store_path: str = ".knowledge/rag"
+    chunk_size: int = 512
+    chunk_overlap: int = 50
+    top_k: int = 5
 
 
 class ArtifactsConfig(BaseModel):
@@ -1239,6 +1260,7 @@ class OrchestratorConfig(BaseModel):
     research_cache: ResearchCacheConfig = Field(default_factory=ResearchCacheConfig)
     research_cache_context: ResearchCacheContext | None = None
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
+    rag: RAGConfig = Field(default_factory=RAGConfig)
     routing_mode: str | None = None
     speed_mode: SpeedMode | None = None
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)

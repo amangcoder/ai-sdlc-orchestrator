@@ -18,6 +18,7 @@ from orchestrator.models import (
     ModelTier,
     OrchestratorConfig,
     PhaseConfig,
+    RAGConfig,
     SpawnConfig,
     TestRunnerConfig,
     WorkflowType,
@@ -162,6 +163,13 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
     except ValidationError as exc:
         raise ConfigurationError(_format_validation_error("monitoring", exc)) from exc
 
+    # Parse RAG config (optional extras — disabled by default)
+    rag_raw = raw.get("rag", {})
+    try:
+        rag_config = RAGConfig(**rag_raw) if rag_raw else RAGConfig()
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("rag", exc)) from exc
+
     try:
         workspace_root = raw.get("workspace_root")
         project_name = raw.get("project_name") or Path.cwd().name
@@ -196,6 +204,7 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             container=container_config,
             database=database_config,
             monitoring=monitoring_config,
+            rag=rag_config,
             allowed_directories=allowed_directories,
             # Dynamic directory browsing (new mobile API features)
             projects_root=raw.get("projects_root"),

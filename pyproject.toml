@@ -48,6 +48,19 @@ database = [
     "asyncpg>=0.29",      # PostgreSQL async driver
     "aiosqlite>=0.20",    # SQLite async driver (dev/testing)
 ]
+rag = [
+    "llama-index-core>=0.10.30,<0.13",
+    "llama-index-vector-stores-faiss>=0.1",
+    "llama-index-embeddings-fastembed>=0.1",
+    "faiss-cpu>=1.7.4",
+    "fastembed>=0.2",
+]
+rag-langchain = [
+    "langchain>=0.2",
+    "langchain-community>=0.2",
+    "faiss-cpu>=1.7.4",
+    "fastembed>=0.2",
+]
 all = [
     "ai-sdlc-orchestrator[monitoring,dashboard,mobile-api,observability,database]",
 ]

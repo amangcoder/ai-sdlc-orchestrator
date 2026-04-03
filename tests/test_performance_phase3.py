@@ -95,8 +95,8 @@ class TestTaskReadinessTracker:
         tracker.mark_completed("TASK-001")
         assert tracker.is_ready(task_002) is True
 
-    def test_get_ready_tasks_empty_when_all_have_deps(self):
-        """Verify get_ready_tasks returns empty when all tasks have unmet deps."""
+    def test_external_deps_pre_satisfied(self):
+        """External dependencies (not in task set) are pre-satisfied from prior steps."""
         tasks = [
             WorkflowTaskState(
                 task_id="TASK-002",
@@ -107,6 +107,30 @@ class TestTaskReadinessTracker:
             ),
         ]
         tracker = TaskReadinessTracker(tasks)
+        # TASK-001 is external (from a prior step) → auto-completed
+        assert "TASK-001" in tracker.completed
+        assert tracker.get_ready_tasks() == [tracker.tasks_by_id["TASK-002"]]
+
+    def test_get_ready_tasks_empty_when_all_have_internal_deps(self):
+        """Verify get_ready_tasks returns empty when all tasks have unmet internal deps."""
+        tasks = [
+            WorkflowTaskState(
+                task_id="TASK-001",
+                workflow_step="step1",
+                description="t1",
+                assigned_role="backend_engineer",
+                dependencies=["TASK-002"],
+            ),
+            WorkflowTaskState(
+                task_id="TASK-002",
+                workflow_step="step1",
+                description="t2",
+                assigned_role="backend_engineer",
+                dependencies=["TASK-001"],
+            ),
+        ]
+        tracker = TaskReadinessTracker(tasks)
+        # Circular internal deps → neither is ready
         assert tracker.get_ready_tasks() == []
 
     def test_get_ready_tasks_returns_ready_ones(self):

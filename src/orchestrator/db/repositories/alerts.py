@@ -24,8 +24,19 @@ class AlertRepository:
         severity: str = "info",
         run_id: str | None = None,
         data: dict[str, Any] | None = None,
+        status: str = "active",
     ) -> None:
-        """Append a new alert row."""
+        """Append a new alert row.
+
+        Args:
+            alert_type: Categorisation key (e.g. ``'slo_breach'``).
+            message:    Human-readable description of the alert condition.
+            severity:   One of ``'critical'``, ``'warning'``, ``'info'``.
+            run_id:     Optional run the alert is associated with.
+            data:       Arbitrary structured payload for further diagnostics.
+            status:     Lifecycle status — ``'active'`` (default),
+                        ``'acknowledged'``, or ``'resolved'``.
+        """
         async with self._session_factory() as session:
             session.add(
                 Alert(
@@ -34,6 +45,7 @@ class AlertRepository:
                     severity=severity,
                     message=message,
                     data=data or {},
+                    status=status,
                     created_at=datetime.now(timezone.utc),
                 )
             )
@@ -57,12 +69,19 @@ class AlertRepository:
 
     @staticmethod
     def _to_dict(row: Alert) -> dict[str, Any]:
+        triggered_at = row.created_at.isoformat() if row.created_at else None
         return {
-            "id": row.id,
+            "id": str(row.id),
             "run_id": row.run_id,
             "alert_type": row.alert_type,
             "severity": row.severity,
             "message": row.message,
             "data": row.data,
-            "created_at": row.created_at.isoformat() if row.created_at else None,
+            # ``triggered_at`` is the canonical name used by mobile/dashboard APIs.
+            # ``created_at`` is preserved for backward compatibility.
+            "triggered_at": triggered_at,
+            "created_at": triggered_at,
+            # Lifecycle status: 'active' | 'acknowledged' | 'resolved'.
+            # Defaults to 'active' for rows that pre-date migration 0002.
+            "status": getattr(row, "status", "active") or "active",
         }

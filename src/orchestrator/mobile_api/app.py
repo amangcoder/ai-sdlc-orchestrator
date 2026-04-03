@@ -155,6 +155,21 @@ def create_mobile_app(
     # Per-app rate limiter so each test app instance has an independent window
     app.state.rate_limiter = RateLimiter(window_seconds=5.0)
 
+    # MonitoringStack — initialized for SLO reporting; None if monitoring not configured.
+    # The SLO endpoint calls get_slo_report(app.state.monitoring_stack) which handles None.
+    app.state.monitoring_stack = None
+    try:
+        from orchestrator.monitoring import MonitoringStack
+        mon_config = config.monitoring
+        if mon_config.slo.enabled or mon_config.metrics_enabled:
+            app.state.monitoring_stack = MonitoringStack(
+                config=mon_config,
+                run_id="mobile-api",
+                workspace=workspace_dir,
+            )
+    except Exception as exc:
+        logger.debug("MonitoringStack not initialized for mobile API: %s", exc)
+
     # Store config_path on state for config router access
     app.state.config_path = config_path
 
@@ -214,6 +229,16 @@ def create_mobile_app(
 
     app.state.max_browse_depth = config.max_browse_depth
 
+    # ── Request logging middleware (structured, non-sensitive) ─────────────
+    # Registered first so it wraps ALL subsequent middleware and routes.
+    # Emits request_id, method, path, status_code, and duration_ms for every
+    # HTTP request. Authorization headers are NEVER logged.
+    try:
+        from orchestrator.mobile_api.request_logger import RequestLoggerMiddleware
+        app.add_middleware(RequestLoggerMiddleware)
+    except Exception as exc:
+        logger.warning("Could not add request logger middleware: %s", exc)
+
     # ── Auth middleware (fail-closed Bearer token) ──────────────────────────
     from orchestrator.mobile_api.auth import auth_middleware
 
@@ -228,6 +253,13 @@ def create_mobile_app(
     from orchestrator.mobile_api.routes.projects import router as projects_router
     from orchestrator.mobile_api.routes.ssh import router as ssh_router
     from orchestrator.mobile_api.qr_setup import router as qr_router
+    # New monitoring / analytics routers (TASK-001, TASK-002)
+    from orchestrator.mobile_api.routes.cost_analytics import router as cost_analytics_router
+    from orchestrator.mobile_api.routes.slo import router as slo_router
+    from orchestrator.mobile_api.routes.artifact_search import router as artifact_search_router
+    from orchestrator.mobile_api.routes.metrics import router as metrics_router
+    from orchestrator.mobile_api.routes.observability import router as observability_router
+    from orchestrator.mobile_api.routes.alerts import router as alerts_router
 
     app.include_router(runs_router, prefix="/api/v1")
     app.include_router(ws_router, prefix="/api/v1")
@@ -237,6 +269,13 @@ def create_mobile_app(
     app.include_router(projects_router, prefix="/api/v1")
     app.include_router(ssh_router, prefix="/api/v1")
     app.include_router(qr_router)  # No prefix — /api/v1/setup/qr is in the router
+    # Monitoring / analytics routers
+    app.include_router(cost_analytics_router, prefix="/api/v1")
+    app.include_router(slo_router, prefix="/api/v1")
+    app.include_router(artifact_search_router, prefix="/api/v1")
+    app.include_router(metrics_router, prefix="/api/v1")
+    app.include_router(observability_router, prefix="/api/v1")
+    app.include_router(alerts_router, prefix="/api/v1")
 
     # ── Health endpoint (auth-exempt) ──────────────────────────────────────
     from orchestrator.mobile_api.models import HealthResponse

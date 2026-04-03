@@ -137,7 +137,9 @@ def scrub_event(event: Dict[str, Any]) -> Dict[str, Any]:
 _LOKI_PUSH_PATH = "/loki/api/v1/push"
 
 #: Labels extracted from event dicts and forwarded as Loki stream labels.
-_STREAM_LABEL_FIELDS = ("run_id", "event", "agent", "level")
+#: Includes run_id, phase, agent_name, event_type for structured querying (AC-020, REQ-025).
+#: Legacy aliases (event→event_type, agent→agent_name) are resolved at push time.
+_STREAM_LABEL_FIELDS = ("run_id", "event", "phase", "agent", "agent_name", "event_type", "level")
 
 #: Maximum Loki label value length (Loki rejects very long label values).
 _MAX_LABEL_LEN = 64
@@ -335,6 +337,17 @@ class LokiLogShipper:
                 val = scrubbed.get(field)
                 if val and isinstance(val, str):
                     labels[field] = val[:_MAX_LABEL_LEN]
+
+            # Normalise legacy field names → canonical label names (AC-020, REQ-025):
+            #   event      → event_type  (if event_type not already present)
+            #   agent      → agent_name  (if agent_name not already present)
+            #   phase      is read directly from the event dict
+            if "event_type" not in labels and "event" in labels:
+                labels["event_type"] = labels["event"]
+            if "agent_name" not in labels and "agent" in labels:
+                labels["agent_name"] = labels["agent"]
+            # Ensure phase label defaults to empty string placeholder when absent
+            # (Loki streams with missing phase will have no phase label — that's fine)
 
             # Stable grouping key for identical label sets
             stream_key = json.dumps(labels, sort_keys=True)

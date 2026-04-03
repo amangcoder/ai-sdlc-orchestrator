@@ -66,6 +66,8 @@ class TracingManager:
         self._run_span: Any = None
         self._step_span: Any = None
         self._task_span: Any = None
+        # run_id stored so it can be propagated to child spans
+        self._run_id: str = ""
 
     @property
     def enabled(self) -> bool:
@@ -153,6 +155,7 @@ class TracingManager:
     def start_run_span(self, run_id: str, workflow_type: str, feature_request: str) -> None:
         if not self._enabled:
             return
+        self._run_id = run_id  # propagate to child spans
         self._run_span = self._tracer.start_span(
             "orchestrator.run",
             attributes={
@@ -174,14 +177,17 @@ class TracingManager:
         if not self._enabled:
             return
         ctx = trace.set_span_in_context(self._run_span) if self._run_span else None
+        attrs: dict = {
+            "step": step_name,
+            "role": role,
+            "model_tier": model_tier,
+        }
+        if self._run_id:
+            attrs["run_id"] = self._run_id
         self._step_span = self._tracer.start_span(
             f"orchestrator.step.{step_name}",
             context=ctx,
-            attributes={
-                "step": step_name,
-                "role": role,
-                "model_tier": model_tier,
-            },
+            attributes=attrs,
         )
 
     def end_step_span(self, success: bool, cost_usd: float, duration_s: float) -> None:
@@ -203,14 +209,17 @@ class TracingManager:
             return None
         parent = self._step_span or self._run_span
         ctx = trace.set_span_in_context(parent) if parent else None
+        attrs: dict = {
+            "agent": agent_name,
+            "model": model,
+            "attempt": attempt,
+        }
+        if self._run_id:
+            attrs["run_id"] = self._run_id
         span = self._tracer.start_span(
             f"orchestrator.agent.{agent_name}",
             context=ctx,
-            attributes={
-                "agent": agent_name,
-                "model": model,
-                "attempt": attempt,
-            },
+            attributes=attrs,
         )
         return span
 
