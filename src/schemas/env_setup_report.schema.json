@@ -1,0 +1,61 @@
+{
+  "$defs": {
+    "QAVerdict": {
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "title": "QAVerdict",
+      "type": "string"
+    }
+  },
+  "description": "Artifact produced by the ENV_SETUP_ENGINEER agent after environment setup.",
+  "properties": {
+    "docker_compose_written": {
+      "title": "Docker Compose Written",
+      "type": "boolean"
+    },
+    "compose_services": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Compose Services",
+      "type": "array"
+    },
+    "seed_script_written": {
+      "title": "Seed Script Written",
+      "type": "boolean"
+    },
+    "seed_script_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Seed Script Path"
+    },
+    "issues": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "verdict": {
+      "$ref": "#/$defs/QAVerdict"
+    }
+  },
+  "required": [
+    "docker_compose_written",
+    "seed_script_written",
+    "verdict"
+  ],
+  "title": "EnvSetupReport",
+  "type": "object"
+}

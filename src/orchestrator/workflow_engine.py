@@ -692,6 +692,8 @@ class WorkflowEngine:
         self._task_written_files: list[str] = []  # file paths from Write tool calls
         # Phase-scoped artifact cache (initialized per step, cleared at step end)
         self._artifact_cache: ArtifactCache | None = None
+        # QA Browser lifecycle: AppTestServer instance held between pre/post hooks
+        self._qa_browser_server: Any | None = None
 
     @property
     def _mcp_servers(self) -> dict[str, Any] | None:
@@ -983,25 +985,97 @@ class WorkflowEngine:
             self._emit_phase_complete(step, success=True, artifact_valid=True)
             return "completed"
 
-        # Start knowledge watcher for parallel implementation steps
-        if (
-            step.parallel
-            and self.config.knowledge.enabled
-            and self.config.knowledge.watcher_enabled
-        ):
-            await self._start_knowledge_watcher()
+        # === PRE-HOOK: QA Browser lifecycle setup ===
+        if step.name == "QA Browser":
+            qa_pre_result = await self._qa_browser_pre_hook(step, tasks, workspace)
+            if qa_pre_result == "skip":
+                # Stub qa_browser_report already written — complete step without agent
+                self.state.phases[phase_key].status = PhaseStatus.COMPLETED
+                self.state.completed_steps.append(step.name)
+                self._emit_phase_complete(step, success=True, artifact_valid=True)
+                update_cumulative_context(
+                    workspace=workspace,
+                    phase_name=step.name,
+                    artifacts=list(step.outputs),
+                )
+                await self._refresh_knowledge(step.name)
+                self._task_outputs.clear()
+                self._task_written_files.clear()
+                return "completed"
 
-        try:
-            success = await self._execute_step_tasks(step, tasks)
-        finally:
-            # Always stop watcher when step completes (success or failure)
-            await self._stop_knowledge_watcher()
-            # Clear artifact cache when step completes
-            if self._artifact_cache:
-                self._artifact_cache.clear()
-                self._artifact_cache = None
+        # Fixer retry counter — tracks how many times fixer has retried this step.
+        # Initialised here so the while loop below can reference it on each iteration.
+        _fixer_retry_count = 0
 
-        workspace = Path(self.state.workspace_dir)
+        while True:
+            # Re-initialise artifact cache at the start of each loop iteration.
+            # On the very first pass it is already populated (initialised above).
+            # On fixer-retry passes the finally block has cleared it, so we reload.
+            if self._artifact_cache is None:
+                workspace = Path(self.state.workspace_dir)
+                self._artifact_cache = ArtifactCache(workspace)
+                for artifact_name in step.inputs:
+                    self._artifact_cache.load_artifact(artifact_name)
+
+            # Start knowledge watcher for parallel implementation steps
+            if (
+                step.parallel
+                and self.config.knowledge.enabled
+                and self.config.knowledge.watcher_enabled
+            ):
+                await self._start_knowledge_watcher()
+
+            try:
+                success = await self._execute_step_tasks(step, tasks)
+            finally:
+                # Always stop watcher when step completes (success or failure)
+                await self._stop_knowledge_watcher()
+                # Clear artifact cache when step completes
+                if self._artifact_cache:
+                    self._artifact_cache.clear()
+                    self._artifact_cache = None
+
+            workspace = Path(self.state.workspace_dir)
+
+            # === POST-HOOK: Env Setup — validate docker-compose.yml (AC-008) ===
+            if step.name == "Env Setup" and success:
+                success = await self._env_setup_post_hook(step, workspace)
+
+            # === POST-HOOK: QA Browser — run Playwright, generate report, teardown ===
+            if step.name == "QA Browser" and success:
+                await self._qa_browser_post_hook(step, workspace)
+
+            # === FIXER INVOCATION (AC-013 – AC-018): on step failure, try to fix before
+            # falling through to on_fail routing. Fixer must never crash the pipeline. ===
+            if not success:
+                _fixer_should_run = (
+                    self.config.fixer.enabled
+                    and not step.skip_fixer
+                    and _fixer_retry_count < self.config.fixer.max_attempts
+                )
+                if _fixer_should_run:
+                    # Collect error output from all failed tasks for the fixer prompt.
+                    _error_output = "\n".join(
+                        f"Task {t.task_id}: {t.error}"
+                        for t in tasks
+                        if t.error
+                    ).strip() or "No task-level error details available — check run logs."
+                    _fixer_fixed = await self._invoke_fixer(step, _error_output, workspace)
+                    if _fixer_fixed:
+                        _fixer_retry_count += 1
+                        # Reset failed/blocked tasks so the scheduler can re-execute them.
+                        for _task in tasks:
+                            if _task.status in (TaskStatus.FAILED, TaskStatus.BLOCKED):
+                                _task.status = TaskStatus.PENDING
+                                _task.error = None
+                        logger.info(
+                            "Fixer: step '%s' fixed — retrying (fixer attempt %d/%d)",
+                            step.name, _fixer_retry_count, self.config.fixer.max_attempts,
+                        )
+                        continue  # restart while loop → re-execute the step
+
+            # Exit the while loop: proceed to success/failure handling below.
+            break
 
         if success:
             # Artifact rescue & validation retry loop.
@@ -1198,11 +1272,644 @@ class WorkflowEngine:
             self._task_written_files.clear()
             return "completed"
         else:
+            # === CLEANUP: Stop QA Browser server on agent failure ===
+            if step.name == "QA Browser" and self._qa_browser_server is not None:
+                try:
+                    await self._qa_browser_server.stop()
+                except Exception as _qa_exc:
+                    logger.warning("QA Browser: server stop error on failure (non-fatal): %s", _qa_exc)
+                self._qa_browser_server = None
+
             self.state.phases[phase_key].status = PhaseStatus.FAILED
             self._emit_phase_complete(step, success=False, artifact_valid=None)
             self._task_outputs.clear()
             self._task_written_files.clear()
             return "failed"
+
+    # ------------------------------------------------------------------
+    # Fixer invocation (inline post-failure hook)
+    # ------------------------------------------------------------------
+
+    async def _invoke_fixer(
+        self,
+        step: "WorkflowStepDefinition",
+        error_output: str,
+        workspace: Path,
+    ) -> bool:
+        """Invoke the Fixer agent after a step failure.
+
+        Returns True when the fixer's verdict is 'fixed' (the caller should
+        retry the failed step), or False when the verdict is 'escalate' (fall
+        through to on_fail routing).
+
+        ALL exceptions are caught and swallowed so that a broken fixer can
+        never crash the pipeline — the caller will simply fall through to
+        on_fail as if the fixer had not been enabled.
+
+        Gates checked (before invoking the agent):
+          1. fixer.enabled must be True (config guard; also checked by caller).
+          2. speed_mode must be in fixer.speed_modes (e.g. turbo is excluded).
+        """
+        try:
+            fixer_cfg = self.config.fixer
+
+            # Gate 1: fixer must be enabled (defensive check; caller also checks).
+            if not fixer_cfg.enabled:
+                return False
+
+            # Gate 2: speed_mode must be in the allowed list.
+            speed_mode = self.config.speed_mode
+            if speed_mode is not None:
+                speed_val = (
+                    speed_mode.value if hasattr(speed_mode, "value") else str(speed_mode)
+                )
+                if speed_val not in fixer_cfg.speed_modes:
+                    logger.info(
+                        "Fixer: speed_mode=%s not in fixer.speed_modes=%s — skipping fixer "
+                        "for step '%s'",
+                        speed_val, fixer_cfg.speed_modes, step.name,
+                    )
+                    return False
+
+            logger.info(
+                "Fixer: invoking fixer agent for failed step '%s'", step.name
+            )
+
+            # Build fixer prompt using the existing phases helper.
+            from orchestrator.phases import build_fixer_prompt
+            prompt = build_fixer_prompt(
+                feature_request=self.state.feature_request,
+                workspace=workspace,
+                config=self.config,
+                task_data={
+                    "failed_step": step.name,
+                    "error_output": error_output,
+                },
+            )
+
+            # Invoke the fixer agent (Sonnet, 25 max turns — per architecture).
+            invocation = AgentInvocation(
+                agent_name="fixer",
+                prompt=prompt,
+                model=ModelTier.SONNET,
+                max_turns=25,
+                workspace_dir=str(workspace),
+                project_root=str(self.project_root),
+                mcp_servers=self._mcp_servers,
+            )
+            result = await invoke_agent(invocation, run_state=self.state)
+
+            # Accumulate cost and log the invocation.
+            self.state.total_cost_usd += result.cost_usd
+            if self.run_logger:
+                self.run_logger.log_event("fixer_invoke", {
+                    "step": step.name,
+                    "agent_success": result.success,
+                    "cost_usd": result.cost_usd,
+                    "turns_used": result.turns_used,
+                })
+
+            # Read fixer_report.json to determine verdict.
+            fixer_report_path = workspace / "artifacts" / "fixer_report.json"
+            if not fixer_report_path.exists():
+                logger.warning(
+                    "Fixer: fixer_report.json not found after invocation for step '%s' "
+                    "— treating as escalate",
+                    step.name,
+                )
+                return False
+
+            try:
+                report = json.loads(fixer_report_path.read_text())
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning(
+                    "Fixer: could not parse fixer_report.json for step '%s': %s "
+                    "— treating as escalate",
+                    step.name, exc,
+                )
+                return False
+
+            verdict = report.get("verdict", "escalate")
+            logger.info(
+                "Fixer: verdict='%s' for step '%s' (confidence=%s)",
+                verdict, step.name, report.get("confidence"),
+            )
+            return verdict == "fixed"
+
+        except Exception as exc:
+            # Fixer must NEVER crash the pipeline — swallow all exceptions.
+            logger.warning(
+                "Fixer: unexpected error for step '%s' (swallowed, falling through to "
+                "on_fail): %s",
+                step.name, exc,
+            )
+            return False
+
+    # ------------------------------------------------------------------
+    # Env Setup post-hook
+    # ------------------------------------------------------------------
+
+    async def _env_setup_post_hook(
+        self,
+        step: "WorkflowStepDefinition",
+        workspace: Path,
+    ) -> bool:
+        """Post-hook for the Env Setup step: validate that docker-compose.yml was written.
+
+        Returns True when validation passes (step may continue to artifact
+        validation).  Returns False to fail the Env Setup step immediately
+        with a descriptive error (AC-008).
+        """
+        phase_key = self._step_to_phase_key(step)
+
+        # Agents write docker-compose.yml to the project root (generated project dir).
+        # Fall back to checking workspace root too in case the agent used that path.
+        compose_candidates = [
+            self.project_root / "docker-compose.yml",
+            workspace / "docker-compose.yml",
+        ]
+        compose_found = next((p for p in compose_candidates if p.exists()), None)
+
+        if compose_found is None:
+            checked = ", ".join(str(p) for p in compose_candidates)
+            msg = (
+                f"Env Setup post-hook: docker-compose.yml not found "
+                f"(checked: {checked}). "
+                "The env_setup_engineer must write this file — failing Env Setup step (AC-008)."
+            )
+            logger.error("%s", msg)
+            self.state.phases[phase_key].error = msg
+            return False
+
+        logger.info("Env Setup post-hook: docker-compose.yml validated at %s", compose_found)
+        return True
+
+    # ------------------------------------------------------------------
+    # QA Browser pre/post hooks and helpers
+    # ------------------------------------------------------------------
+
+    async def _qa_browser_pre_hook(
+        self,
+        step: "WorkflowStepDefinition",
+        tasks: list["WorkflowTaskState"],
+        workspace: Path,
+    ) -> str | None:
+        """Pre-hook for the QA Browser step.
+
+        Performs:
+        1. Stack detection
+        2. Speed-mode gate (turbo/standard → stub report)
+        3. has_frontend gate (False → stub report)
+        4. Docker Compose up via AppTestServer.start_dependencies()
+        5. Package installation via AppTestServer.install_packages()
+        6. Seed-script execution via AppTestServer.run_seed_script()
+        7. base_url injection into task descriptions
+
+        Returns:
+            ``"skip"`` — stub qa_browser_report written; skip agent execution.
+            ``None``   — proceed with agent execution (server is running, base_url injected).
+        """
+        # === (1) Stack detection ===
+        try:
+            from orchestrator.stack_detector import detect_stack
+            stack_info = detect_stack(self.project_root)
+            logger.info(
+                "QA Browser pre-hook: stack=%s has_frontend=%s",
+                stack_info.framework, stack_info.has_frontend,
+            )
+        except Exception as exc:
+            logger.warning("QA Browser pre-hook: stack detection error: %s — treating as unknown", exc)
+            stack_info = None
+
+        # === (2) Speed-mode gate ===
+        speed_mode = self.config.speed_mode
+        if speed_mode is not None:
+            speed_val = speed_mode.value if hasattr(speed_mode, "value") else str(speed_mode)
+            if speed_val in ("turbo", "standard"):
+                logger.info(
+                    "QA Browser pre-hook: speed_mode=%s — skipping browser QA (AC-006/AC-007)",
+                    speed_val,
+                )
+                self._write_stub_qa_browser_report(
+                    workspace,
+                    reason=f"speed_mode={speed_val}",
+                    stack_info=stack_info,
+                )
+                return "skip"
+
+        # === (3) has_frontend gate ===
+        if stack_info is not None and not stack_info.has_frontend:
+            logger.info(
+                "QA Browser pre-hook: has_frontend=False (stack=%s) — skipping browser QA",
+                stack_info.framework,
+            )
+            self._write_stub_qa_browser_report(
+                workspace,
+                reason=f"no_frontend (stack={stack_info.framework})",
+                stack_info=stack_info,
+            )
+            return "skip"
+
+        # === (4)/(5)/(6) Start server, install packages, run seed script ===
+        try:
+            from orchestrator.app_server import AppTestServer
+            server = AppTestServer(project_root=self.project_root, stack=stack_info)
+            self._qa_browser_server = server
+            base_url = await server.start()
+            logger.info("QA Browser pre-hook: dev server healthy at %s", base_url)
+            # Run optional seed script after server is healthy
+            await server.run_seed_script()
+        except Exception as exc:
+            stderr_snippet = str(exc)[:2000]
+            logger.error("QA Browser pre-hook: server startup failed: %s", stderr_snippet)
+            # AC-010: failed server startup → server_status='failed' with stderr in report
+            self._write_artifact(
+                workspace,
+                "qa_browser_report",
+                {
+                    "server_status": "failed",
+                    "server_error": stderr_snippet,
+                    "stack_detected": stack_info.framework if stack_info else None,
+                    "base_url": None,
+                    "test_results": [],
+                    "tests_passed": 0,
+                    "tests_failed": 0,
+                    "tests_skipped": 0,
+                    "console_errors": [],
+                    "issues": [f"Server startup failed: {stderr_snippet[:500]}"],
+                    "verdict": "fail",
+                },
+                agent="orchestrator",
+            )
+            self._qa_browser_server = None
+            return "skip"
+
+        # === (7) Inject base_url into agent task descriptions ===
+        base_url = self._qa_browser_server.base_url
+        dev_server_context = (
+            f"## Dev Server Context\n\n"
+            f"The application dev server is already running and healthy.\n"
+            f"Use this base URL for all browser tests:\n\n"
+            f"    BASE_URL={base_url}\n\n"
+            f"Generate Playwright TypeScript test files in the `tests/e2e/` directory "
+            f"of the generated project. Each test file should correspond to one or more "
+            f"acceptance criteria from the PRD and must reference the AC IDs in test "
+            f"titles (e.g. `test('AC-001 – user can login', ...)`).\n\n"
+        )
+        for task in tasks:
+            task.description = dev_server_context + task.description
+
+        return None  # proceed with agent execution
+
+    async def _qa_browser_post_hook(
+        self,
+        step: "WorkflowStepDefinition",
+        workspace: Path,
+    ) -> None:
+        """Post-hook for the QA Browser step.
+
+        Performs:
+        8.  Run generated Playwright tests (``npx playwright test --reporter=json``, 120 s)
+        9.  Parse JSON results and map to acceptance criteria
+        10. Write qa_browser_report.json
+        11. Stop AppTestServer + docker compose down
+        """
+        import subprocess as _subprocess
+
+        server = self._qa_browser_server
+        base_url = server.base_url if server else None
+        stack_name = server.stack.framework if (server and server.stack) else None
+
+        # === (8) Run Playwright tests ===
+        playwright_results: dict | None = None
+        playwright_stderr = ""
+        try:
+            logger.info(
+                "QA Browser post-hook: running 'npx playwright test --reporter=json' (timeout=120s)"
+            )
+            proc_result = await asyncio.get_event_loop().run_in_executor(
+                None,
+                lambda: _subprocess.run(
+                    ["npx", "playwright", "test", "--reporter=json"],
+                    cwd=self.project_root,
+                    capture_output=True,
+                    timeout=120,
+                ),
+            )
+            stdout = proc_result.stdout.decode(errors="replace")
+            playwright_stderr = proc_result.stderr.decode(errors="replace")
+            # === (9) Parse JSON results ===
+            try:
+                playwright_results = json.loads(stdout)
+            except json.JSONDecodeError:
+                logger.warning(
+                    "QA Browser post-hook: Playwright output is not valid JSON "
+                    "(exit=%d, stdout[:300]=%s)",
+                    proc_result.returncode, stdout[:300],
+                )
+        except _subprocess.TimeoutExpired:
+            logger.error("QA Browser post-hook: Playwright tests timed out after 120 s (AC-012)")
+        except FileNotFoundError:
+            logger.warning(
+                "QA Browser post-hook: 'npx' not found — Playwright unavailable (AC-011/AC-012)"
+            )
+        except Exception as exc:
+            logger.error("QA Browser post-hook: Playwright execution error: %s", exc)
+
+        # === (10) Construct qa_browser_report.json ===
+        try:
+            qa_report = self._build_qa_browser_report(
+                workspace=workspace,
+                playwright_results=playwright_results,
+                base_url=base_url,
+                stack_name=stack_name,
+                playwright_stderr=playwright_stderr,
+            )
+        except Exception as exc:
+            logger.error("QA Browser post-hook: report construction failed: %s", exc)
+            qa_report = {
+                "server_status": "started" if base_url else "skipped",
+                "server_error": None,
+                "stack_detected": stack_name,
+                "base_url": base_url,
+                "test_results": [],
+                "tests_passed": 0,
+                "tests_failed": 0,
+                "tests_skipped": 0,
+                "console_errors": [],
+                "issues": [f"Report construction error: {exc}"],
+                "verdict": "fail",
+            }
+
+        self._write_artifact(workspace, "qa_browser_report", qa_report, agent="orchestrator")
+        logger.info(
+            "QA Browser post-hook: qa_browser_report written (verdict=%s, passed=%d, failed=%d, skipped=%d)",
+            qa_report.get("verdict"),
+            qa_report.get("tests_passed", 0),
+            qa_report.get("tests_failed", 0),
+            qa_report.get("tests_skipped", 0),
+        )
+
+        # === (11) Cleanup — stop AppTestServer + docker compose down ===
+        if server is not None:
+            try:
+                await server.stop()
+                logger.info("QA Browser post-hook: dev server stopped")
+            except Exception as exc:
+                logger.warning("QA Browser post-hook: server stop error (non-fatal): %s", exc)
+            self._qa_browser_server = None
+
+    def _write_stub_qa_browser_report(
+        self,
+        workspace: Path,
+        reason: str,
+        stack_info: Any = None,
+    ) -> None:
+        """Write a stub qa_browser_report.json for skipped QA Browser phases.
+
+        Used when the speed-mode gate or has_frontend gate fires, or when the
+        server fails to start.
+        """
+        self._write_artifact(
+            workspace,
+            "qa_browser_report",
+            {
+                "server_status": "skipped",
+                "server_error": None,
+                "stack_detected": stack_info.framework if stack_info else None,
+                "base_url": None,
+                "test_results": [],
+                "tests_passed": 0,
+                "tests_failed": 0,
+                "tests_skipped": 0,
+                "console_errors": [],
+                "issues": [f"QA Browser phase skipped: {reason}"],
+                "verdict": "warn",
+            },
+            agent="orchestrator",
+        )
+        logger.info("QA Browser: stub report written (reason=%s)", reason)
+
+    def _build_qa_browser_report(
+        self,
+        workspace: Path,
+        playwright_results: dict | None,
+        base_url: str | None,
+        stack_name: str | None,
+        playwright_stderr: str = "",
+    ) -> dict:
+        """Build the qa_browser_report dict from Playwright JSON test output.
+
+        Maps Playwright test results to acceptance-criteria IDs extracted from
+        ``prd.json``.  When Playwright output is unavailable the report marks
+        all ACs as skipped.
+        """
+        # Load acceptance criteria from prd.json (best-effort)
+        prd_path = workspace / "artifacts" / "prd.json"
+        acceptance_criteria: list = []
+        try:
+            if prd_path.exists():
+                prd_data = json.loads(prd_path.read_text())
+                acceptance_criteria = prd_data.get("acceptance_criteria", [])
+        except Exception as exc:
+            logger.debug("QA Browser: could not load prd.json for AC mapping: %s", exc)
+
+        tests_passed = 0
+        tests_failed = 0
+        tests_skipped = 0
+        test_results: list[dict] = []
+        console_errors: list[str] = []
+        issues: list[str] = []
+
+        if playwright_results is not None:
+            # Playwright JSON reporter top-level schema:
+            # { stats: {expected, unexpected, skipped, ...}, suites: [...] }
+            stats = playwright_results.get("stats", {})
+            tests_passed = stats.get("expected", 0)
+            tests_failed = stats.get("unexpected", 0)
+            tests_skipped = stats.get("skipped", 0)
+
+            # Recursively collect all test leaves from the suite tree
+            all_tests: list[dict] = []
+            for suite in playwright_results.get("suites", []):
+                all_tests.extend(self._extract_playwright_tests(suite))
+
+            # Map collected tests to ACs
+            test_results = self._map_tests_to_acs(all_tests, acceptance_criteria)
+
+            # Extract console error attachments
+            console_errors = self._extract_playwright_console_errors(playwright_results)
+        else:
+            # Playwright unavailable — mark all ACs as skipped
+            for ac in acceptance_criteria:
+                if isinstance(ac, dict):
+                    ac_id = ac.get("id", "AC-???")
+                    criteria_text = ac.get("description", ac.get("criteria", str(ac)))
+                else:
+                    ac_id = str(ac)
+                    criteria_text = str(ac)
+                test_results.append({
+                    "ac_id": ac_id,
+                    "criteria": criteria_text,
+                    "status": "skipped",
+                    "test_file": None,
+                    "duration_ms": None,
+                    "error_message": "Playwright not available or test execution failed",
+                    "screenshot_path": None,
+                })
+            tests_skipped = len(test_results)
+            issues.append("Playwright test runner not available or failed to execute")
+            if playwright_stderr:
+                issues.append(f"Playwright stderr: {playwright_stderr[:500]}")
+
+        # Determine overall verdict
+        if tests_failed > 0:
+            verdict = "fail"
+        elif tests_skipped > 0 and tests_passed == 0:
+            verdict = "warn"
+        else:
+            verdict = "pass"
+
+        return {
+            "server_status": "started" if base_url else "skipped",
+            "server_error": None,
+            "stack_detected": stack_name,
+            "base_url": base_url,
+            "test_results": test_results,
+            "tests_passed": tests_passed,
+            "tests_failed": tests_failed,
+            "tests_skipped": tests_skipped,
+            "console_errors": console_errors,
+            "issues": issues,
+            "verdict": verdict,
+        }
+
+    def _extract_playwright_tests(self, suite: dict) -> list[dict]:
+        """Recursively extract all test leaves from a Playwright JSON suite node."""
+        tests: list[dict] = []
+        for spec in suite.get("specs", []):
+            for test in spec.get("tests", []):
+                results_data = test.get("results", [])
+                duration_ms = sum(r.get("duration", 0) for r in results_data)
+                error_msgs = [
+                    r.get("error", {}).get("message", "")
+                    for r in results_data
+                    if r.get("error")
+                ]
+                tests.append({
+                    "title": spec.get("title", ""),
+                    "suite_title": suite.get("title", ""),
+                    "file": suite.get("file", spec.get("file", "")),
+                    "status": test.get("status", "skipped"),
+                    "duration_ms": duration_ms,
+                    "errors": [e for e in error_msgs if e],
+                })
+        for sub_suite in suite.get("suites", []):
+            tests.extend(self._extract_playwright_tests(sub_suite))
+        return tests
+
+    def _map_tests_to_acs(
+        self,
+        tests: list[dict],
+        acceptance_criteria: list,
+    ) -> list[dict]:
+        """Map Playwright test results to acceptance-criteria IDs.
+
+        Searches test title and suite title for AC-NNN references.  Tests
+        without an AC reference are recorded under ``"AC-UNKNOWN"``.  ACs not
+        covered by any test are appended as ``"skipped"`` entries.
+        """
+        import re as _re
+
+        ac_pattern = _re.compile(r"AC-\d+", _re.IGNORECASE)
+
+        # Build AC lookup: upper-case id → description text
+        ac_map: dict[str, str] = {}
+        for ac in acceptance_criteria:
+            if isinstance(ac, dict):
+                ac_id = ac.get("id", "")
+                ac_desc = ac.get("description", ac.get("criteria", str(ac)))
+            else:
+                ac_id = str(ac)
+                ac_desc = str(ac)
+            if ac_id:
+                ac_map[ac_id.upper()] = ac_desc
+
+        results: list[dict] = []
+        for test in tests:
+            combined_title = test.get("title", "") + " " + test.get("suite_title", "")
+            ac_matches = ac_pattern.findall(combined_title)
+
+            # Normalise Playwright status → BrowserTestResult status
+            pw_status = test.get("status", "skipped")
+            if pw_status in ("passed", "expected"):
+                status = "passed"
+            elif pw_status in ("failed", "unexpected", "flaky"):
+                status = "failed"
+            else:
+                status = "skipped"
+
+            error_msgs = test.get("errors", [])
+            error_msg = "; ".join(error_msgs[:3]) if error_msgs else None
+            test_file = test.get("file") or None
+            duration_ms = test.get("duration_ms")
+
+            if ac_matches:
+                for ac_id in ac_matches:
+                    ac_key = ac_id.upper()
+                    results.append({
+                        "ac_id": ac_id,
+                        "criteria": ac_map.get(ac_key, ac_id),
+                        "status": status,
+                        "test_file": test_file,
+                        "duration_ms": duration_ms,
+                        "error_message": error_msg,
+                        "screenshot_path": None,
+                    })
+            else:
+                results.append({
+                    "ac_id": "AC-UNKNOWN",
+                    "criteria": test.get("title", "Unknown test"),
+                    "status": status,
+                    "test_file": test_file,
+                    "duration_ms": duration_ms,
+                    "error_message": error_msg,
+                    "screenshot_path": None,
+                })
+
+        # Add skipped entries for ACs with no test coverage
+        tested_ac_ids = {r["ac_id"].upper() for r in results}
+        for ac_id, ac_desc in ac_map.items():
+            if ac_id not in tested_ac_ids:
+                results.append({
+                    "ac_id": ac_id,
+                    "criteria": ac_desc,
+                    "status": "skipped",
+                    "test_file": None,
+                    "duration_ms": None,
+                    "error_message": "No Playwright test generated for this AC",
+                    "screenshot_path": None,
+                })
+
+        return results
+
+    def _extract_playwright_console_errors(self, playwright_results: dict) -> list[str]:
+        """Extract console error entries from Playwright JSON report attachments."""
+        errors: list[str] = []
+        for suite in playwright_results.get("suites", []):
+            for spec in suite.get("specs", []):
+                for test in spec.get("tests", []):
+                    for result in test.get("results", []):
+                        for attachment in result.get("attachments", []):
+                            if attachment.get("name") in ("console_errors", "console-errors"):
+                                body = attachment.get("body", "")
+                                if body:
+                                    errors.append(body)
+        return errors[:20]  # cap to avoid oversized reports
+
+    # ------------------------------------------------------------------
+    # (end of QA Browser / Env Setup hooks)
+    # ------------------------------------------------------------------
 
     def _check_missing_artifacts(
         self, step: WorkflowStepDefinition, workspace: Path,

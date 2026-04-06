@@ -26,8 +26,8 @@ class TestBuiltinWorkflows:
         assert WorkflowType.PERFORMANCE_OPTIMIZATION in BUILTIN_WORKFLOWS
         assert WorkflowType.SECURITY_AUDIT in BUILTIN_WORKFLOWS
 
-    def test_feature_development_has_8_steps(self):
-        assert len(FEATURE_DEVELOPMENT.steps) == 8
+    def test_feature_development_has_10_steps(self):
+        assert len(FEATURE_DEVELOPMENT.steps) == 10
 
     def test_feature_development_starts_with_prd(self):
         assert FEATURE_DEVELOPMENT.steps[0].name == "PRD"
@@ -43,7 +43,7 @@ class TestBuiltinWorkflows:
 
     def test_bugfix_workflow_steps(self):
         assert BUGFIX.steps[0].name == "Bug Analysis"
-        assert len(BUGFIX.steps) == 6
+        assert len(BUGFIX.steps) == 8
 
     def test_security_audit_uses_security_engineer(self):
         threat_step = SECURITY_AUDIT.steps[0]

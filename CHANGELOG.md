@@ -2,6 +2,87 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.17.0] - 2026-04-06
+
+### Added
+
+**QA Browser Phase — Headless Browser Testing for Generated Apps**
+- New pipeline phases: `Env Setup` → `QA Browser` inserted between QA and Release in both `FEATURE_DEVELOPMENT` and `BUGFIX` workflows
+- `ENV_SETUP_ENGINEER` agent role — writes `docker-compose.yml` and seed scripts, produces `env_setup_report.json`
+- `QA_BROWSER_ENGINEER` agent role — generates Playwright tests mapped to PRD acceptance criteria, produces `qa_browser_report.json`
+- `FIXER` agent role — diagnoses pipeline step failures, applies minimal targeted fixes, produces `fixer_report.json` with retry-or-escalate verdict
+- `src/orchestrator/stack_detector.py` — detects project stack (React, Next.js, Flask, etc.) for dev server auto-start
+- `src/orchestrator/app_server.py` — manages dev server lifecycle for browser testing
+
+**Runtime Validation & Repair Prompts**
+- `phases.py` — `build_env_setup_prompt()`, `build_qa_browser_prompt()`, `build_fixer_prompt()` with full artifact-chain context
+- Helper functions for extracting PRD acceptance criteria, architecture services, and domain entities from upstream artifacts
+
+**Fixer Agent Loop**
+- `workflow_engine.py` — fixer retry loop: on step failure, spawns Fixer agent to diagnose and repair before falling through to `on_fail` routing
+- `WorkflowStepDefinition.skip_fixer` — opt-out flag to bypass Fixer for specific steps
+- `OrchestratorConfig.fixer` — `FixerConfig` with `enabled` and `max_attempts` settings
+
+**QA Browser Lifecycle Hooks**
+- `workflow_engine.py` — `_qa_browser_pre_hook()` starts dev server + Playwright, stubs report on infra failure
+- `workflow_engine.py` — `_qa_browser_post_hook()` runs browser tests and tears down server
+- `workflow_engine.py` — `_env_setup_post_hook()` validates `docker-compose.yml` after Env Setup step
+
+**E2E Test Infrastructure (Playwright)**
+- `tests/e2e/` — full E2E test suite: `test_dashboard_pages.py`, `test_interactive_flows.py`
+- `tests/e2e/conftest.py` — Playwright fixtures with screenshot-on-failure capture
+- `tests/e2e/utils/server.py` — dashboard server lifecycle management for E2E tests
+- `tests/e2e/utils/console_interceptor.py` — browser console error interception
+- `pyproject.toml` — new `[e2e]` optional dependency group (pytest-playwright, playwright, httpx)
+- `pyproject.toml` — `e2e` pytest marker registered
+
+**CI/CD Pipeline**
+- `.github/workflows/ci.yml` — Job 7: E2E Browser Tests (Playwright/Chromium) with cached browser binaries and failure screenshot upload
+- `.github/workflows/ci.yml` — Job 8: Deployment Verification (health checks, CLI smoke tests, security hardening validation)
+- `scripts/deployment_verify.py` — deployment verification script for Docker image validation
+
+**Makefile Targets**
+- `make e2e` — install Playwright + Chromium and run E2E suite headless
+- `make e2e-headed` — run E2E suite with visible browser for debugging
+- `make e2e-install` — install Playwright + Chromium (skips if cached)
+- `make deployment-verify` — verify Docker image is deployment-ready
+
+**Schemas**
+- `src/schemas/env_setup_report.schema.json` — schema for Env Setup artifacts
+- `src/schemas/fixer_report.schema.json` — schema for Fixer artifacts
+- `src/schemas/qa_browser_report.schema.json` — schema for QA Browser artifacts
+
+**Models**
+- `EnvSetupReport`, `QABrowserReport`, `BrowserTestResult`, `FixerReport` Pydantic models
+
+**Documentation**
+- `docs/features/QA_BROWSER_PHASE.md` — feature specification
+- `docs/adr/qa_browser_phase.md` — architecture decision record
+- `docs/PLAYWRIGHT_TESTING_GUIDE.md` — E2E testing guide
+- `docs/QA_BROWSER_CONFIGURATION.md` — QA browser configuration reference
+- `docs/QA_BROWSER_IMPLEMENTATION_GUIDE.md` — implementation guide
+- `docs/STACK_DETECTOR_API.md` — stack detector API reference
+
+### Changed
+
+- `engine.py` — `PHASE_ORDER` extended: `env_setup` and `qa_browser` phases added between `qa` and `reviewer`
+- `model_routing.py` — `ROLE_CATEGORY` mapping: `ENV_SETUP_ENGINEER` → `CODING`, `QA_BROWSER_ENGINEER` → `VERIFICATION`, `FIXER` → `VERIFICATION`
+- `roles.py` — `ROLE_REGISTRY` extended with `ENV_SETUP_ENGINEER`, `QA_BROWSER_ENGINEER`, and `FIXER` role definitions
+- `workflows.py` — `FEATURE_DEVELOPMENT` and `BUGFIX` workflows gain `Env Setup` and `QA Browser` steps
+- `workflow_engine.py` — step execution restructured into fixer-aware retry loop with pre/post hooks for QA Browser lifecycle
+
+### Tests
+
+- `tests/test_phases.py` — tests for `build_env_setup_prompt()`, `build_qa_browser_prompt()`, `build_fixer_prompt()`, phase definition validation
+- `tests/test_model_routing.py` — model routing coverage for new agent roles
+- `tests/test_workflows.py` — workflow step ordering and definition tests
+- `tests/test_task007_workflow_engine_hooks.py` — QA Browser and Env Setup hook tests
+- `tests/test_task008_fixer_invocation.py` — Fixer invocation and retry logic tests
+- `tests/unit/test_app_server.py` — app server unit tests
+- `tests/unit/test_stack_detector.py` — stack detector unit tests
+
+---
+
 ## [0.16.0] - 2026-04-03
 
 ### Added

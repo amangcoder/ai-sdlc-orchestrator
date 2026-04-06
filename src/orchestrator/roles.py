@@ -449,6 +449,28 @@ ROLE_REGISTRY: dict[AgentRole, RoleDefinition] = {
         access=RoleAccess.READ_ONLY,
         agent_file="mediator.md",
     ),
+    # --- Runtime validation & repair ---
+    AgentRole.ENV_SETUP_ENGINEER: RoleDefinition(
+        role=AgentRole.ENV_SETUP_ENGINEER,
+        title="Env Setup Engineer",
+        responsibility="Writes docker-compose.yml and optional seed scripts for generated projects; produces env_setup_report.json confirming environment is runnable",
+        access=RoleAccess.READ_WRITE,
+        agent_file="env_setup_engineer.md",
+    ),
+    AgentRole.QA_BROWSER_ENGINEER: RoleDefinition(
+        role=AgentRole.QA_BROWSER_ENGINEER,
+        title="QA Browser Engineer",
+        responsibility="Generates Playwright browser tests mapped to PRD acceptance criteria; validates running dev server; produces qa_browser_report.json with per-AC pass/fail results",
+        access=RoleAccess.READ_WRITE,
+        agent_file="qa_browser_engineer.md",
+    ),
+    AgentRole.FIXER: RoleDefinition(
+        role=AgentRole.FIXER,
+        title="Fixer",
+        responsibility="Diagnoses pipeline step failures, applies minimal targeted fixes, and produces fixer_report.json with verdict 'fixed' (retry) or 'escalate' (fall through to on_fail)",
+        access=RoleAccess.READ_WRITE,
+        agent_file="fixer.md",
+    ),
 }
 
 

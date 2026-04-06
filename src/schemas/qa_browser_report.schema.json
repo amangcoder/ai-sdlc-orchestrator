@@ -1,0 +1,191 @@
+{
+  "$defs": {
+    "BrowserTestResult": {
+      "description": "Result for a single browser-based acceptance-criterion test.",
+      "properties": {
+        "ac_id": {
+          "minLength": 1,
+          "title": "Ac Id",
+          "type": "string"
+        },
+        "criteria": {
+          "minLength": 1,
+          "title": "Criteria",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "passed",
+            "failed",
+            "skipped"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "test_file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Test File"
+        },
+        "duration_ms": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Ms"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Message"
+        },
+        "screenshot_path": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Screenshot Path"
+        }
+      },
+      "required": [
+        "ac_id",
+        "criteria",
+        "status"
+      ],
+      "title": "BrowserTestResult",
+      "type": "object"
+    },
+    "QAVerdict": {
+      "enum": [
+        "pass",
+        "fail"
+      ],
+      "title": "QAVerdict",
+      "type": "string"
+    }
+  },
+  "description": "Artifact produced by the QA_BROWSER_ENGINEER agent after browser-based QA.",
+  "properties": {
+    "server_status": {
+      "enum": [
+        "started",
+        "failed",
+        "skipped"
+      ],
+      "title": "Server Status",
+      "type": "string"
+    },
+    "server_error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Server Error"
+    },
+    "stack_detected": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stack Detected"
+    },
+    "base_url": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Base Url"
+    },
+    "test_results": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/BrowserTestResult"
+      },
+      "title": "Test Results",
+      "type": "array"
+    },
+    "tests_passed": {
+      "minimum": 0,
+      "title": "Tests Passed",
+      "type": "integer"
+    },
+    "tests_failed": {
+      "minimum": 0,
+      "title": "Tests Failed",
+      "type": "integer"
+    },
+    "tests_skipped": {
+      "minimum": 0,
+      "title": "Tests Skipped",
+      "type": "integer"
+    },
+    "console_errors": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Console Errors",
+      "type": "array"
+    },
+    "issues": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "verdict": {
+      "$ref": "#/$defs/QAVerdict"
+    }
+  },
+  "required": [
+    "server_status",
+    "tests_passed",
+    "tests_failed",
+    "tests_skipped",
+    "verdict"
+  ],
+  "title": "QABrowserReport",
+  "type": "object"
+}

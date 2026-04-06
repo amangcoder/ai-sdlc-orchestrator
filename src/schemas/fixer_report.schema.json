@@ -1,0 +1,63 @@
+{
+  "description": "Artifact produced by the FIXER agent after an inline repair attempt.",
+  "properties": {
+    "failed_step": {
+      "minLength": 1,
+      "title": "Failed Step",
+      "type": "string"
+    },
+    "error_summary": {
+      "minLength": 1,
+      "title": "Error Summary",
+      "type": "string"
+    },
+    "root_cause_category": {
+      "minLength": 1,
+      "title": "Root Cause Category",
+      "type": "string"
+    },
+    "root_cause_description": {
+      "minLength": 1,
+      "title": "Root Cause Description",
+      "type": "string"
+    },
+    "files_changed": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Files Changed",
+      "type": "array"
+    },
+    "fix_description": {
+      "minLength": 1,
+      "title": "Fix Description",
+      "type": "string"
+    },
+    "confidence": {
+      "maximum": 1.0,
+      "minimum": 0.0,
+      "title": "Confidence",
+      "type": "number"
+    },
+    "verdict": {
+      "enum": [
+        "fixed",
+        "escalate"
+      ],
+      "title": "Verdict",
+      "type": "string"
+    }
+  },
+  "required": [
+    "failed_step",
+    "error_summary",
+    "root_cause_category",
+    "root_cause_description",
+    "fix_description",
+    "confidence",
+    "verdict"
+  ],
+  "title": "FixerReport",
+  "type": "object"
+}

@@ -111,6 +111,10 @@ ROLE_CATEGORY: dict[AgentRole, AgentCategory] = {
     AgentRole.DEEP_RESEARCHER: AgentCategory.DEBATE_RESEARCH,
     AgentRole.BRAINSTORMER: AgentCategory.DEBATE_RESEARCH,
     AgentRole.MEDIATOR: AgentCategory.DEBATE_MEDIATION,
+    # Runtime validation & repair
+    AgentRole.ENV_SETUP_ENGINEER: AgentCategory.CODING,
+    AgentRole.QA_BROWSER_ENGINEER: AgentCategory.VERIFICATION,
+    AgentRole.FIXER: AgentCategory.VERIFICATION,
 }
 
 # Each mode defines (base_model, escalation_model) per category.

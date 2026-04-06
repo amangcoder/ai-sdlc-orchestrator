@@ -694,3 +694,153 @@ jobs:
           name: grype-security-report
           path: grype-report.txt
           retention-days: 7
+
+  # ── Job 7: Headless Browser E2E Tests (Playwright) ────────────────────────
+  #
+  # Installs the [e2e] optional dependency group (pytest-playwright) and the
+  # Chromium browser binary, starts the dashboard server as a subprocess, then
+  # runs all tests under tests/e2e/.
+  #
+  # Gated on the unit-test job so E2E never runs against broken code.
+  # Runs only on Python 3.11 (no matrix needed — E2E is browser-level).
+  #
+  # PRD: REQ-004, REQ-005, REQ-006, REQ-007, REQ-008
+  # AC:  AC-003, AC-008, AC-009
+  e2e-tests:
+    name: E2E Browser Tests (Playwright / Chromium)
+    runs-on: ubuntu-latest
+    # Gate on unit tests passing — never run E2E against broken code
+    needs: [test]
+    # E2E is allowed to fail without blocking the overall workflow while the
+    # test suite is being built out.  Set to false once the suite is stable.
+    continue-on-error: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install package with [dashboard] + [e2e] extras
+        # [dashboard] provides fastapi + uvicorn (needed to start the server).
+        # [e2e] provides pytest-playwright + playwright.
+        run: pip install -e ".[dashboard,e2e]"
+
+      - name: Cache Playwright Chromium browser binaries
+        # Cache the Playwright browser cache directory (~/.cache/ms-playwright).
+        # The key is based on pyproject.toml (which contains the playwright version
+        # pin), so the cache is invalidated when the Playwright version changes.
+        # On a cache hit the ~400 MB browser download is skipped, saving ~2 minutes
+        # of CI time per run.
+        id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ hashFiles('pyproject.toml') }}
+          restore-keys: |
+            playwright-chromium-
+
+      - name: Install Playwright Chromium browser
+        # Install only Chromium to save ~300 MB vs. installing all browsers.
+        # --with-deps installs OS-level apt dependencies (libglib2, libnss3, etc.)
+        # required for headless Chromium on ubuntu-latest.
+        # When the browser cache is a hit, playwright install is a no-op for the
+        # binary download but still ensures system deps are present.
+        run: python -m playwright install chromium --with-deps
+
+      - name: Ensure screenshots directory exists
+        run: mkdir -p tests/e2e/screenshots
+
+      - name: Run E2E test suite (headless Chromium)
+        # CI E2E tests are limited to 1 concurrent browser by pytest-playwright
+        # default.  Set HEADED= (empty) to ensure headless mode.
+        # Timeout: 5 minutes for the full suite (AC-003).
+        env:
+          HEADED: ""
+          # Suppress uvicorn startup banner noise in CI logs
+          UVICORN_LOG_LEVEL: warning
+        run: |
+          pytest tests/e2e/ \
+            --browser chromium \
+            --timeout=15000 \
+            -v \
+            --tb=short \
+            --no-header \
+            -q
+        timeout-minutes: 10
+
+      - name: Upload failure screenshots
+        # Upload any PNG screenshots captured by the screenshot_on_failure
+        # fixture.  These are retained for 7 days (AC-009).
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-screenshots
+          path: tests/e2e/screenshots/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # ── Job 8: Deployment Verification ────────────────────────────────────────
+  #
+  # Loads the Docker image built by the docker-build job, then runs
+  # scripts/deployment_verify.py which:
+  #   - checks non-root user
+  #   - starts a container, polls /healthz (8080) and /health (8090)
+  #   - validates all CLI --help entry points
+  #   - verifies load_config() / config symlink
+  #   - verifies security hardening (--read-only + --cap-drop ALL)
+  #   - warns if compressed image > 500 MB
+  #
+  # PRD: REQ-001, REQ-002, REQ-003, REQ-009, REQ-012, REQ-016, REQ-018
+  # AC:  AC-001, AC-002, AC-010, AC-013
+  deployment-verify:
+    name: Deployment Verification
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download Docker image tarball
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+          path: /tmp
+
+      - name: Load Docker image
+        run: |
+          docker load < /tmp/image.tar.gz
+          echo "Loaded image:"
+          docker images ai-sdlc-orchestrator --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}"
+
+      - name: Run deployment verification
+        # scripts/deployment_verify.py exits 0 on all-pass, 1 on any failure.
+        # The --timeout 30 matches REQ-002 (30-second health check deadline).
+        # --json emits a machine-readable JSON summary after the human-readable
+        # report for downstream parsing / job-summary upload.
+        run: |
+          python scripts/deployment_verify.py \
+            --image ai-sdlc-orchestrator:latest \
+            --timeout 30 \
+            --log-tail 50 \
+            --json 2>&1 | tee /tmp/deployment-verify-output.txt
+          # Re-propagate non-zero exit from the Python script even through tee
+          exit ${PIPESTATUS[0]}
+
+      - name: Deployment verification summary
+        if: always()
+        run: |
+          echo "## Deployment Verification Results" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat /tmp/deployment-verify-output.txt 2>/dev/null || echo "(no output captured)"
+          echo '```' >> $GITHUB_STEP_SUMMARY

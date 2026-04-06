@@ -74,7 +74,7 @@ from orchestrator.workspace_manager import WorkspaceManager
 
 logger = logging.getLogger(__name__)
 
-PHASE_ORDER = ["pm", "architect", "engineer", "qa", "reviewer"]
+PHASE_ORDER = ["pm", "architect", "engineer", "qa", "env_setup", "qa_browser", "reviewer"]
 
 # Keys whose values should be redacted before logging config data
 _SENSITIVE_KEYS = {"api_key", "api_token", "secret", "password", "webhook", "url", "token"}

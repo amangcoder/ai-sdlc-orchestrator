@@ -1,397 +1,586 @@
-# Centralized Monitoring, Artifact Management & Observability
+# QA-Browser Phase: Headless Browser Testing for Generated Apps
 
 ## Context
 
-The orchestrator has solid building blocks — Prometheus metrics (in-memory), OpenTelemetry tracing (no collector), JSONL event logging (flat files), webhook alerting, budget forecasting, timeline recording, and a FastAPI dashboard. However, these are disconnected: metrics die with the process, traces go nowhere, logs aren't searchable, artifacts have no lifecycle management, and there's no historical trend analysis. This plan unifies everything into a production-grade observability stack.
+The orchestrator can generate full-stack apps via its PM -> Architect -> Engineer pipeline, but the QA phase only does **static analysis** (runs tests, lints, type checks, traces code logic). It cannot start the generated app in a real browser and verify that user flows actually work. This means bugs visible only at runtime (broken routes, missing UI elements, JS errors, form submission failures) go undetected until a human manually tests.
+
+This plan adds a **QA-Browser phase** that starts the generated app's dev server, launches a headless Chromium browser via Playwright, and verifies acceptance criteria from the PRD through automated browser interactions.
 
 ---
 
-## Phase 1: Monitoring Stack Infrastructure (Docker Compose)
+## Architecture
 
-**Goal:** One-command `docker compose up` that stands up persistent Prometheus, Grafana, Jaeger, and Loki.
+**Hybrid approach**: Deterministic Python harness for stack detection + server lifecycle + test execution. Claude sub-agent for generating **TypeScript Playwright tests** (`.spec.ts`) from acceptance criteria. TypeScript chosen for natural fit with JS/TS frontend apps and richer Playwright ecosystem.
 
-### New Files
-
-| File | Purpose |
-|------|---------|
-| `infra/docker/docker-compose.monitoring.yml` | Monitoring stack services |
-| `infra/monitoring/prometheus.yml` | Prometheus scrape config targeting orchestrator `:9090/metrics` |
-| `infra/monitoring/promtail.yml` | Tails `workspace/**/run-*.jsonl` → ships to Loki with `run_id`, `event`, `agent` labels |
-| `infra/monitoring/grafana/provisioning/datasources/datasources.yml` | Auto-registers Prometheus, Loki, Jaeger as Grafana data sources |
-| `infra/monitoring/grafana/provisioning/dashboards/dashboard.yml` | Tells Grafana to scan `dashboards/` dir |
-| `infra/scripts/start-monitoring.sh` | One-command startup + prints URLs |
-
-### Services in `docker-compose.monitoring.yml`
-
-| Service | Image | Ports | Volume | Notes |
-|---------|-------|-------|--------|-------|
-| `prometheus` | `prom/prometheus:v2.53.0` | `9091:9090` | `prometheus-data:/prometheus` | Host 9091 to avoid clash with MetricsManager on 9090 |
-| `grafana` | `grafana/grafana:11.1.0` | `3000:3000` | `grafana-data:/var/lib/grafana` | Auto-provisioned datasources + dashboards |
-| `jaeger` | `jaegertracing/all-in-one:1.58` | `16686:16686`, `4317:4317` | `jaeger-data:/badger` | Receives OTLP gRPC from existing `TracingManager` |
-| `loki` | `grafana/loki:3.1.0` | `3100:3100` | `loki-data:/loki` | Log aggregation |
-| `promtail` | `grafana/promtail:3.1.0` | — | bind workspace logs dir | Ships JSONL → Loki |
-
-All join a new `orchestrator-monitoring` bridge network (separate from the egress-filtered `orchestrator-net`).
-
-**Why Jaeger over Tempo:** Jaeger all-in-one is simpler (one image, built-in UI at `:16686`, Badger persistent storage). TracingManager already exports OTLP gRPC. Tempo would require Grafana-only query frontend.
-
-### Config Changes
-
-**Modify `src/orchestrator/monitoring/config.py`** — add fields:
-```python
-loki_enabled: bool = False
-loki_endpoint: str = "http://localhost:3100"
-grafana_url: str = "http://localhost:3000"
-jaeger_ui_url: str = "http://localhost:16686"
+```
+Engineer writes code
+       |
+  QA (static)        ← existing: tests, lint, type check
+       |
+  Env Setup          ← NEW: writes docker-compose.yml + seed data
+       |
+  QA Browser         ← NEW: starts app via compose, seeds DB, runs browser tests
+       |
+    Reviewer
 ```
 
-**Modify `config/default.yaml`** — add corresponding entries under `monitoring:`.
+**Pipeline position**: Two new steps inserted between QA and Reviewer in `FEATURE_DEVELOPMENT`:
+1. **"Env Setup"** — an agent that writes `docker-compose.yml` and seed data scripts
+2. **"QA Browser"** — starts the environment, runs browser tests against acceptance criteria
 
-**Modify `pyproject.toml`** — add `observability` optional dependency group:
-```toml
-observability = ["ai-sdlc-orchestrator[monitoring]", "python-logging-loki>=0.3.1"]
-```
+**Speed mode gating**: Only runs in `thorough` and `paranoid` modes. Skipped in `turbo`/`standard` (produces a stub report with `server_status: "skipped"`, `verdict: "pass"`).
 
 ---
 
-## Phase 2: Grafana Dashboards + New Metrics
+## Fixer: Optional Failure-Recovery Agent
 
-**Goal:** Ship 5 pre-built Grafana dashboards as auto-provisioned JSON files.
+The **Fixer** is not a workflow step — it is an **inline recovery agent** invoked automatically when any pipeline step fails, before a dumb retry or route-back occurs. It is optional and can be toggled via config.
 
-### New Metrics (modify [metrics.py](src/orchestrator/monitoring/metrics.py))
+### What the Fixer Does
 
-Add to `MetricsManager.__init__()`:
-- `burn_rate_usd_per_minute` (Gauge) — current cost velocity
-- `run_duration_seconds` (Histogram, labels: `workflow_type`, `status`) — total run duration
-- `artifacts_produced_total` (Counter, labels: `artifact_type`, `agent`) — artifact production
+When a step fails (error, assertion failure, unexpected behavior), instead of blindly retrying:
 
-Add corresponding `record_*` methods. Wire from [MonitoringStack](src/orchestrator/monitoring/__init__.py) event handlers.
+1. **Traces the causal chain** — reads all artifacts produced so far (`prd.json`, `architecture.json`, `tasks.json`, `qa_report.json`, `env_setup_report.json`, etc.) plus the raw error output from the failed step
+2. **Reconstructs the decision path** — understands what the PM required → what the Architect designed → what the Engineer implemented → where it broke
+3. **Identifies root cause** — categorizes: logic bug, missing dependency, wrong env config, brittle test selector, compose port conflict, missing seed data, schema mismatch, etc.
+4. **Applies a targeted fix** — edits only the specific files responsible for the failure (not a full reimplementation)
+5. **Reports what it changed** — writes `artifacts/fixer_report.json`
+6. **Signals the engine to retry the failed step** — the engine re-runs the same step with the fix in place
 
-### Dashboard Files (all in `infra/monitoring/grafana/dashboards/`)
+If the fix fails to resolve the error after `fixer.max_attempts`, the Fixer escalates to the Reviewer with a structured diagnosis.
 
-| Dashboard | Key Panels |
-|-----------|------------|
-| `run-overview.json` | Success/failure rate, active agents, runs/hr, phase duration heatmap, error rate by agent, budget utilization |
-| `cost-analysis.json` | Cumulative cost, cost by agent (bar), cost by model (pie), token usage (stacked), cost per run trend, burn rate |
-| `agent-performance.json` | Invocations table, success rate by agent, task duration by role, retry rate, latency p50/p95/p99 |
-| `error-analysis.json` | Error count by type (pie), error timeline, most error-prone agents (table), crash recovery events (Loki log panel) |
-| `slo-overview.json` | SLO compliance matrix, error budget gauges, success rate trend, violation timeline (built in Phase 5) |
+### What makes it "Optional"
 
-### Prometheus Recording Rules
+- **Config flag** `fixer.enabled: true/false` — if false, pipeline falls back to existing `on_fail` routing
+- **Speed mode gated** — active in `standard`, `thorough`, `paranoid`; disabled in `turbo` (speed matters more than recovery)
+- **Max attempts** `fixer.max_attempts: 2` — prevents infinite fix loops; after limit, escalates
+- **Step-level opt-out** — individual workflow steps can set `fixer: false` to skip Fixer for that step
 
-New file: `infra/monitoring/prometheus-rules.yml` — pre-aggregated queries for dashboard efficiency:
-```yaml
-- record: orchestrator:pipeline_success_rate:rate1h
-  expr: sum(rate(orchestrator_run_total{status="completed"}[1h])) / sum(rate(orchestrator_run_total[1h]))
-- record: orchestrator:phase_duration_p95:5m
-  expr: histogram_quantile(0.95, rate(orchestrator_phase_duration_seconds_bucket[5m]))
-- record: orchestrator:error_rate_per_run:rate1h
-  expr: sum(rate(orchestrator_errors_total[1h])) / sum(rate(orchestrator_run_total[1h]))
-```
+### Integration Point
 
----
-
-## Phase 3: Artifact Management System
-
-**Goal:** Versioned artifact storage with indexing, retention, cross-run comparison, and search. Fully backward-compatible.
-
-### New File: `src/orchestrator/artifact_manager.py`
-
-**Class: `ArtifactManager`**
-
-Key methods:
-- `save_artifact(run_id, name, data, agent, schema_name)` — writes current version + versioned copy + updates index
-- `load_artifact(run_id, name, version=None)` — load artifact, optionally at specific version
-- `list_artifacts(run_id)` → `list[ArtifactMetadata]`
-- `get_artifact_history(run_id, name)` → `list[ArtifactVersion]`
-- `compare_artifacts(run_a, run_b, name)` → `ArtifactDiff` — structural diff across runs
-- `search_artifacts(type, agent, since, text_query)` → `list[ArtifactSearchResult]`
-- `apply_retention_policy(max_age_days, max_runs, keep_failed)` → `RetentionResult`
-
-### Storage Layout (backward-compatible extension)
-
-```
-workspace/runs/{run_id}/artifacts/
-  prd.json                          # current version (existing, unchanged)
-  architecture.json                 # existing
-  .versions/                        # NEW
-    prd/v1.json, v2.json
-    architecture/v1.json
-  .index.json                       # NEW: manifest with metadata per artifact
-```
-
-Existing code reading `artifacts/prd.json` directly continues to work. `.versions/` and `.index.json` are purely additive.
-
-### Data Models
+In `workflow_engine._execute_step()`, when a step fails and Fixer is enabled:
 
 ```python
-@dataclass
-class ArtifactMetadata:
-    name: str; schema_name: str; agent: str; created_at: str
-    updated_at: str; version: int; size_bytes: int; valid: bool
-
-@dataclass
-class ArtifactVersion:
-    version: int; created_at: str; agent: str; size_bytes: int; checksum: str
-
-@dataclass
-class ArtifactDiff:
-    artifact_name: str; run_id_a: str; run_id_b: str
-    added_keys: list[str]; removed_keys: list[str]; changed_keys: list[str]; summary: str
+if self.config.fixer.enabled and phase_state.retry_count < self.config.fixer.max_attempts:
+    fixer_ok = await self._invoke_fixer(step, failure_context)
+    if fixer_ok:
+        return await self._execute_step(step)  # retry with fix applied
+# else: fall through to existing on_fail routing
 ```
 
-### Integration Points
-
-- **Modify [workflow_engine.py](src/orchestrator/workflow_engine.py):** Route artifact writes through `ArtifactManager.save_artifact()` instead of direct `json.dump`. `ArtifactCache` (read cache) stays unchanged.
-- **Modify `config/default.yaml`:** Add `artifacts:` section (versioning_enabled, retention_max_age_days: 90, retention_max_runs: 200, retention_keep_failed: true).
-- **New CLI: `orchestrate-artifacts`** — `list <run_id>`, `compare <run_a> <run_b> <name>`, `gc --max-age 90`, `search --type prd`.
-- **New tests: `tests/test_artifact_manager.py`**
-
-### Dashboard API Endpoints (modify [app.py](src/orchestrator/dashboard/app.py))
-
-```
-GET  /api/v1/runs/{run_id}/artifacts          → list with metadata
-GET  /api/v1/runs/{run_id}/artifacts/{name}/versions → version history
-GET  /api/v1/runs/{run_id}/artifacts/{name}/versions/{v} → specific version
-GET  /api/v1/artifacts/compare?run_a=&run_b=&artifact= → diff
-GET  /api/v1/artifacts/search?type=&agent=&q= → search
-POST /api/v1/artifacts/retention              → trigger cleanup
-```
+This keeps Fixer **invisible to the workflow DAG** — steps don't need to know about it.
 
 ---
 
-## Phase 4: Log Aggregation & Correlation
+## Files to Create
 
-**Goal:** Make JSONL events queryable with trace correlation, both via Loki and without it.
+### 1. `src/orchestrator/stack_detector.py` — Stack Detection Utility
 
-### New File: `src/orchestrator/monitoring/log_shipper.py`
+Detects the tech stack of the generated project by examining project files. Returns a `StackInfo` dataclass:
 
-**Class: `LokiLogShipper`** — pushes events to Loki via HTTP (alternative to Promtail for non-Docker runs):
-- Background thread with batching (flush every 1s or 100 events)
-- Graceful fallback if Loki unreachable
-- Labels: `job=orchestrator`, `run_id`, `event`, `agent`
-
-### Modify [observability.py](src/orchestrator/observability.py)
-
-Enrich `log_event()` records with:
-- `trace_id` — from `TracingManager` for Loki→Jaeger linking in Grafana
-- `task_id` — explicit top-level field for correlation
-- `agent` — top-level for Loki label extraction
-- `level` — INFO/WARN/ERROR derived from event type
-
-### Modify [MonitoringStack](src/orchestrator/monitoring/__init__.py)
-
-Wire `LokiLogShipper` into `__init__()` when `loki_enabled=True`. Add `on_event()` method that `RunLogger` calls for every event to forward to the shipper.
-
-### Standard LogQL Queries (document in `docs/observability.md`)
-
+```python
+@dataclass(frozen=True)
+class StackInfo:
+    framework: str            # "nextjs", "react-vite", "flask", "django", "fastapi", etc.
+    language: str             # "javascript", "typescript", "python"
+    package_manager: str      # "npm", "yarn", "pnpm", "pip", "poetry"
+    install_command: str      # "npm install", "pip install -r requirements.txt"
+    dev_server_command: str   # "npm run dev", "uvicorn main:app --reload"
+    dev_server_port: int      # 3000, 5173, 8000
+    base_url: str             # "http://localhost:3000"
+    health_check_path: str    # "/"
+    has_frontend: bool        # False for pure API/CLI projects
 ```
-{job="orchestrator", run_id="abc123"}                              # all events for a run
-{job="orchestrator", event="agent_result"} |= `"success":false`    # agent failures
-{job="orchestrator", event="budget_warning"}                       # budget warnings
-{job="orchestrator", event="step_end"} | json | duration_s > 60    # slow phases
+
+**Detection chain** (priority order):
+1. `package.json` → parse `dependencies` + `scripts.dev`/`scripts.start` → detect Next.js, Vite, CRA, Express, etc.
+2. `pyproject.toml` / `requirements.txt` → detect Django, Flask, FastAPI, Streamlit
+3. `Gemfile` → Rails
+4. `go.mod` → Go
+5. `architecture.json` artifact (if available) → explicit tech stack from Architect
+6. Fallback: scan for common entry files (`app.py`, `server.js`, `main.py`)
+
+If no startable app detected → `has_frontend = False`, phase skips browser tests gracefully.
+
+### 2. `src/orchestrator/app_server.py` — Dev Server Lifecycle Manager
+
+Generalized version of the existing `tests/e2e/utils/server.py` (`DashboardTestServer`). Reuses the `find_free_port()` pattern and health-check polling.
+
+```python
+class AppTestServer:
+    def __init__(self, project_root: Path, stack: StackInfo, timeout: float = 60.0): ...
+    async def start_dependencies(self) -> tuple[bool, str]:     # docker compose up -d
+    async def install_packages(self) -> tuple[bool, str]:        # npm install / pip install
+    async def start(self) -> tuple[str, int]:                    # (host, port)
+    async def wait_healthy(self, timeout: float) -> bool:
+    async def stop(self) -> None:                                # stop server + docker compose down
 ```
+
+Key behaviors:
+- **Docker Compose**: If `docker-compose.yml` / `compose.yml` exists, runs `docker compose up -d` to start dependent services (DB, Redis, etc.) before the app, and `docker compose down` on teardown
+- Runs `stack.install_command` via `asyncio.create_subprocess_exec` with 120s timeout
+- Starts `stack.dev_server_command` as a background subprocess, overriding port to a free port
+- Polls `stack.health_check_path` until HTTP 200 or timeout
+- Captures stderr for diagnostics on failure
+- `atexit` cleanup safety net (same pattern as `DashboardTestServer`)
+- On stop: gracefully shuts down dev server, then runs `docker compose down` if compose was used
+
+### 3. `.claude/agents/env_setup.md` — Env Setup Agent Definition
+
+System prompt for the Environment Setup agent. This agent runs **after static QA, before QA Browser**. It reads the architecture, PRD, and generated code to produce two outputs:
+
+**`docker-compose.yml`** (written to project root):
+- Services: the app itself + all dependencies (PostgreSQL, MySQL, Redis, etc.) inferred from architecture.json and code
+- Health checks on each service
+- Correct port mappings, env vars, volume mounts
+- Named network so services resolve by hostname
+
+**`scripts/seed.sql` / `scripts/seed.py` / `scripts/seed.ts`** (language matches stack):
+- Realistic seed data matching the PRD's domain (e.g., for a todo app: 5–10 sample todos, a test user account)
+- Seeds enough data for browser tests to find real content (list pages, detail pages, search results)
+- Idempotent: can be re-run safely (uses INSERT OR IGNORE / upserts)
+
+The agent is instructed to:
+1. Read `artifacts/architecture.json` for declared services/dependencies
+2. Read `artifacts/prd.json` for domain entities to seed
+3. Explore code to confirm DB models, ORM, connection strings
+4. Write `docker-compose.yml` at project root
+5. Write `scripts/seed.*` appropriate to the stack
+
+### 4. `.claude/agents/qa_browser.md` — QA Browser Agent Definition
+
+System prompt for the QA Browser agent. Instructs the agent to:
+1. Read PRD acceptance criteria
+2. Explore the generated project briefly to understand routes/pages/components
+3. Write Playwright test files (one per AC group) to `tests/e2e/generated/`
+4. Use accessible selectors (`getByRole`, `getByText`, `getByLabel`)
+5. NOT attempt to install or run Playwright itself — the harness does that
+6. Write `qa_browser_report.json` artifact
+
+### 5. `src/schemas/env_setup_report.schema.json` — Env Setup Artifact Schema
+
+```json
+{
+  "docker_compose_written": true,
+  "compose_services": ["app", "postgres", "redis"],
+  "seed_script_written": true,
+  "seed_script_path": "scripts/seed.sql",
+  "issues": [],
+  "verdict": "pass|fail"
+}
+```
+
+### 6. `src/schemas/qa_browser_report.schema.json` — QA Browser Artifact Schema
+
+Generated from the Pydantic model. Structure:
+
+```json
+{
+  "server_status": "running|failed|skipped",
+  "server_error": "string|null",
+  "stack_detected": "nextjs",
+  "base_url": "http://localhost:3000",
+  "test_results": [
+    {
+      "ac_id": "AC-001",
+      "criteria": "GIVEN ... WHEN ... THEN ...",
+      "status": "pass|fail|skip|error",
+      "test_file": "tests/e2e/generated/ac_001.spec.ts",
+      "duration_ms": 2340,
+      "error_message": "string|null",
+      "screenshot_path": "string|null"
+    }
+  ],
+  "tests_passed": 3,
+  "tests_failed": 1,
+  "tests_skipped": 0,
+  "console_errors": ["TypeError: ..."],
+  "issues": [{ "severity": "major", "file": "...", "description": "...", "suggestion": "..." }],
+  "verdict": "pass|fail"
+}
+```
+
+### 7. `.claude/agents/fixer.md` — Fixer Agent Definition
+
+System prompt for the Fixer agent. Instructs the agent to:
+1. **Not write new features** — only diagnose and fix the specific failure
+2. Read all artifacts in order to reconstruct the decision chain
+3. Identify the single most likely root cause (not a list of possibilities)
+4. Apply a minimal targeted fix — fewest files changed, no refactoring
+5. Write `artifacts/fixer_report.json` explaining what failed, why, and what was changed
+6. Stop after the fix — the harness retries the failed step
+
+The agent is given the failed step name, its error output (stderr/assertion message/schema validation error), and the full artifact context.
+
+### 8. `src/schemas/fixer_report.schema.json` — Fixer Artifact Schema
+
+```json
+{
+  "failed_step": "QA Browser",
+  "error_summary": "Server failed to start: port 3000 already in use",
+  "root_cause_category": "env_config|logic_bug|missing_dep|brittle_test|schema_mismatch|other",
+  "root_cause_description": "docker-compose.yml maps port 3000 but Next.js hardcodes 3000 without respecting PORT env var",
+  "files_changed": ["docker-compose.yml", "package.json"],
+  "fix_description": "Updated compose to expose port 3001, set PORT=3001 in environment, updated scripts.dev to use $PORT",
+  "confidence": "high|medium|low",
+  "verdict": "fixed|escalate"
+}
+```
+
+`verdict: "escalate"` means the Fixer could not confidently fix the issue and the Reviewer should see it.
+
+### 9. `tests/unit/test_stack_detector.py` — Unit Tests
+
+Parametrized tests using `tmp_path` fixtures with synthetic project structures (package.json with next/vite/react-scripts, pyproject.toml with django/flask/fastapi, etc.)
+
+### 10. `tests/unit/test_app_server.py` — Unit Tests
+
+Mock subprocess tests for docker compose up/down, install, start, health-check, seed, and stop lifecycle.
 
 ---
 
-## Phase 5: SLI/SLO Framework
+## Files to Modify
 
-**Goal:** Measurable service level indicators with error budgets.
+### 11. `src/orchestrator/models.py`
 
-### New File: `src/orchestrator/monitoring/slo.py`
+- **Add** `ENV_SETUP_ENGINEER = "env_setup_engineer"` to `AgentRole` enum
+- **Add** `QA_BROWSER_ENGINEER = "qa_browser_engineer"` to `AgentRole` enum
+- **Add** `FIXER = "fixer"` to `AgentRole` enum (~line 153)
+- **Add** `EnvSetupReport` Pydantic model (compose_written, services, seed_written, seed_path, verdict)
+- **Add** `BrowserTestResult` and `QABrowserReport` Pydantic models
+- **Add** `FixerReport` Pydantic model (failed_step, root_cause_category, root_cause_description, files_changed, fix_description, confidence, verdict)
+- **Add** `FixerConfig` to `OrchestratorConfig`:
+  ```python
+  class FixerConfig(BaseModel):
+      enabled: bool = True
+      max_attempts: int = 2
+      speed_modes: list[SpeedMode] = [SpeedMode.STANDARD, SpeedMode.THOROUGH, SpeedMode.PARANOID]
+      model: str = "sonnet"
+      escalation_model: str = "opus"
+  ```
+- **Add** all three to `ARTIFACT_MODELS`: `"env_setup_report"`, `"qa_browser_report"`, `"fixer_report"`
 
-**Class: `SLOTracker`**
+### 12. `src/orchestrator/phases.py`
 
-| SLI | Target (default) |
-|-----|---------|
-| `pipeline_success_rate` | >= 95% |
-| `phase_duration_p95` | <= 300s per phase |
-| `cost_per_run_p50` | <= $0.50 (standard speed) |
-| `artifact_validation_rate` | >= 99% |
-| `error_rate` | <= 2 per run |
-| `recovery_success_rate` | >= 90% |
+- **Add** `build_env_setup_prompt()` — injects architecture.json services, PRD domain entities, stack info
+- **Add** `build_qa_browser_prompt()` — injects stack info, base URL, seed confirmation, AC list, Playwright template
+- **Add** `build_fixer_prompt()` — injects: failed step name, raw error output, all available artifacts in chronological order, instruction to trace the decision chain and apply a minimal targeted fix
+- **Add** all three to `PROMPT_BUILDERS` (~line 3924)
+- **Add** `"env_setup"`, `"qa_browser"`, and `"fixer"` entries to `PHASE_DEFINITIONS` (~line 3965)
 
-Key methods: `record_run_result()`, `record_phase_result()`, `record_artifact_validation()`, `evaluate_slos(window_hours)` → `SLOReport`, `error_budget_remaining(slo_name)` → float.
+### 13. `src/orchestrator/engine.py`
 
-Uses Prometheus HTTP API for evaluation when available, falls back to in-memory counters.
+- **Add** `"env_setup"` and `"qa_browser"` to `PHASE_ORDER` between `"qa"` and `"reviewer"` (line 77):
+  ```python
+  PHASE_ORDER = ["pm", "architect", "engineer", "qa", "env_setup", "qa_browser", "reviewer"]
+  ```
+  Note: `"fixer"` is **not** in `PHASE_ORDER` — it is invoked inline by the engine on failure, not as a sequential phase.
 
-### Config Addition (`config/default.yaml`)
+### 14. `src/orchestrator/workflows.py`
 
-```yaml
-monitoring:
-  slo:
-    enabled: false
-    pipeline_success_rate: 0.95
-    phase_duration_p95_seconds: 300
-    cost_per_run_p50_usd: 0.50
-    artifact_validation_rate: 0.99
-    max_errors_per_run: 2
-    evaluation_window_hours: 24
+- **Add** two new steps to `FEATURE_DEVELOPMENT` between QA and Release:
+  ```python
+  WorkflowStepDefinition(
+      name="Env Setup",
+      agent_role=AgentRole.ENV_SETUP_ENGINEER,
+      inputs=["prd", "architecture", "qa_report"],
+      outputs=["env_setup_report"],
+      next="QA Browser",
+      on_fail="Implementation",   # missing compose/seed is a code problem
+  ),
+  WorkflowStepDefinition(
+      name="QA Browser",
+      agent_role=AgentRole.QA_BROWSER_ENGINEER,
+      inputs=["prd", "qa_report", "env_setup_report"],
+      outputs=["qa_browser_report"],
+      next="Release",
+      on_fail="Implementation",
+  ),
+  ```
+- **Update** existing QA step's `next` from `"Release"` → `"Env Setup"`
+- **Add** same two steps to `BUGFIX` workflow (between QA and end)
+
+### 15. `src/orchestrator/roles.py`
+
+- **Add** `ENV_SETUP_ENGINEER` to `ROLE_REGISTRY`:
+  ```python
+  AgentRole.ENV_SETUP_ENGINEER: RoleDefinition(
+      role=AgentRole.ENV_SETUP_ENGINEER,
+      title="Environment Setup Engineer",
+      responsibility="Writes docker-compose.yml and seed data scripts so the app can run in an isolated test environment",
+      access=RoleAccess.READ_WRITE,
+      agent_file="env_setup.md",
+  )
+  ```
+- **Add** `QA_BROWSER_ENGINEER` to `ROLE_REGISTRY`:
+  ```python
+  AgentRole.QA_BROWSER_ENGINEER: RoleDefinition(
+      role=AgentRole.QA_BROWSER_ENGINEER,
+      title="QA Browser Engineer",
+      responsibility="Validates application behavior via headless browser tests against acceptance criteria",
+      access=RoleAccess.READ_WRITE,
+      agent_file="qa_browser.md",
+  )
+  ```
+- **Add** `FIXER` to `ROLE_REGISTRY`:
+  ```python
+  AgentRole.FIXER: RoleDefinition(
+      role=AgentRole.FIXER,
+      title="Fixer",
+      responsibility="Diagnoses root cause of pipeline failures, traces the decision chain from artifacts, and applies targeted fixes",
+      access=RoleAccess.READ_WRITE,
+      agent_file="fixer.md",
+  )
+  ```
+
+### 16. `src/orchestrator/model_routing.py`
+
+- **Add** `AgentRole.ENV_SETUP_ENGINEER: AgentCategory.CODING` to `ROLE_CATEGORY`
+- **Add** `AgentRole.QA_BROWSER_ENGINEER: AgentCategory.VERIFICATION` to `ROLE_CATEGORY`
+- **Add** `AgentRole.FIXER: AgentCategory.VERIFICATION` to `ROLE_CATEGORY` — uses Sonnet by default, escalates to Opus for complex root causes
+
+### 17. `src/orchestrator/workflow_engine.py`
+
+- **Add** pre/post hooks in `_execute_step()` (~line 872) for both new steps:
+
+**For "Env Setup" step** (no special pre-hook needed — agent writes files directly):
+- Post-hook: validate that `docker-compose.yml` was actually written; if not, fail the step
+
+**For "QA Browser" step** (deterministic harness wraps the agent):
+1. Run `StackDetector.detect()`
+2. If `stack.has_frontend` is False → skip with stub report
+3. If speed mode is `turbo`/`standard` → skip with stub report
+4. Read `env_setup_report.json` to confirm compose + seed files exist
+5. Run `docker compose up -d` (using written `docker-compose.yml`)
+6. Run `AppTestServer.install_packages()`
+7. Run seed script (`scripts/seed.*`) via appropriate runtime
+8. Run `AppTestServer.start()` → get `base_url`
+9. Inject `base_url` + `stack` info into agent prompt context
+10. After agent completes → run generated Playwright tests via `npx playwright test`
+11. Parse JSON results → write `qa_browser_report.json`
+12. `AppTestServer.stop()`
+13. `docker compose down`
+
+**Add `_invoke_fixer()` method** called from within `_execute_step()` on any step failure:
+
+```python
+async def _invoke_fixer(
+    self,
+    failed_step: WorkflowStepDefinition,
+    error_output: str,
+    attempt: int,
+) -> bool:
+    """Invoke the Fixer agent to diagnose and fix a step failure.
+    Returns True if a fix was applied (step should be retried), False to escalate."""
+    if not self.config.fixer.enabled:
+        return False
+    if self.config.speed_mode not in self.config.fixer.speed_modes:
+        return False
+
+    # Collect all artifacts produced so far as context
+    artifact_context = self._collect_all_artifacts()
+
+    prompt = build_fixer_prompt(
+        failed_step=failed_step.name,
+        error_output=error_output,
+        artifact_context=artifact_context,
+        workspace=Path(self.state.workspace_dir),
+    )
+    result = await invoke_agent(AgentInvocation(
+        agent_name="fixer",
+        prompt=prompt,
+        model=ModelTier.SONNET,
+        max_turns=25,
+        workspace_dir=self.state.workspace_dir,
+        project_root=self.config.project_root,
+    ))
+    # Read fixer_report.json to determine outcome
+    fixer_report = self._load_artifact("fixer_report")
+    return fixer_report and fixer_report.get("verdict") == "fixed"
 ```
 
-### Prometheus Alert Rules (add to `prometheus-rules.yml`)
-
-```yaml
-- alert: PipelineSuccessRateLow
-  expr: orchestrator:pipeline_success_rate:rate1h < 0.95
-- alert: ErrorBudgetExhausted
-  expr: orchestrator:error_budget_remaining < 0.1
+The `_execute_step()` failure path becomes:
+```python
+# On step failure:
+if fixer_enabled and phase_state.retry_count < config.fixer.max_attempts:
+    fixed = await self._invoke_fixer(step, error_output, attempt=phase_state.retry_count)
+    if fixed:
+        phase_state.retry_count += 1
+        return await self._execute_step(step)  # retry with fix in place
+# Fall through to on_fail routing
 ```
 
-### New tests: `tests/test_slo.py`
+### 18. `config/default.yaml`
+
+- **Add** phase configs:
+  ```yaml
+  env_setup:
+    agent: env_setup
+    parallel: false
+    max_retries: 2
+    timeout_minutes: 15
+  qa_browser:
+    agent: qa_browser
+    parallel: false
+    max_retries: 1
+    timeout_minutes: 25    # includes docker compose up + seed + browser run
+  ```
+- **Add** agent configs:
+  ```yaml
+  env_setup:
+    name: Environment Setup Engineer
+    model: sonnet
+    max_turns: 30
+    input_artifacts: [prd, architecture, qa_report]
+    output_artifacts: [env_setup_report]
+  qa_browser:
+    name: QA Browser Engineer
+    model: sonnet
+    max_turns: 40
+    escalation_model: opus
+    input_artifacts: [prd, qa_report, env_setup_report]
+    output_artifacts: [qa_browser_report]
+  fixer:
+    name: Fixer
+    model: sonnet
+    max_turns: 25
+    escalation_model: opus
+    output_artifacts: [fixer_report]
+  ```
+- **Add** top-level Fixer config block:
+  ```yaml
+  fixer:
+    enabled: true
+    max_attempts: 2
+    speed_modes: [standard, thorough, paranoid]  # disabled in turbo
+  ```
 
 ---
 
-## Phase 6: Enhanced Dashboard & CLI
+## Agent Workflow (Step by Step)
 
-**Goal:** Tie everything together in the FastAPI dashboard + new CLI tools.
+### Phase A: Env Setup Agent
 
-### New Dashboard Pages (modify [app.py](src/orchestrator/dashboard/app.py))
+**Agent execution (Claude sub-agent — `env_setup` role, Sonnet):**
+1. Reads `artifacts/architecture.json` for declared services (DB type, cache, message queue, etc.)
+2. Reads `artifacts/prd.json` for domain entities and sample data to seed
+3. Explores generated code for DB models, ORM configuration, connection strings
+4. Writes `docker-compose.yml` at project root (app service + all dependencies, health checks, named network)
+5. Writes `scripts/seed.*` (language matches stack — SQL for raw DB, Python/TS for ORM-based seeding)
+6. Writes `artifacts/env_setup_report.json`
 
-| Route | Template | Content |
-|-------|----------|---------|
-| `/cost-analytics` | `cost_analytics.html` | Cost trends (Chart.js), agent/model breakdown, burn rate |
-| `/artifacts` | `artifacts.html` | Artifact browser with search, version history, cross-run diff viewer |
-| `/slo` | `slo.html` | SLO compliance matrix with color-coded status |
-| `/observability` | `observability.html` | Deep-links to Grafana dashboards, Jaeger trace search (pre-filtered by run_id), Loki log explorer |
-
-**Modify [base.html](src/orchestrator/dashboard/templates/base.html):** Add nav items for new pages.
-
-**Modify [data.py](src/orchestrator/dashboard/data.py):** Add `get_cost_analytics()`, `get_cost_by_agent()`, `get_cost_by_model()`, `get_error_trends()`.
-
-**Design decision: Standalone Grafana with deep links** (not iframe embedding). The `/observability` page generates context-aware links like `{grafana_url}/d/run-overview?var-run_id={run_id}`.
-
-### New CLI: `orchestrate-monitoring`
-
-Add to `pyproject.toml`:
-```toml
-orchestrate-monitoring = "orchestrator.monitoring.cli:main"
-```
-
-Commands:
-- `orchestrate-monitoring start` — `docker compose -f docker-compose.monitoring.yml up -d`
-- `orchestrate-monitoring stop` — `docker compose down`
-- `orchestrate-monitoring status` — health check all services
-- `orchestrate-monitoring reset` — remove volumes + restart clean
-
-### New File: `src/orchestrator/monitoring/cli.py`
+**Post-agent (harness):** validates compose file was written; fails step if missing.
 
 ---
 
-## Phase Dependency Graph
+### Phase B: QA Browser
 
-```
-Phase 1 (Infrastructure) ─────┬──→ Phase 2 (Grafana Dashboards)
-                               ├──→ Phase 4 (Log Aggregation)
-                               │
-Phase 3 (Artifact Mgmt) ──────┤    (parallel with 1-2)
-                               │
-                               └──→ Phase 5 (SLI/SLO) ──→ Phase 6 (Dashboard + CLI)
-```
+**Pre-agent (deterministic harness):**
+1. **Stack detection** → `StackInfo`
+2. **Speed mode check** → skip if turbo/standard
+3. **Frontend check** → skip if `has_frontend=False`
+4. **Docker Compose up** → `docker compose up -d` using the written compose file (wait for health checks)
+5. **Install packages** → `npm install` / `pip install` (120s timeout)
+6. **Seed database** → run `scripts/seed.*` via appropriate runtime (psql, python, node)
+7. **Start dev server** → subprocess on free port, poll health endpoint (60s timeout)
+8. **Inject context** → base_url, stack info, AC list into agent prompt
 
-Phases 1 and 3 can proceed in parallel. Phase 5 requires metrics (Phase 1) and artifact tracking (Phase 3). Phase 6 ties everything together.
+**Agent execution (Claude sub-agent — `qa_browser` role, Sonnet):**
+9. Reads PRD acceptance criteria
+10. Explores generated project (routes, pages, components)
+11. Writes TypeScript Playwright `.spec.ts` files to `tests/e2e/generated/`
+12. Each test maps to one or more ACs (test title convention: `AC-001: ...`)
+13. Scaffolds a minimal `playwright.config.ts` if one doesn't exist
 
----
-
-## Files Summary
-
-### New Files (24)
-
-| File | Phase |
-|------|-------|
-| `infra/docker/docker-compose.monitoring.yml` | 1 |
-| `infra/monitoring/prometheus.yml` | 1 |
-| `infra/monitoring/prometheus-rules.yml` | 2, 5 |
-| `infra/monitoring/promtail.yml` | 1 |
-| `infra/monitoring/grafana/provisioning/datasources/datasources.yml` | 1 |
-| `infra/monitoring/grafana/provisioning/dashboards/dashboard.yml` | 1 |
-| `infra/monitoring/grafana/dashboards/run-overview.json` | 2 |
-| `infra/monitoring/grafana/dashboards/cost-analysis.json` | 2 |
-| `infra/monitoring/grafana/dashboards/agent-performance.json` | 2 |
-| `infra/monitoring/grafana/dashboards/error-analysis.json` | 2 |
-| `infra/monitoring/grafana/dashboards/slo-overview.json` | 5 |
-| `infra/scripts/start-monitoring.sh` | 1 |
-| `src/orchestrator/artifact_manager.py` | 3 |
-| `src/orchestrator/monitoring/log_shipper.py` | 4 |
-| `src/orchestrator/monitoring/slo.py` | 5 |
-| `src/orchestrator/monitoring/cli.py` | 6 |
-| `src/orchestrator/dashboard/templates/cost_analytics.html` | 6 |
-| `src/orchestrator/dashboard/templates/artifacts.html` | 6 |
-| `src/orchestrator/dashboard/templates/slo.html` | 6 |
-| `src/orchestrator/dashboard/templates/observability.html` | 6 |
-| `docs/observability.md` | 4 |
-| `tests/test_artifact_manager.py` | 3 |
-| `tests/test_slo.py` | 5 |
-| `tests/test_log_shipper.py` | 4 |
-
-### Modified Files (10)
-
-| File | Phase | Changes |
-|------|-------|---------|
-| `src/orchestrator/monitoring/metrics.py` | 2 | Add burn_rate, run_duration, artifacts_produced metrics |
-| `src/orchestrator/monitoring/config.py` | 1 | Add loki_*, grafana_url, jaeger_ui_url, SLO config fields |
-| `src/orchestrator/monitoring/__init__.py` | 4, 5 | Wire LokiLogShipper + SLOTracker into MonitoringStack |
-| `src/orchestrator/observability.py` | 4 | Add trace_id correlation, structured enrichment, shipper forwarding |
-| `src/orchestrator/workflow_engine.py` | 3 | Route artifact writes through ArtifactManager |
-| `src/orchestrator/dashboard/app.py` | 3, 6 | Add artifact, cost, SLO, observability routes |
-| `src/orchestrator/dashboard/data.py` | 6 | Add cost analytics, error trends methods |
-| `src/orchestrator/dashboard/templates/base.html` | 6 | Add nav items |
-| `config/default.yaml` | 1, 3, 5 | Add artifacts:, monitoring.slo:, monitoring.loki_* sections |
-| `pyproject.toml` | 1, 3, 6 | Add observability deps, orchestrate-artifacts + orchestrate-monitoring entry points |
+**Post-agent (deterministic harness):**
+14. **Run Playwright** → `npx playwright test tests/e2e/generated/ --reporter=json` (120s timeout)
+15. **Parse JSON results** → map each test to its AC ID
+16. **Construct report** → `qa_browser_report.json` with per-AC verdicts, screenshots, console errors
+17. **Stop dev server** → graceful shutdown
+18. **Docker Compose down** → stop all services
+19. **Write artifact** → validated against `qa_browser_report.schema.json`
 
 ---
 
-## Verification Plan
+### Phase C: Fixer (on failure of any step)
 
-### Phase 1 Verification
-```bash
-bash infra/scripts/start-monitoring.sh
-# Verify all 5 services healthy:
-docker compose -f infra/docker/docker-compose.monitoring.yml ps
-curl http://localhost:9091/-/healthy          # Prometheus
-curl http://localhost:3000/api/health         # Grafana
-curl http://localhost:16686/                  # Jaeger UI
-curl http://localhost:3100/ready              # Loki
-```
+**Triggered**: Automatically when any step fails and `fixer.enabled = true` and speed mode is not `turbo`.
 
-### Phase 2 Verification
-- Open Grafana at http://localhost:3000, verify 4 dashboards auto-provisioned
-- Run `orchestrate --dry-run "test"` with `metrics_enabled: true`
-- Verify metrics appear in Prometheus targets and Grafana panels populate
+**Agent execution (Claude sub-agent — `fixer` role, Sonnet → Opus on escalation):**
+1. Receives: failed step name + full raw error output (stderr, assertion message, schema validation error)
+2. Reads all available artifacts in pipeline order: prd → architecture → tasks → qa_report → env_setup_report → qa_browser_report (whatever exists)
+3. Reconstructs the decision chain: "PM required X → Architect designed Y → Engineer implemented Z → failure occurred because..."
+4. Identifies the single most likely root cause and categorizes it
+5. Applies a **minimal targeted fix** — edits only the specific file(s) responsible
+6. Does NOT add new features, refactor, or change unrelated code
+7. Writes `artifacts/fixer_report.json` (see schema above)
+8. Signals `verdict: "fixed"` (retry) or `verdict: "escalate"` (Reviewer must see this)
 
-### Phase 3 Verification
-```bash
-pytest tests/test_artifact_manager.py -v
-# Run an orchestration, then:
-orchestrate-artifacts list <run_id>
-orchestrate-artifacts compare <run_a> <run_b> prd
-orchestrate-artifacts gc --max-age 90 --dry-run
-```
-
-### Phase 4 Verification
-- Run with `loki_enabled: true`, verify events appear in Grafana Explore → Loki
-- Query: `{job="orchestrator"} | json` returns structured events
-- Verify trace_id correlation links to Jaeger traces
-
-### Phase 5 Verification
-```bash
-pytest tests/test_slo.py -v
-# After several runs, check SLO dashboard in Grafana
-# Verify Prometheus recording rules: curl http://localhost:9091/api/v1/rules
-```
-
-### Phase 6 Verification
-- Navigate dashboard: `/cost-analytics`, `/artifacts`, `/slo`, `/observability`
-- Verify `orchestrate-monitoring status` reports all services healthy
-- Verify deep links from `/observability` page open correct Grafana/Jaeger pages
+**After Fixer returns:**
+- If `verdict: "fixed"` → engine retries the failed step
+- If `verdict: "escalate"` or `max_attempts` reached → engine follows original `on_fail` routing (routes to Reviewer or back to Implementation)
 
 ---
 
-## Key Design Decisions
+## Error Handling
 
-1. **Separate compose file** (`docker-compose.monitoring.yml`) — monitoring is infrastructure, not the orchestrator. Users opt in explicitly.
-2. **Jaeger over Tempo** — simpler (one image, built-in UI, Badger storage). TracingManager already exports OTLP gRPC natively.
-3. **Standalone Grafana with deep links** — no iframe embedding (avoids auth bypass, security concerns). Dashboard generates context-aware URLs.
-4. **Backward-compatible artifact versioning** — `.versions/` directory is additive. Existing `artifacts/prd.json` reads unchanged.
-5. **All features opt-in** — follows existing `HAS_*` / `try/except ImportError` graceful degradation pattern.
-6. **Dual log shipping** — Promtail (Docker) + LokiLogShipper (native Python) for flexibility.
+### Env Setup phase
+| Scenario | Behavior |
+|----------|----------|
+| No `docker-compose.yml` written | Fail step, route back to Implementation |
+| No seed script written | Warn in report but don't fail (some apps don't need seed data) |
+| Compose file is invalid YAML | Fail step with parse error |
+
+### QA Browser phase
+| Scenario | Behavior |
+|----------|----------|
+| No recognizable stack | `server_status: "skipped"`, `verdict: "fail"`, critical issue |
+| Docker Compose fails to start | `server_status: "failed"`, `verdict: "fail"`, compose stderr captured |
+| Docker not available on host | Skip compose, attempt server start anyway; report warning |
+| Install fails | `server_status: "failed"`, `verdict: "fail"`, stderr captured |
+| Seed script fails | Report as major issue but continue — tests may find missing data |
+| Server won't start | `server_status: "failed"`, `verdict: "fail"`, stderr captured |
+| Agent generates no tests | `tests_skipped = len(ACs)`, `verdict: "fail"` |
+| Playwright not installed | Skip phase, stub report, warning issue |
+| Tests time out | Kill after 120s, report partial results |
+| Backend-only project | `server_status: "skipped"`, `verdict: "pass"`, info note |
+
+All failures produce a valid `qa_browser_report.json` — the phase never crashes the pipeline.
+
+### Fixer error handling
+| Scenario | Behavior |
+|----------|----------|
+| Fixer disabled in config | Skip Fixer, use existing `on_fail` routing |
+| Speed mode is turbo | Skip Fixer, use existing `on_fail` routing |
+| Fixer max_attempts exceeded | Stop trying, route to `on_fail` (Reviewer or Implementation) |
+| Fixer writes `verdict: "escalate"` | Route to Reviewer immediately with fixer_report attached |
+| Fixer itself crashes | Swallow the error, fall through to `on_fail` — never block the pipeline |
+| Fixer applies a fix but retry still fails | Fixer invoked again (up to max_attempts), then escalates |
+
+---
+
+## Implementation Order
+
+1. **Models** — Add `ENV_SETUP_ENGINEER`, `QA_BROWSER_ENGINEER`, `FIXER` roles; `EnvSetupReport`, `QABrowserReport`, `FixerReport`, `FixerConfig` models; `ARTIFACT_MODELS` entries
+2. **Stack detector** — `stack_detector.py` + unit tests
+3. **App server** — `app_server.py` + unit tests (adapts `DashboardTestServer`; adds docker compose + seed steps)
+4. **Schemas** — `env_setup_report.schema.json` + `qa_browser_report.schema.json` + `fixer_report.schema.json`
+5. **Agent definitions** — `.claude/agents/env_setup.md` + `.claude/agents/qa_browser.md` + `.claude/agents/fixer.md`
+6. **Prompt builders** — `build_env_setup_prompt()` + `build_qa_browser_prompt()` + `build_fixer_prompt()` in `phases.py`
+7. **Pipeline wiring** — `engine.py` PHASE_ORDER, `workflows.py` steps, `roles.py`, `model_routing.py`
+8. **Workflow engine hooks** — Env Setup post-hook + QA Browser lifecycle + `_invoke_fixer()` in `workflow_engine.py`
+9. **Config** — `default.yaml` phase + agent + fixer config block
+
+---
+
+## Verification
+
+1. **Unit tests**: `pytest tests/unit/test_stack_detector.py tests/unit/test_app_server.py -v`
+2. **Dry run**: `orchestrate --dry-run --speed thorough "Build a todo app"` — verify "Env Setup" and "QA Browser" steps appear; Fixer should not appear (it's not a DAG step)
+3. **Env Setup smoke test**: Point env_setup agent at a Django+Postgres project, verify `docker-compose.yml` + `scripts/seed.sql` written
+4. **Compose + seed**: Run `docker compose up -d` + seed, verify services start and data is present
+5. **Full run**: `orchestrate --speed thorough "Build a simple todo list"` — verify `env_setup_report.json` + `qa_browser_report.json` produced with per-AC verdicts
+6. **Fixer triggered**: Introduce a deliberate bug (wrong port in compose), run pipeline — verify Fixer is invoked, `fixer_report.json` written, bug fixed, and step retried successfully
+7. **Fixer disabled**: Set `fixer.enabled: false`, re-run — verify Fixer is skipped and `on_fail` routing applies directly
+8. **Skip behavior**: `orchestrate --speed standard "Fix typo"` — verify Env Setup + QA Browser skip (stub reports), Fixer not invoked
+9. **Backend-only**: `orchestrate --speed thorough "Add a REST API endpoint"` — verify graceful skip for no-frontend projects

@@ -17,6 +17,7 @@
         persist-network-rules \
         show-seccomp-path enable-container-mode \
         orchestrate dry-run \
+        e2e e2e-headed e2e-install deployment-verify \
         clean clean-containers clean-image clean-runs \
         image-scan validate-seccomp check-docker check-env status
 
@@ -68,6 +69,59 @@ test-unit: ## Run unit tests (fast, no Docker required)
 
 test-integration: ## Run integration tests (requires running services)
 	pytest tests/integration/ -v --tb=short -x
+
+# ── E2E headless browser tests (Playwright) ───────────────────────────────────
+#
+# Prerequisites (install once):
+#   pip install -e ".[e2e,dashboard]"
+#   playwright install chromium
+#
+# Or just run: make e2e   (it installs browsers automatically)
+
+e2e-install: ## Install Playwright + Chromium browser binaries (required once, skips if already cached)
+	@pip install -e ".[e2e,dashboard]" -q
+	@if [ -d "$(HOME)/.cache/ms-playwright" ] && ls $(HOME)/.cache/ms-playwright/chromium-* >/dev/null 2>&1; then \
+		echo "OK: Playwright Chromium already in cache ($(HOME)/.cache/ms-playwright) — skipping download"; \
+		python -m playwright install-deps chromium 2>/dev/null || true; \
+	else \
+		echo "==> Playwright Chromium not found in cache — downloading (approx 400 MB)..."; \
+		python -m playwright install chromium --with-deps; \
+	fi
+	@echo "OK: Playwright + Chromium ready"
+
+e2e: e2e-install ## Install browsers (if needed) and run E2E suite in headless mode
+	@echo "==> Running E2E tests (headless Chromium)..."
+	@mkdir -p tests/e2e/screenshots
+	@HEADED="" pytest tests/e2e/ \
+		--browser chromium \
+		--timeout=60 \
+		-v --tb=short; \
+	EXIT=$$?; \
+	echo ""; \
+	echo "Screenshots (on failure): tests/e2e/screenshots/"; \
+	exit $$EXIT
+
+e2e-headed: e2e-install ## Run E2E suite in headed (visible browser) mode for debugging
+	@echo "==> Running E2E tests (headed Chromium — browser window will open)..."
+	@mkdir -p tests/e2e/screenshots
+	@HEADED=1 pytest tests/e2e/ \
+		--browser chromium \
+		--headed \
+		--timeout=90 \
+		-v --tb=short -s; \
+	EXIT=$$?; \
+	echo ""; \
+	echo "Screenshots (on failure): tests/e2e/screenshots/"; \
+	exit $$EXIT
+
+# ── Deployment verification ────────────────────────────────────────────────────
+
+deployment-verify: check-docker ## Verify Docker image is deployment-ready (health checks + CLI smoke tests)
+	@echo "==> Running deployment verification..."
+	@python scripts/deployment_verify.py \
+		--image $(IMAGE_NAME):$(IMAGE_TAG) \
+		--timeout 30 \
+		--log-tail 50
 
 test-coverage: ## Run tests with coverage report
 	pytest tests/ --ignore=tests/integration \

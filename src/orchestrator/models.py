@@ -179,6 +179,10 @@ class AgentRole(str, Enum):
     DEEP_RESEARCHER = "deep_researcher"
     BRAINSTORMER = "brainstormer"
     MEDIATOR = "mediator"
+    # --- Runtime validation & repair ---
+    ENV_SETUP_ENGINEER = "env_setup_engineer"
+    QA_BROWSER_ENGINEER = "qa_browser_engineer"
+    FIXER = "fixer"
 
 
 class RoleAccess(str, Enum):
@@ -829,6 +833,7 @@ class WorkflowStepDefinition(BaseModel):
     on_fail: str = "escalate"
     gate: str | None = None
     max_retries: int = 1
+    skip_fixer: bool = False  # When True, Fixer agent is not invoked on failure for this step
 
 
 class WorkflowDefinition(BaseModel):
@@ -1264,6 +1269,7 @@ class OrchestratorConfig(BaseModel):
     routing_mode: str | None = None
     speed_mode: SpeedMode | None = None
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
+    fixer: FixerConfig = Field(default_factory=FixerConfig)
 
     # ── Mobile API dynamic directory browsing ──────────────────────────────
     # Root directory exposed for dynamic tree browsing on the mobile app.
@@ -1724,6 +1730,65 @@ class MCPTestReport(BaseModel):
     verdict: QAVerdict
 
 
+# --- Runtime Validation & Repair Artifacts ---
+
+class EnvSetupReport(BaseModel):
+    """Artifact produced by the ENV_SETUP_ENGINEER agent after environment setup."""
+    docker_compose_written: bool
+    compose_services: list[str] = Field(default_factory=list)
+    seed_script_written: bool
+    seed_script_path: str | None = None
+    issues: list[str] = Field(default_factory=list)
+    verdict: QAVerdict
+
+
+class BrowserTestResult(BaseModel):
+    """Result for a single browser-based acceptance-criterion test."""
+    ac_id: str = Field(min_length=1)
+    criteria: str = Field(min_length=1)
+    status: Literal["passed", "failed", "skipped"]
+    test_file: str | None = None
+    duration_ms: int | None = Field(default=None, ge=0)
+    error_message: str | None = None
+    screenshot_path: str | None = None
+
+
+class QABrowserReport(BaseModel):
+    """Artifact produced by the QA_BROWSER_ENGINEER agent after browser-based QA."""
+    server_status: Literal["started", "failed", "skipped"]
+    server_error: str | None = None
+    stack_detected: str | None = None
+    base_url: str | None = None
+    test_results: list[BrowserTestResult] = Field(default_factory=list)
+    tests_passed: int = Field(ge=0)
+    tests_failed: int = Field(ge=0)
+    tests_skipped: int = Field(ge=0)
+    console_errors: list[str] = Field(default_factory=list)
+    issues: list[str] = Field(default_factory=list)
+    verdict: QAVerdict
+
+
+class FixerReport(BaseModel):
+    """Artifact produced by the FIXER agent after an inline repair attempt."""
+    failed_step: str = Field(min_length=1)
+    error_summary: str = Field(min_length=1)
+    root_cause_category: str = Field(min_length=1)
+    root_cause_description: str = Field(min_length=1)
+    files_changed: list[str] = Field(default_factory=list)
+    fix_description: str = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+    verdict: Literal["fixed", "escalate"]
+
+
+class FixerConfig(BaseModel):
+    """Configuration for the Fixer agent invoked on inline pipeline failures."""
+    enabled: bool = False
+    max_attempts: int = Field(default=2, ge=1, le=5)
+    speed_modes: list[str] = Field(default_factory=lambda: ["thorough", "paranoid"])
+    model: str = "sonnet"
+    escalation_model: str = "opus"
+
+
 # Maps artifact names to their Pydantic models for validation
 ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "prd": PRD,
@@ -1769,4 +1834,8 @@ ARTIFACT_MODELS: dict[str, type[BaseModel]] = {
     "cost_estimate": CostEstimate,
     "runbook": Runbook,
     "refactoring_plan": RefactoringPlan,
+    # Runtime validation & repair artifacts
+    "env_setup_report": EnvSetupReport,
+    "qa_browser_report": QABrowserReport,
+    "fixer_report": FixerReport,
 }

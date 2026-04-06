@@ -75,6 +75,18 @@ dev = [
     "sqlalchemy[asyncio]>=2.0",
     "aiosqlite>=0.20",
 ]
+# E2E headless browser testing via Playwright.
+# Install with: pip install -e ".[e2e]"
+# Install browsers: playwright install chromium
+# Run: pytest tests/e2e/
+#
+# Intentionally separate from [dev] — Playwright browser binaries are ~400MB
+# and should not be downloaded for unit-test-only CI workflows.
+e2e = [
+    "pytest-playwright>=0.5.0",
+    "playwright>=1.44.0",
+    "httpx>=0.27",
+]
 
 [project.scripts]
 orchestrate = "orchestrator.main:main"
@@ -101,6 +113,9 @@ packages = ["src/orchestrator"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 asyncio_mode = "auto"
+markers = [
+    "e2e: marks tests as end-to-end browser tests requiring Playwright and a running dashboard server",
+]
 
 [tool.coverage.run]
 source = ["src/orchestrator"]

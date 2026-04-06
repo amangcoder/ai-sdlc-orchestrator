@@ -1,0 +1,77 @@
+# docker-compose.dashboard.yml — Run the dashboard + mobile API servers for
+# E2E testing or local demo, without requiring the full orchestrator stack.
+#
+# USAGE:
+#   docker compose -f infra/docker/docker-compose.dashboard.yml up
+#
+#   Then run E2E tests against the containerized server:
+#     BASE_URL=http://localhost:8080 HEADED=1 pytest tests/e2e/
+#
+# NOTE: This compose file is intentionally minimal — it does NOT apply
+# production security flags (read-only rootfs, cap-drop ALL, network isolation)
+# to allow the servers to start with writable workspace directories.
+# For production deployment use: make deployment-verify
+
+services:
+  dashboard:
+    image: ai-sdlc-orchestrator:latest
+    entrypoint: /bin/sh
+    command: >
+      -c "orchestrate-dashboard
+            --host 0.0.0.0
+            --port 8080
+            --workspace /workspace"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - dashboard-workspace:/workspace
+    tmpfs:
+      - /tmp:mode=1777,size=128m,noexec,nosuid,nodev
+      - /home/orchestrator/.config:mode=0700,size=64m,noexec,nosuid,nodev
+    environment:
+      UVICORN_LOG_LEVEL: "info"
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8080/healthz')"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    init: true
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+  mobile-api:
+    image: ai-sdlc-orchestrator:latest
+    entrypoint: /bin/sh
+    command: >
+      -c "orchestrator-mobile-api
+            --host 0.0.0.0
+            --port 8090
+            --workspace /workspace"
+    ports:
+      - "127.0.0.1:8090:8090"
+    volumes:
+      - dashboard-workspace:/workspace
+    tmpfs:
+      - /tmp:mode=1777,size=128m,noexec,nosuid,nodev
+      - /home/orchestrator/.config:mode=0700,size=64m,noexec,nosuid,nodev
+    environment:
+      UVICORN_LOG_LEVEL: "info"
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8090/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 6
+      start_period: 10s
+    depends_on:
+      dashboard:
+        condition: service_healthy
+    init: true
+    stop_grace_period: 10s
+    restart: unless-stopped
+
+volumes:
+  dashboard-workspace:
+    driver: local

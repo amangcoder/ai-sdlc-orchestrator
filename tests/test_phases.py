@@ -22,9 +22,12 @@ from orchestrator.phases import (
     build_architect_prompt,
     build_backend_engineer_prompt,
     build_engineer_prompt,
+    build_env_setup_prompt,
+    build_fixer_prompt,
     build_frontend_engineer_prompt,
     build_pm_prompt,
     build_principal_engineer_prompt,
+    build_qa_browser_prompt,
     build_reviewer_prompt,
     build_security_engineer_prompt,
     get_engineer_tasks,
@@ -166,12 +169,201 @@ class TestGetEngineerTasks:
 
 
 class TestPhaseDefinitions:
-    def test_all_five_phases_present(self):
-        assert set(PHASE_DEFINITIONS.keys()) == {"pm", "architect", "engineer", "qa", "reviewer"}
+    def test_core_phases_present(self):
+        core = {"pm", "architect", "engineer", "qa", "reviewer"}
+        assert core.issubset(set(PHASE_DEFINITIONS.keys()))
+
+    def test_env_setup_and_qa_browser_phases_present(self):
+        assert "env_setup" in PHASE_DEFINITIONS
+        assert "qa_browser" in PHASE_DEFINITIONS
+
+    def test_fixer_not_in_phase_definitions(self):
+        # fixer is invoked inline by WorkflowEngine, NOT as a sequential phase
+        assert "fixer" not in PHASE_DEFINITIONS
 
     def test_all_phases_have_nonempty_agent_name(self):
         for name, phase in PHASE_DEFINITIONS.items():
             assert phase.agent_name, f"{name} has empty agent_name"
+
+    def test_env_setup_phase_attributes(self):
+        phase = PHASE_DEFINITIONS["env_setup"]
+        assert phase.agent_name == "env_setup_engineer"
+        assert "env_setup_report" in phase.output_artifacts
+        assert callable(phase.build_prompt)
+
+    def test_qa_browser_phase_attributes(self):
+        phase = PHASE_DEFINITIONS["qa_browser"]
+        assert phase.agent_name == "qa_browser_engineer"
+        assert "qa_browser_report" in phase.output_artifacts
+        assert callable(phase.build_prompt)
+
+
+class TestBuildEnvSetupPrompt:
+    def test_includes_feature_request(self, tmp_workspace, config):
+        prompt = build_env_setup_prompt("Add dark mode", tmp_workspace, config)
+        assert "Add dark mode" in prompt
+
+    def test_references_architecture_json(self, tmp_workspace, config):
+        prompt = build_env_setup_prompt("Add dark mode", tmp_workspace, config)
+        assert "architecture.json" in prompt
+
+    def test_references_prd_json(self, tmp_workspace, config):
+        prompt = build_env_setup_prompt("Add dark mode", tmp_workspace, config)
+        assert "prd.json" in prompt
+
+    def test_references_docker_compose(self, tmp_workspace, config):
+        prompt = build_env_setup_prompt("Add dark mode", tmp_workspace, config)
+        assert "docker-compose.yml" in prompt
+
+    def test_references_env_setup_report(self, tmp_workspace, config):
+        prompt = build_env_setup_prompt("Add dark mode", tmp_workspace, config)
+        assert "env_setup_report.json" in prompt
+
+    def test_injects_architecture_services(self, tmp_workspace, config):
+        arch = {
+            "services": [
+                {"name": "api-gateway", "description": "Routes requests"},
+                {"name": "database", "description": "PostgreSQL"},
+            ]
+        }
+        (tmp_workspace / "artifacts").mkdir(parents=True, exist_ok=True)
+        (tmp_workspace / "artifacts" / "architecture.json").write_text(json.dumps(arch))
+        prompt = build_env_setup_prompt("Build app", tmp_workspace, config)
+        assert "api-gateway" in prompt
+        assert "database" in prompt
+
+    def test_injects_prd_domain_entities(self, tmp_workspace, config):
+        prd = {"domain_entities": [{"name": "User"}, {"name": "Order"}]}
+        (tmp_workspace / "artifacts").mkdir(parents=True, exist_ok=True)
+        (tmp_workspace / "artifacts" / "prd.json").write_text(json.dumps(prd))
+        prompt = build_env_setup_prompt("Build app", tmp_workspace, config)
+        assert "User" in prompt
+        assert "Order" in prompt
+
+    def test_injects_stack_info_from_task_data(self, tmp_workspace, config):
+        task_data = {
+            "stack_info": {
+                "framework": "Next.js",
+                "language": "TypeScript",
+                "package_manager": "npm",
+                "dev_server_command": "npm run dev",
+                "port": 3000,
+            }
+        }
+        prompt = build_env_setup_prompt("Build app", tmp_workspace, config, task_data=task_data)
+        assert "Next.js" in prompt
+        assert "TypeScript" in prompt
+        assert "npm run dev" in prompt
+
+    def test_registered_in_prompt_builders(self):
+        assert AgentRole.ENV_SETUP_ENGINEER in PROMPT_BUILDERS
+        assert PROMPT_BUILDERS[AgentRole.ENV_SETUP_ENGINEER] is build_env_setup_prompt
+
+
+class TestBuildQABrowserPrompt:
+    def test_includes_feature_request(self, tmp_workspace, config):
+        prompt = build_qa_browser_prompt("Add dark mode", tmp_workspace, config)
+        assert "Add dark mode" in prompt
+
+    def test_references_prd_json(self, tmp_workspace, config):
+        prompt = build_qa_browser_prompt("Add dark mode", tmp_workspace, config)
+        assert "prd.json" in prompt
+
+    def test_references_env_setup_report(self, tmp_workspace, config):
+        prompt = build_qa_browser_prompt("Add dark mode", tmp_workspace, config)
+        assert "env_setup_report.json" in prompt
+
+    def test_includes_playwright_example(self, tmp_workspace, config):
+        prompt = build_qa_browser_prompt("Add dark mode", tmp_workspace, config)
+        assert "playwright" in prompt.lower() or "spec.ts" in prompt
+
+    def test_injects_acceptance_criteria(self, tmp_workspace, config):
+        prd = {
+            "requirements": [
+                {
+                    "acceptance_criteria": [
+                        "User can log in with email and password",
+                        "Dashboard shows user name after login",
+                    ]
+                }
+            ]
+        }
+        (tmp_workspace / "artifacts").mkdir(parents=True, exist_ok=True)
+        (tmp_workspace / "artifacts" / "prd.json").write_text(json.dumps(prd))
+        prompt = build_qa_browser_prompt("Build app", tmp_workspace, config)
+        assert "User can log in" in prompt
+        assert "Dashboard shows" in prompt
+
+    def test_injects_base_url_from_task_data(self, tmp_workspace, config):
+        task_data = {"base_url": "http://localhost:4000"}
+        prompt = build_qa_browser_prompt("Build app", tmp_workspace, config, task_data=task_data)
+        assert "http://localhost:4000" in prompt
+
+    def test_default_base_url_when_no_task_data(self, tmp_workspace, config):
+        prompt = build_qa_browser_prompt("Build app", tmp_workspace, config)
+        assert "localhost" in prompt
+
+    def test_seed_confirmed_shows_success(self, tmp_workspace, config):
+        task_data = {"seed_confirmed": True, "base_url": "http://localhost:3000"}
+        prompt = build_qa_browser_prompt("Build app", tmp_workspace, config, task_data=task_data)
+        assert "Seed script ran successfully" in prompt or "seed" in prompt.lower()
+
+    def test_seed_not_confirmed_shows_warning(self, tmp_workspace, config):
+        task_data = {"seed_confirmed": False, "base_url": "http://localhost:3000"}
+        prompt = build_qa_browser_prompt("Build app", tmp_workspace, config, task_data=task_data)
+        assert "not confirmed" in prompt.lower() or "not assume" in prompt.lower()
+
+    def test_registered_in_prompt_builders(self):
+        assert AgentRole.QA_BROWSER_ENGINEER in PROMPT_BUILDERS
+        assert PROMPT_BUILDERS[AgentRole.QA_BROWSER_ENGINEER] is build_qa_browser_prompt
+
+
+class TestBuildFixerPrompt:
+    def test_includes_feature_request(self, tmp_workspace, config):
+        prompt = build_fixer_prompt("Add dark mode", tmp_workspace, config)
+        assert "Add dark mode" in prompt
+
+    def test_references_all_pipeline_artifacts(self, tmp_workspace, config):
+        prompt = build_fixer_prompt("Build app", tmp_workspace, config)
+        for artifact in ["prd.json", "architecture.json", "tasks.json", "qa_report.json"]:
+            assert artifact in prompt
+
+    def test_injects_failed_step_from_task_data(self, tmp_workspace, config):
+        task_data = {"failed_step": "qa_browser", "error_output": "Test timed out"}
+        prompt = build_fixer_prompt("Build app", tmp_workspace, config, task_data=task_data)
+        assert "qa_browser" in prompt
+        assert "Test timed out" in prompt
+
+    def test_includes_root_cause_tracing_instructions(self, tmp_workspace, config):
+        prompt = build_fixer_prompt("Build app", tmp_workspace, config)
+        assert "root cause" in prompt.lower() or "trace" in prompt.lower()
+
+    def test_includes_fixer_report_verdict_guidance(self, tmp_workspace, config):
+        prompt = build_fixer_prompt("Build app", tmp_workspace, config)
+        assert "fixer_report.json" in prompt
+        assert "fixed" in prompt or "escalate" in prompt
+
+    def test_truncates_very_long_error_output(self, tmp_workspace, config):
+        long_error = "x" * 10000
+        task_data = {"failed_step": "engineer", "error_output": long_error}
+        prompt = build_fixer_prompt("Build app", tmp_workspace, config, task_data=task_data)
+        # Prompt should not be excessively large
+        assert len(prompt) < 20000
+
+    def test_artifact_presence_shown_in_prompt(self, tmp_workspace, config):
+        # Create one artifact to verify presence check works
+        arts = tmp_workspace / "artifacts"
+        arts.mkdir(parents=True, exist_ok=True)
+        (arts / "prd.json").write_text('{"title": "My PRD"}')
+        prompt = build_fixer_prompt("Build app", tmp_workspace, config)
+        assert "present" in prompt or "missing" in prompt
+
+    def test_registered_in_prompt_builders(self):
+        assert AgentRole.FIXER in PROMPT_BUILDERS
+        assert PROMPT_BUILDERS[AgentRole.FIXER] is build_fixer_prompt
+
+    def test_fixer_not_in_phase_definitions(self):
+        assert "fixer" not in PHASE_DEFINITIONS
 
 
 # ---------------------------------------------------------------------------

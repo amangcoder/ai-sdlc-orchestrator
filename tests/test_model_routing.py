@@ -56,6 +56,58 @@ class TestRoleCategoryMapping:
         assert ROLE_CATEGORY[AgentRole.BRAINSTORMER] == AgentCategory.DEBATE_RESEARCH
         assert ROLE_CATEGORY[AgentRole.MEDIATOR] == AgentCategory.DEBATE_MEDIATION
 
+    def test_env_setup_engineer_is_coding(self):
+        """ENV_SETUP_ENGINEER should route at the CODING tier (Sonnet base)."""
+        assert ROLE_CATEGORY[AgentRole.ENV_SETUP_ENGINEER] == AgentCategory.CODING
+
+    def test_qa_browser_engineer_is_verification(self):
+        """QA_BROWSER_ENGINEER should route at the VERIFICATION tier (Sonnet base)."""
+        assert ROLE_CATEGORY[AgentRole.QA_BROWSER_ENGINEER] == AgentCategory.VERIFICATION
+
+    def test_fixer_is_verification(self):
+        """FIXER should route at the VERIFICATION tier (Sonnet base, escalates to Opus)."""
+        assert ROLE_CATEGORY[AgentRole.FIXER] == AgentCategory.VERIFICATION
+
+    @pytest.mark.xfail(
+        reason="apply_routing_mode calls role_to_legacy_agent_name for all roles; "
+               "the new-role entries are added by TASK-003. Will xpass once TASK-003 lands.",
+        strict=False,
+    )
+    def test_new_roles_routing_in_balanced_mode(self):
+        """ENV_SETUP_ENGINEER, QA_BROWSER_ENGINEER, and FIXER get correct model tiers in BALANCED mode."""
+        env_name = AgentRole.ENV_SETUP_ENGINEER.value    # "env_setup_engineer"
+        qa_name = AgentRole.QA_BROWSER_ENGINEER.value    # "qa_browser_engineer"
+        fixer_name = AgentRole.FIXER.value               # "fixer"
+
+        config = _make_config([env_name, qa_name, fixer_name])
+        apply_routing_mode(config, RoutingMode.BALANCED)
+
+        # ENV_SETUP_ENGINEER → CODING → Sonnet + Opus escalation
+        assert config.agents[env_name].model == ModelTier.SONNET
+        assert config.agents[env_name].escalation_model == ModelTier.OPUS
+
+        # QA_BROWSER_ENGINEER → VERIFICATION → Sonnet + Opus escalation
+        assert config.agents[qa_name].model == ModelTier.SONNET
+        assert config.agents[qa_name].escalation_model == ModelTier.OPUS
+
+        # FIXER → VERIFICATION → Sonnet + Opus escalation
+        assert config.agents[fixer_name].model == ModelTier.SONNET
+        assert config.agents[fixer_name].escalation_model == ModelTier.OPUS
+
+    @pytest.mark.xfail(
+        reason="apply_routing_mode calls role_to_legacy_agent_name for all roles; "
+               "the new-role entries are added by TASK-003. Will xpass once TASK-003 lands.",
+        strict=False,
+    )
+    def test_fixer_escalates_to_opus_in_balanced_mode(self):
+        """FIXER maps to VERIFICATION; in BALANCED that is Sonnet base with Opus escalation."""
+        fixer_name = AgentRole.FIXER.value  # "fixer"
+        config = _make_config([fixer_name])
+        apply_routing_mode(config, RoutingMode.BALANCED)
+
+        assert config.agents[fixer_name].model == ModelTier.SONNET
+        assert config.agents[fixer_name].escalation_model == ModelTier.OPUS
+
 
 class TestModeDefinitions:
     """Each mode should define all categories."""
