@@ -317,6 +317,11 @@ class EngineeringPlan(BaseModel):
         return v
 
 
+class SecurityVerdict(str, Enum):
+    PASS = "pass"
+    FAIL = "fail"
+
+
 # --- Threat Model Artifact ---
 
 class Threat(BaseModel):
@@ -330,6 +335,7 @@ class ThreatModel(BaseModel):
     threats: list[Threat] = Field(min_length=1)
     attack_surface: str = Field(min_length=20)
     recommendations: list[str] = Field(min_length=1)
+    verdict: SecurityVerdict = SecurityVerdict.PASS
 
 
 # --- Benchmark Report Artifact ---
@@ -402,6 +408,7 @@ class VulnerabilityReport(BaseModel):
     vulnerabilities: list[Vulnerability] = Field(default_factory=list)
     scan_tools_used: list[str] = Field(default_factory=list)
     summary: str = Field(min_length=20)
+    verdict: SecurityVerdict = SecurityVerdict.PASS
 
 
 # --- API Contract Artifact ---
@@ -1234,6 +1241,27 @@ class DatabaseConfig(BaseModel):
         return bool(self.url)
 
 
+class FixerReport(BaseModel):
+    """Artifact produced by the FIXER agent after an inline repair attempt."""
+    failed_step: str = Field(min_length=1)
+    error_summary: str = Field(min_length=1)
+    root_cause_category: str = Field(min_length=1)
+    root_cause_description: str = Field(min_length=1)
+    files_changed: list[str] = Field(default_factory=list)
+    fix_description: str = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+    verdict: Literal["fixed", "escalate"]
+
+
+class FixerConfig(BaseModel):
+    """Configuration for the Fixer agent invoked on inline pipeline failures."""
+    enabled: bool = False
+    max_attempts: int = Field(default=2, ge=1, le=5)
+    speed_modes: list[str] = Field(default_factory=lambda: ["thorough", "paranoid"])
+    model: str = "sonnet"
+    escalation_model: str = "opus"
+
+
 class OrchestratorConfig(BaseModel):
     workspace_dir: str = "workspace"
     workspace_root: str | None = None
@@ -1766,27 +1794,6 @@ class QABrowserReport(BaseModel):
     console_errors: list[str] = Field(default_factory=list)
     issues: list[str] = Field(default_factory=list)
     verdict: QAVerdict
-
-
-class FixerReport(BaseModel):
-    """Artifact produced by the FIXER agent after an inline repair attempt."""
-    failed_step: str = Field(min_length=1)
-    error_summary: str = Field(min_length=1)
-    root_cause_category: str = Field(min_length=1)
-    root_cause_description: str = Field(min_length=1)
-    files_changed: list[str] = Field(default_factory=list)
-    fix_description: str = Field(min_length=1)
-    confidence: float = Field(ge=0.0, le=1.0)
-    verdict: Literal["fixed", "escalate"]
-
-
-class FixerConfig(BaseModel):
-    """Configuration for the Fixer agent invoked on inline pipeline failures."""
-    enabled: bool = False
-    max_attempts: int = Field(default=2, ge=1, le=5)
-    speed_modes: list[str] = Field(default_factory=lambda: ["thorough", "paranoid"])
-    model: str = "sonnet"
-    escalation_model: str = "opus"
 
 
 # Maps artifact names to their Pydantic models for validation

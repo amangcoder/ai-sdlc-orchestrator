@@ -62,6 +62,12 @@
       "minItems": 1,
       "title": "Recommendations",
       "type": "array"
+    },
+    "verdict": {
+      "enum": ["pass", "fail"],
+      "default": "pass",
+      "title": "Verdict",
+      "type": "string"
     }
   },
   "required": [

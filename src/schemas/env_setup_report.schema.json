@@ -16,7 +16,6 @@
       "type": "boolean"
     },
     "compose_services": {
-      "default": [],
       "items": {
         "type": "string"
       },
@@ -40,7 +39,6 @@
       "title": "Seed Script Path"
     },
     "issues": {
-      "default": [],
       "items": {
         "type": "string"
       },

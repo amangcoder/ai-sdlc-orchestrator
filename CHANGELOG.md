@@ -2,6 +2,51 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.18.0] - 2026-04-08
+
+### Added
+
+**Verdict Gating — Block Pipeline on Failing Reviews/QA/Security**
+- Verdict gate in `WorkflowEngine`: checks review, QA, and security artifact verdicts before advancing to the next step
+- `_check_verdict_gate()` — inspects verdict-bearing artifacts (`review`, `qa_report`, `qa_browser_report`, `env_setup_report`, `threat_model`, `vulnerability_report`, `fixer_report`)
+- Severity-aware gating: only blocks on `critical` or `major` issues; minor/nit feedback passes through
+- `verdict_rejected` step result triggers automatic fix → re-review rework loop via `_handle_verdict_rework()`
+
+**Verdict Rework — Targeted Fix Loop for Negative Verdicts**
+- `--rework-verdicts <RUN_ID>` CLI flag — re-enter the fix → re-review loop for a previous run with unresolved negative verdicts
+- `OrchestratorEngine.rework_verdicts()` — loads saved state and delegates to the workflow engine
+- `WorkflowEngine.rework_unresolved_verdicts()` — scans all completed steps, identifies failing verdicts, runs targeted rework, and verifies all pass afterward
+
+**Security Verdict Model**
+- `SecurityVerdict` enum (`pass` / `fail`) in `models.py`
+- `ThreatModel.verdict` field — defaults to `pass`
+- `VulnerabilityReport.verdict` field — defaults to `pass`
+- `normalize_verdict()` helper for mapping AICoder verdict values to Orchestrator equivalents
+
+**Schemas**
+- `threat_model.schema.json` — added `verdict` field (`pass` / `fail`)
+- `vulnerability_report.schema.json` — added `verdict` field (`pass` / `fail`)
+- Removed stale `default: []` from array fields in `env_setup_report`, `fixer_report`, and `qa_browser_report` schemas
+
+**Role Mapping Completeness**
+- Added 30+ missing human-friendly role aliases to `_ROLE_MAP` in `workflows.py` (FinOps, resilience, MCP, designer, Flutter, data engineer, brainstormer, mediator, etc.)
+- Added `ENV_SETUP_ENGINEER`, `QA_BROWSER_ENGINEER`, `FIXER` to `role_to_legacy_agent_name()` in `roles.py`
+- Improved `_resolve_role()` substring matching to check all normalized forms
+
+### Fixed
+- Fixer invocation now catches exceptions instead of crashing the pipeline — treats fixer crash as escalation
+- `_env_setup_post_hook()` guards against missing `phase_key` in state before setting error
+- Model ordering: moved `FixerReport` and `FixerConfig` before `OrchestratorConfig` to resolve forward reference issues
+
+### Changed
+- `PHASE_ORDER` now includes `env_setup` and `qa_browser` between `qa` and `reviewer`
+- Test fixtures updated: `WorkflowType` added to `WorkflowDefinition` constructors
+
+### Tests
+- `tests/test_verdict_gate.py` — 594-line test suite covering `_check_verdict_gate`, `_archive_verdict_artifact`, `_handle_verdict_rework`, and `verdict_rejected` integration with the main loop
+
+---
+
 ## [0.17.0] - 2026-04-06
 
 ### Added

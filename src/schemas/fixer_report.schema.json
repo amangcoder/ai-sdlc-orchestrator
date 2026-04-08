@@ -22,7 +22,6 @@
       "type": "string"
     },
     "files_changed": {
-      "default": [],
       "items": {
         "type": "string"
       },

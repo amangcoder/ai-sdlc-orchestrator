@@ -416,6 +416,43 @@ _ROLE_MAP: dict[str, AgentRole] = {
     "agentic ai specialist": AgentRole.AGENTIC_AI_SPECIALIST,
     "ml specialist": AgentRole.ML_SPECIALIST,
     "ml algorithm specialist": AgentRole.ML_SPECIALIST,
+    # FinOps roles
+    "finops estimator": AgentRole.FINOPS_ESTIMATOR,
+    "finops / cost estimator": AgentRole.FINOPS_ESTIMATOR,
+    "finops cost estimator": AgentRole.FINOPS_ESTIMATOR,
+    "cost estimator": AgentRole.FINOPS_ESTIMATOR,
+    # Resilience / chaos roles
+    "resilience tester": AgentRole.RESILIENCE_TESTER,
+    "chaos tester": AgentRole.RESILIENCE_TESTER,
+    "chaos/resilience tester": AgentRole.RESILIENCE_TESTER,
+    "chaos / resilience tester": AgentRole.RESILIENCE_TESTER,
+    # Newer roles missing human-friendly aliases
+    "change impact analyzer": AgentRole.CHANGE_IMPACT_ANALYZER,
+    "impact analyzer": AgentRole.CHANGE_IMPACT_ANALYZER,
+    "data engineer": AgentRole.DATA_ENGINEER,
+    "runbook author": AgentRole.RUNBOOK_AUTHOR,
+    "refactoring planner": AgentRole.REFACTORING_PLANNER,
+    "market researcher": AgentRole.MARKET_RESEARCHER,
+    "competitor researcher": AgentRole.COMPETITOR_RESEARCHER,
+    "field specialist": AgentRole.FIELD_SPECIALIST,
+    "end user simulator": AgentRole.END_USER_SIMULATOR,
+    "deep researcher": AgentRole.DEEP_RESEARCHER,
+    "brainstormer": AgentRole.BRAINSTORMER,
+    "mediator": AgentRole.MEDIATOR,
+    "env setup engineer": AgentRole.ENV_SETUP_ENGINEER,
+    "environment setup engineer": AgentRole.ENV_SETUP_ENGINEER,
+    "qa browser engineer": AgentRole.QA_BROWSER_ENGINEER,
+    "fixer": AgentRole.FIXER,
+    "designer": AgentRole.DESIGNER,
+    "flutter engineer": AgentRole.FLUTTER_ENGINEER,
+    # MCP roles
+    "mcp tool designer": AgentRole.MCP_TOOL_DESIGNER,
+    "mcp server engineer": AgentRole.MCP_SERVER_ENGINEER,
+    "mcp protocol reviewer": AgentRole.MCP_PROTOCOL_REVIEWER,
+    "mcp integration test engineer": AgentRole.MCP_INTEGRATION_TEST_ENGINEER,
+    # Other missing aliases
+    "chatbot engineer": AgentRole.CHATBOT_ENGINEER,
+    "social media integration engineer": AgentRole.SOCIAL_MEDIA_INTEGRATION_ENGINEER,
 }
 
 # Also map enum values (e.g. "product_manager") so LLMs can use either format
@@ -448,10 +485,11 @@ def _resolve_role(agent_str: str, step_name: str) -> AgentRole:
     if role is not None:
         return role
 
-    # Substring match: find the longest key that's contained in agent_str (or vice versa)
+    # Substring match: find the longest key that's contained in any form of agent_str
     candidates: list[tuple[str, AgentRole]] = []
+    forms = {agent_str, normalized, underscore_form}
     for key, r in _ROLE_MAP.items():
-        if key in agent_str or agent_str in key:
+        if any(key in f or f in key for f in forms):
             candidates.append((key, r))
     if candidates:
         # Prefer the longest matching key (most specific)
@@ -588,6 +626,9 @@ def parse_custom_workflow(definition: str, name: str = "Custom Workflow") -> Wor
         "incident_report": frozenset({AgentRole.INCIDENT_ANALYST}),
         "debate_position": frozenset({AgentRole.DEEP_RESEARCHER, AgentRole.BRAINSTORMER}),
         "debate_conclusion": frozenset({AgentRole.MEDIATOR}),
+        "env_setup_report": frozenset({AgentRole.ENV_SETUP_ENGINEER}),
+        "qa_browser_report": frozenset({AgentRole.QA_BROWSER_ENGINEER}),
+        "fixer_report": frozenset({AgentRole.FIXER}),
     }
     for step in steps:
         stripped_outputs: list[str] = []

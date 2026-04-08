@@ -20,13 +20,17 @@ from orchestrator.models import (
     OrchestratorConfig,
     PhaseState,
     PhaseStatus,
+    QAVerdict,
     ResearchCache,
+    ReviewVerdict,
     RunState,
+    SecurityVerdict,
     SpawnRecord,
     TaskStatus,
     WorkflowDefinition,
     WorkflowStepDefinition,
     WorkflowTaskState,
+    normalize_verdict,
 )
 from orchestrator.research_cache import (
     cleanup_research_mcp_config,
@@ -867,6 +871,10 @@ class WorkflowEngine:
             if result == "escalate":
                 logger.error(f"Step '{step.name}' escalated to human — stopping workflow")
                 break
+            elif result == "verdict_rejected":
+                resolved = await self._handle_verdict_rework(step)
+                if not resolved:
+                    break
             elif result == "failed":
                 routed = await self._handle_step_failure(step)
                 if not routed:
@@ -902,6 +910,80 @@ class WorkflowEngine:
             project_root = self.project_root or Path.cwd()
             cleanup_research_mcp_config(project_root)
 
+        return self.state
+
+    async def rework_unresolved_verdicts(self) -> RunState:
+        """Scan completed steps for unresolved negative verdicts and rework them.
+
+        This is used to re-enter the fix→re-review loop for a previous run
+        where review/QA artifacts were left with negative verdicts (e.g. the
+        pipeline was interrupted, or verdict gating was not yet implemented).
+        """
+        workspace = Path(self.state.workspace_dir)
+        steps_to_rework: list[WorkflowStepDefinition] = []
+
+        for step in self.workflow.steps:
+            # Only check steps that have already been completed or have artifacts
+            has_verdict_output = any(
+                o in self._VERDICT_ARTIFACTS for o in step.outputs
+            )
+            if not has_verdict_output:
+                continue
+
+            verdict_failure = self._check_verdict_gate(step, workspace)
+            if verdict_failure:
+                steps_to_rework.append(step)
+                logger.info(
+                    "Found unresolved verdict in step '%s': %s",
+                    step.name, verdict_failure,
+                )
+
+        if not steps_to_rework:
+            print(
+                "\n\033[1;32m  No unresolved verdicts found — nothing to rework.\033[0m",
+                flush=True,
+            )
+            return self.state
+
+        print(
+            f"\n\033[1;33m  Found {len(steps_to_rework)} step(s) with unresolved verdicts:\033[0m",
+            flush=True,
+        )
+        for step in steps_to_rework:
+            print(f"    - {step.name}", flush=True)
+
+        for step in steps_to_rework:
+            phase_key = self._step_to_phase_key(step)
+            self.state.phases[phase_key] = PhaseState(status=PhaseStatus.RUNNING)
+            resolved = await self._handle_verdict_rework(step)
+            if not resolved:
+                logger.error(
+                    "Verdict rework failed for step '%s' — stopping",
+                    step.name,
+                )
+                break
+
+        # --- Final verification: re-scan all reworked steps to confirm verdicts pass ---
+        still_failing: list[tuple[str, str]] = []
+        for step in steps_to_rework:
+            residual = self._check_verdict_gate(step, workspace)
+            if residual:
+                still_failing.append((step.name, residual))
+
+        if still_failing:
+            print(
+                f"\n\033[1;31m  VERIFICATION FAILED — {len(still_failing)} step(s) still have negative verdicts:\033[0m",
+                flush=True,
+            )
+            for step_name, error in still_failing:
+                print(f"    \033[31m✗\033[0m {step_name}: {error}", flush=True)
+        else:
+            print(
+                f"\n\033[1;32m  VERIFICATION PASSED — all {len(steps_to_rework)} reworked step(s) now have passing verdicts.\033[0m",
+                flush=True,
+            )
+
+        self.state.current_step = None
         return self.state
 
     async def _execute_step(self, step: WorkflowStepDefinition) -> str:
@@ -1060,7 +1142,11 @@ class WorkflowEngine:
                         for t in tasks
                         if t.error
                     ).strip() or "No task-level error details available — check run logs."
-                    _fixer_fixed = await self._invoke_fixer(step, _error_output, workspace)
+                    try:
+                        _fixer_fixed = await self._invoke_fixer(step, _error_output, workspace)
+                    except Exception:
+                        logger.exception("Fixer crashed for step '%s' — treating as escalate", step.name)
+                        _fixer_fixed = False
                     if _fixer_fixed:
                         _fixer_retry_count += 1
                         # Reset failed/blocked tasks so the scheduler can re-execute them.
@@ -1259,6 +1345,16 @@ class WorkflowEngine:
                         step.name, dest.name,
                     )
 
+            # --- Verdict gate: check review/QA/security verdicts before advancing ---
+            verdict_failure = self._check_verdict_gate(step, workspace)
+            if verdict_failure:
+                logger.warning(
+                    "Step '%s' produced valid artifacts but verdict is negative: %s",
+                    step.name, verdict_failure,
+                )
+                self.state.phases[phase_key].error = verdict_failure
+                return "verdict_rejected"
+
             self.state.phases[phase_key].status = PhaseStatus.COMPLETED
             self.state.completed_steps.append(step.name)
             self._emit_phase_complete(step, success=True, artifact_valid=True)
@@ -1438,7 +1534,8 @@ class WorkflowEngine:
                 "The env_setup_engineer must write this file — failing Env Setup step (AC-008)."
             )
             logger.error("%s", msg)
-            self.state.phases[phase_key].error = msg
+            if phase_key in self.state.phases:
+                self.state.phases[phase_key].error = msg
             return False
 
         logger.info("Env Setup post-hook: docker-compose.yml validated at %s", compose_found)
@@ -3401,6 +3498,509 @@ A previous attempt on this task was interrupted. Here is the partial output from
 3. Perform your role's responsibilities
 4. For EACH output artifact listed above: call the **Write tool** with the exact file path and valid JSON content. Then call **Read** to verify the file exists.{access_note}
 {spawn_section}"""
+
+    # ------------------------------------------------------------------
+    # Verdict gate — checks artifact verdicts and runs targeted rework
+    # ------------------------------------------------------------------
+
+    # Artifacts whose verdict field must pass for the step to advance.
+    _VERDICT_ARTIFACTS: dict[str, str] = {
+        "review": "verdict",
+        "qa_report": "verdict",
+        "qa_browser_report": "verdict",
+        "env_setup_report": "verdict",
+        "threat_model": "verdict",
+        "vulnerability_report": "verdict",
+        "fixer_report": "verdict",
+    }
+
+    # Verdict values that indicate the step must NOT advance.
+    _FAILING_VERDICTS: dict[str, frozenset[str]] = {
+        "review": frozenset({ReviewVerdict.REJECT.value, ReviewVerdict.REQUEST_CHANGES.value}),
+        "qa_report": frozenset({QAVerdict.FAIL.value}),
+        "qa_browser_report": frozenset({QAVerdict.FAIL.value}),
+        "env_setup_report": frozenset({QAVerdict.FAIL.value}),
+        "threat_model": frozenset({SecurityVerdict.FAIL.value}),
+        "vulnerability_report": frozenset({SecurityVerdict.FAIL.value}),
+        "fixer_report": frozenset({"escalate"}),
+    }
+
+    # Severities that block the pipeline — anything below this (minor, nit) is accepted.
+    _BLOCKING_SEVERITIES: frozenset[str] = frozenset({"critical", "major"})
+
+    def _check_verdict_gate(self, step: WorkflowStepDefinition, workspace: Path) -> str | None:
+        """Check whether verdict-bearing artifacts contain a passing verdict.
+
+        Returns ``None`` when the step may advance (no verdict artifacts, or
+        all verdicts pass).  Returns an error description string when a
+        negative verdict is found.
+
+        For **review** artifacts, even if the verdict is ``reject`` or
+        ``request_changes``, the step still advances when none of the
+        listed issues are ``critical`` or ``major``.  This avoids
+        expensive rework cycles for cosmetic / minor feedback.
+        """
+        artifact_dir = workspace / "artifacts"
+
+        for artifact_name in step.outputs:
+            if artifact_name not in self._VERDICT_ARTIFACTS:
+                continue
+
+            artifact_path = artifact_dir / f"{artifact_name}.json"
+            if not artifact_path.exists():
+                continue
+
+            try:
+                data = json.loads(artifact_path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError) as exc:
+                logger.warning("Could not read %s for verdict check: %s", artifact_path, exc)
+                continue
+
+            field = self._VERDICT_ARTIFACTS[artifact_name]
+            raw_verdict = data.get(field)
+            if raw_verdict is None:
+                continue
+
+            # Normalize AICoder-style verdicts (pass→approve, fail→reject)
+            if artifact_name == "review":
+                raw_verdict = normalize_verdict(raw_verdict)
+
+            failing = self._FAILING_VERDICTS.get(artifact_name, frozenset())
+            if raw_verdict in failing:
+                issues = data.get("issues", [])
+                issue_count = len(issues) if isinstance(issues, list) else 0
+
+                # --- Severity-aware pass for review artifacts ---
+                # If the review verdict is negative but every listed issue
+                # is minor/nit (no critical or major), accept and advance.
+                # When the issues list is empty, trust the verdict — the
+                # reviewer may have high-level concerns not captured as
+                # structured issues.
+                if artifact_name == "review" and isinstance(issues, list) and issues:
+                    has_blocking = any(
+                        issue.get("severity", "").lower() in self._BLOCKING_SEVERITIES
+                        for issue in issues
+                        if isinstance(issue, dict)
+                    )
+                    if not has_blocking:
+                        logger.info(
+                            "Review verdict is '%s' but no critical/major issues found "
+                            "(%d minor/nit) — accepting and advancing.",
+                            raw_verdict, issue_count,
+                        )
+                        return None
+
+                summary = data.get("summary", "")[:200]
+                return (
+                    f"{artifact_name} verdict: {raw_verdict}"
+                    + (f" ({issue_count} issue(s))" if issue_count else "")
+                    + (f" — {summary}" if summary else "")
+                )
+
+        return None
+
+    def _archive_verdict_artifact(
+        self,
+        artifact_name: str,
+        workspace: Path,
+        cycle: int,
+    ) -> Path | None:
+        """Rename a verdict artifact to preserve the rejected version.
+
+        Returns the archive path, or ``None`` if the artifact was not found.
+        """
+        artifact_path = workspace / "artifacts" / f"{artifact_name}.json"
+        if not artifact_path.exists():
+            return None
+        archive_path = workspace / "artifacts" / f"{artifact_name}-cycle-{cycle}.json"
+        artifact_path.rename(archive_path)
+        logger.info("Archived rejected artifact: %s → %s", artifact_path.name, archive_path.name)
+        return archive_path
+
+    def _build_fix_prompt(
+        self,
+        step: WorkflowStepDefinition,
+        workspace: Path,
+        feedback_data: dict[str, Any],
+        artifact_name: str,
+        cycle: int,
+    ) -> str:
+        """Build a targeted fix prompt from review/QA feedback.
+
+        The prompt instructs the engineer to apply ONLY the changes required
+        to address the specific issues — not to re-implement from scratch.
+        """
+        from orchestrator.phases import (
+            _inject_knowledge_context,
+            _inject_cumulative_context,
+        )
+
+        knowledge_section = _inject_knowledge_context(self.config)
+        cumulative_section = _inject_cumulative_context(workspace)
+
+        issues = feedback_data.get("issues", [])
+        summary = feedback_data.get("summary", "No summary provided.")
+        verdict = feedback_data.get("verdict", "unknown")
+
+        issues_text = ""
+        if issues:
+            issue_lines = []
+            for i, issue in enumerate(issues, 1):
+                severity = issue.get("severity", "unknown")
+                desc = issue.get("description", "")
+                file_ref = issue.get("file", "")
+                line_ref = issue.get("line", "")
+                suggestion = issue.get("suggestion", "")
+                loc = f" ({file_ref}:{line_ref})" if file_ref else ""
+                sug = f"\n   Suggestion: {suggestion}" if suggestion else ""
+                issue_lines.append(f"{i}. [{severity}]{loc} {desc}{sug}")
+            issues_text = "\n".join(issue_lines)
+
+        # For QA reports, include test failure details
+        test_results = feedback_data.get("test_results", {})
+        test_section = ""
+        if test_results:
+            passed = test_results.get("passed", 0)
+            failed = test_results.get("failed", 0)
+            skipped = test_results.get("skipped", 0)
+            test_section = f"\n\n## Test Results\n\nPassed: {passed} | Failed: {failed} | Skipped: {skipped}"
+
+        return f"""{knowledge_section}## Targeted Fix — Rework Cycle {cycle + 1}
+
+**IMPORTANT**: Do NOT re-implement the feature from scratch. Apply ONLY the
+minimum targeted fixes to address the specific issues listed below. Keep all
+existing working code intact.
+
+## Feature Request
+
+{self.state.feature_request}
+
+## {artifact_name.replace('_', ' ').title()} Feedback (verdict: {verdict})
+
+**Summary**: {summary}
+{test_section}
+## Issues to Fix
+
+{issues_text if issues_text else "See summary above for details."}
+
+{cumulative_section}
+## Instructions
+
+1. Read each issue carefully
+2. Locate the affected file(s) and line(s)
+3. Apply the minimum change required to resolve each issue
+4. Do NOT refactor, restructure, or add features beyond what the issues require
+5. Do NOT delete or rewrite files unless an issue explicitly requires it
+6. After fixing, verify the changes compile and pass basic checks
+"""
+
+    async def _handle_verdict_rework(self, step: WorkflowStepDefinition) -> bool:
+        """Handle a rejected verdict by running targeted fix → re-review cycles.
+
+        Returns ``True`` if the verdict eventually passes, ``False`` if all
+        rework cycles are exhausted (the pipeline should stop).
+        """
+        workspace = Path(self.state.workspace_dir)
+        phase_key = self._step_to_phase_key(step)
+        max_cycles = self.config.max_review_cycles
+
+        for cycle in range(max_cycles):
+            logger.info(
+                "Verdict rework cycle %d/%d for step '%s'",
+                cycle + 1, max_cycles, step.name,
+            )
+            print(
+                f"\n\033[1;33m{'─'*60}\033[0m\n"
+                f"\033[1;33m  REWORK CYCLE {cycle + 1}/{max_cycles}\033[0m  "
+                f"\033[1m{step.name}\033[0m — verdict rejected, applying targeted fixes\n"
+                f"\033[1;33m{'─'*60}\033[0m",
+                flush=True,
+            )
+
+            # 1. Read feedback from the rejected artifact before archiving
+            feedback_data: dict[str, Any] = {}
+            rejected_artifact: str | None = None
+            artifact_dir = workspace / "artifacts"
+            for artifact_name in step.outputs:
+                if artifact_name not in self._VERDICT_ARTIFACTS:
+                    continue
+                artifact_path = artifact_dir / f"{artifact_name}.json"
+                if artifact_path.exists():
+                    try:
+                        data = json.loads(artifact_path.read_text(encoding="utf-8"))
+                        raw_verdict = data.get("verdict", "")
+                        if artifact_name == "review":
+                            raw_verdict = normalize_verdict(raw_verdict)
+                        failing = self._FAILING_VERDICTS.get(artifact_name, frozenset())
+                        if raw_verdict in failing:
+                            feedback_data = data
+                            rejected_artifact = artifact_name
+                            break
+                    except (json.JSONDecodeError, OSError):
+                        pass
+
+            if not rejected_artifact:
+                logger.warning("No rejected artifact found for rework — treating as pass")
+                return True
+
+            # 2. Archive the rejected artifact
+            self._archive_verdict_artifact(rejected_artifact, workspace, cycle)
+
+            # 3. Build and execute a targeted fix task
+            fix_prompt = self._build_fix_prompt(
+                step, workspace, feedback_data, rejected_artifact, cycle,
+            )
+
+            # Use the implementation agent role (Backend Engineer) for fixes
+            fix_agent_role = AgentRole.BACKEND_ENGINEER
+            agent_name = role_to_legacy_agent_name(fix_agent_role)
+            agent_config = self.config.agents.get(agent_name)
+            model = agent_config.model if agent_config else ModelTier.SONNET
+            max_turns = agent_config.max_turns if agent_config else 40
+
+            invocation = AgentInvocation(
+                agent_name=agent_name,
+                display_name=f"{agent_name}-fix-cycle-{cycle}",
+                prompt=fix_prompt,
+                model=model,
+                max_turns=max_turns,
+                workspace_dir=str(workspace),
+                project_root=str(self.project_root),
+                mcp_servers=self._mcp_servers,
+            )
+
+            if self.run_logger:
+                self.run_logger.log_event("verdict_rework_fix", {
+                    "step": step.name,
+                    "artifact": rejected_artifact,
+                    "cycle": cycle + 1,
+                    "max_cycles": max_cycles,
+                    "issue_count": len(feedback_data.get("issues", [])),
+                })
+
+            fix_result = await invoke_agent(invocation, run_state=self.state)
+            self.state.total_cost_usd += fix_result.cost_usd
+
+            if not fix_result.success:
+                logger.error("Fix agent failed during rework cycle %d — escalating", cycle + 1)
+                self.state.phases[phase_key].status = PhaseStatus.FAILED
+                self.state.phases[phase_key].error = (
+                    f"Fix agent failed during rework cycle {cycle + 1}"
+                )
+                return False
+
+            # 4. Re-evaluate: targeted re-evaluation focused on the fixed issues only.
+            # We deliberately bypass the full _execute_step here to avoid running the
+            # entire test suite / all acceptance criteria again from scratch, which can
+            # exhaust agent turns before the report is written.
+            if step.name in self.state.completed_steps:
+                self.state.completed_steps.remove(step.name)
+            self.state.phases[phase_key] = PhaseState(status=PhaseStatus.RUNNING)
+            self.state.workflow_tasks = [
+                t for t in self.state.workflow_tasks if t.workflow_step != step.name
+            ]
+
+            result = await self._invoke_verdict_reeval(
+                step, workspace, feedback_data, rejected_artifact, cycle,
+            )
+
+            if result == "completed":
+                # 5. Re-verify: read the artifact from disk and confirm verdict is passing
+                residual = self._check_verdict_gate(step, workspace)
+                if residual:
+                    logger.warning(
+                        "Step '%s' returned completed but verdict still failing on disk: %s",
+                        step.name, residual,
+                    )
+                    # Treat as verdict_rejected — try another cycle
+                    if step.name in self.state.completed_steps:
+                        self.state.completed_steps.remove(step.name)
+                    continue
+
+                logger.info(
+                    "Verdict VERIFIED passing after rework cycle %d for step '%s'",
+                    cycle + 1, step.name,
+                )
+                return True
+            elif result == "verdict_rejected":
+                logger.info(
+                    "Verdict still negative after rework cycle %d for step '%s'",
+                    cycle + 1, step.name,
+                )
+                continue  # Try another rework cycle
+            else:
+                # Hard failure (e.g. agent crash, missing artifacts)
+                logger.error(
+                    "Step '%s' hard-failed during rework re-execution (result=%s)",
+                    step.name, result,
+                )
+                return False
+
+        # All rework cycles exhausted
+        logger.error(
+            "Max verdict rework cycles (%d) exhausted for step '%s' — escalating to human",
+            max_cycles, step.name,
+        )
+        self.state.phases[phase_key].status = PhaseStatus.FAILED
+        self.state.phases[phase_key].error = (
+            f"Verdict still rejected after {max_cycles} rework cycle(s)"
+        )
+        self._emit_phase_complete(step, success=False, artifact_valid=True)
+        return False
+
+    async def _invoke_verdict_reeval(
+        self,
+        step: WorkflowStepDefinition,
+        workspace: Path,
+        prior_feedback: dict[str, Any],
+        artifact_name: str,
+        cycle: int,
+    ) -> str:
+        """Invoke the verdict step's agent with a focused re-evaluation prompt.
+
+        Rather than re-running the full evaluation from scratch (which risks
+        exhausting agent turns before the artifact is written), this injects
+        the prior issues as context and asks the agent to re-verify only those
+        specific items plus any new regressions.
+
+        Returns ``"completed"``, ``"verdict_rejected"``, or ``"failed"``.
+        """
+        phase_key = self._step_to_phase_key(step)
+        artifacts_dir = workspace / "artifacts"
+
+        # Build a focused prompt that includes the prior issues as context
+        prior_issues: list[dict[str, Any]] = prior_feedback.get("issues", [])
+        prior_summary: str = prior_feedback.get("summary", "")
+
+        issue_lines: list[str] = []
+        for i, issue in enumerate(prior_issues, 1):
+            sev = issue.get("severity", "?")
+            file_ref = issue.get("file", "")
+            line_ref = issue.get("line", "")
+            desc = issue.get("description", "")
+            loc = f" `{file_ref}:{line_ref}`" if file_ref else ""
+            issue_lines.append(f"{i}. **[{sev}]**{loc} {desc}")
+        issues_text = "\n".join(issue_lines) if issue_lines else "(none listed)"
+
+        # Get the base prompt from the registered builder for this role
+        from orchestrator.phases import PROMPT_BUILDERS
+        builder = PROMPT_BUILDERS.get(step.agent_role)
+        if builder:
+            base_prompt = builder(
+                feature_request=self.state.feature_request,
+                workspace=workspace,
+                config=self.config,
+            )
+        else:
+            base_prompt = (
+                f"Re-evaluate the implementation for step: {step.name}.\n"
+                f"Write output to {artifacts_dir}/{artifact_name}.json"
+            )
+
+        rework_prefix = f"""## REWORK RE-EVALUATION (Cycle {cycle + 1})
+
+The fix agent has attempted to resolve the issues found in the previous evaluation.
+Your job is **targeted re-verification**, not a full re-evaluation from scratch.
+
+**Previous evaluation summary:** {prior_summary}
+
+**Issues to re-verify (were these fixed?):**
+{issues_text}
+
+### Instructions for this re-evaluation
+
+1. Re-check **each issue above** — confirm fixed or still present
+2. Run only the **directly relevant tests** (not the entire suite unless fast)
+3. Scan the diff/changed files for any **new regressions** introduced by the fix
+4. Write your complete `{artifact_name}.json` — even if issues remain, the file MUST be written
+
+Do NOT re-check acceptance criteria that were already passing — focus only on the items above.
+
+---
+
+"""
+        prompt = rework_prefix + base_prompt
+
+        # Invoke the step's own agent with the focused prompt
+        agent_name = role_to_legacy_agent_name(step.agent_role)
+        agent_config = self.config.agents.get(agent_name)
+        model = agent_config.model if agent_config else ModelTier.SONNET
+        # Give extra turns to ensure the report is written
+        base_turns = agent_config.max_turns if agent_config else 40
+        max_turns = min(base_turns + 20, 200)
+
+        invocation = AgentInvocation(
+            agent_name=agent_name,
+            display_name=f"{agent_name}-reeval-cycle-{cycle}",
+            prompt=prompt,
+            model=model,
+            max_turns=max_turns,
+            workspace_dir=str(workspace),
+            project_root=str(self.project_root),
+            mcp_servers=self._mcp_servers,
+        )
+
+        if self.run_logger:
+            self.run_logger.log_event("verdict_rework_reeval", {
+                "step": step.name,
+                "artifact": artifact_name,
+                "cycle": cycle + 1,
+                "prior_issue_count": len(prior_issues),
+                "max_turns": max_turns,
+            })
+
+        reeval_result = await invoke_agent(invocation, run_state=self.state)
+        self.state.total_cost_usd += reeval_result.cost_usd
+
+        if not reeval_result.success:
+            logger.error(
+                "Re-evaluation agent failed for step '%s' cycle %d", step.name, cycle + 1,
+            )
+            self.state.phases[phase_key].status = PhaseStatus.FAILED
+            self.state.phases[phase_key].error = (
+                f"Re-evaluation agent failed during rework cycle {cycle + 1}"
+            )
+            return "failed"
+
+        # Capture agent output for artifact rescue (guard against non-string output in tests)
+        self._task_outputs[f"reeval-{cycle}"] = reeval_result.output if isinstance(reeval_result.output, str) else ""
+
+        # --- Artifact rescue: try to extract the artifact if agent didn't write it ---
+        artifact_path = artifacts_dir / f"{artifact_name}.json"
+        if not artifact_path.exists():
+            # Layer 1: misplaced file rescue
+            self._rescue_misplaced_artifacts([artifact_name], workspace)
+
+        if not artifact_path.exists():
+            # Layer 2: extract from agent output text
+            extracted = self._rescue_artifacts_from_output([artifact_name], workspace)
+            if extracted:
+                logger.info(
+                    "Re-evaluation: rescued '%s' from agent output text", artifact_name,
+                )
+
+        if not artifact_path.exists():
+            logger.error(
+                "Re-evaluation: '%s.json' not written after cycle %d — "
+                "artifact rescue also failed",
+                artifact_name, cycle + 1,
+            )
+            self.state.phases[phase_key].status = PhaseStatus.FAILED
+            self.state.phases[phase_key].error = (
+                f"Re-evaluation did not produce {artifact_name}.json in rework cycle {cycle + 1}"
+            )
+            return "failed"
+
+        # --- Verdict check ---
+        verdict_failure = self._check_verdict_gate(step, workspace)
+        if verdict_failure:
+            self.state.phases[phase_key].error = verdict_failure
+            return "verdict_rejected"
+
+        self.state.phases[phase_key].status = PhaseStatus.COMPLETED
+        self.state.completed_steps.append(step.name)
+        self._emit_phase_complete(step, success=True, artifact_valid=True)
+        return "completed"
 
     async def _handle_step_failure(self, step: WorkflowStepDefinition, *, _routing_depth: int = 0) -> bool:
         """Handle a failed step according to on_fail routing."""

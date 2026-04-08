@@ -28,6 +28,7 @@ from orchestrator.models import (
     SpeedMode,
     WorkflowStepDefinition,
     WorkflowTaskState,
+    WorkflowType,
 )
 from orchestrator.workflow_engine import WorkflowEngine
 from orchestrator.workflows import WorkflowDefinition
@@ -66,6 +67,7 @@ def minimal_workflow() -> WorkflowDefinition:
     """A workflow with Env Setup and QA Browser steps."""
     return WorkflowDefinition(
         name="Test Workflow",
+        workflow_type=WorkflowType.FEATURE_DEVELOPMENT,
         steps=[
             WorkflowStepDefinition(
                 name="Env Setup",

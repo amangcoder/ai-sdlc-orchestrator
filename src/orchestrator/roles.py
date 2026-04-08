@@ -575,5 +575,9 @@ def role_to_legacy_agent_name(role: AgentRole) -> str:
         AgentRole.DEEP_RESEARCHER: "deep_researcher",
         AgentRole.BRAINSTORMER: "brainstormer",
         AgentRole.MEDIATOR: "mediator",
+        # QA Browser & Fixer roles
+        AgentRole.ENV_SETUP_ENGINEER: "env_setup_engineer",
+        AgentRole.QA_BROWSER_ENGINEER: "qa_browser_engineer",
+        AgentRole.FIXER: "fixer",
     }
     return mapping[role]

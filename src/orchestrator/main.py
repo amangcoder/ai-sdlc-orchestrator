@@ -217,6 +217,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--resume", action="store_true", help="Resume from last saved state, skipping completed phases")
     parser.add_argument("--resume-run", metavar="RUN_ID", dest="resume_run_id",
                         help="Resume a specific run by its ID (e.g. orchestrate --resume-run abc123def456 \"...\")")
+    parser.add_argument("--rework-verdicts", metavar="RUN_ID", dest="rework_verdicts_run_id",
+                        help="Rework unresolved review/QA verdicts from a previous run (e.g. orchestrate --rework-verdicts abc123def456)")
     parser.add_argument("--phase", metavar="PHASE", help="Run a single phase only (pm|architect|engineer|qa|reviewer)")
     parser.add_argument("--from-phase", metavar="PHASE", dest="from_phase", help="Start pipeline from this phase, skipping earlier ones")
     parser.add_argument("--workflow", metavar="TYPE",
@@ -709,6 +711,9 @@ def main() -> None:
     if args.resume_run_id and not _re.match(r'^[0-9a-f]{12}$', args.resume_run_id):
         parser.error(f"Invalid run ID format: {args.resume_run_id}")
 
+    if args.rework_verdicts_run_id and not _re.match(r'^[0-9a-f]{12}$', args.rework_verdicts_run_id):
+        parser.error(f"Invalid run ID format for --rework-verdicts: {args.rework_verdicts_run_id}")
+
     if args.feature_request == "validate":
         _configure_structlog(json_logs=False)
         if not args.validate_dir:
@@ -749,13 +754,14 @@ def main() -> None:
     if not args.feature_request and args.feature_request_flag:
         args.feature_request = args.feature_request_flag
 
-    if not args.feature_request:
+    if not args.feature_request and not args.rework_verdicts_run_id:
         parser.print_help()
         sys.exit(1)
 
     _configure_structlog(json_logs=(args.log_format == "json"))
     config = load_config(args.config)
-    args.feature_request = sanitize_feature_request(args.feature_request)
+    if args.feature_request:
+        args.feature_request = sanitize_feature_request(args.feature_request)
     if args.confirm:
         config.confirm = True
     if args.tech_stack_confirmation is not None:
@@ -766,7 +772,8 @@ def main() -> None:
         config.checklist_verify = args.checklist_verify
 
     # Speed mode handling: auto-classify if not explicitly set
-    if args.speed:
+    # (skip for --rework-verdicts which doesn't run the normal pipeline)
+    if args.speed and not args.rework_verdicts_run_id:
         from orchestrator.model_routing import apply_speed_mode
         from orchestrator.models import SpeedMode
 
@@ -970,17 +977,36 @@ def main() -> None:
     sentinel_home = manager.project_workspace
     if args.resume_run_id:
         sentinel_home = manager.run_workspace(args.resume_run_id)
+    elif args.rework_verdicts_run_id:
+        sentinel_home = manager.run_workspace(args.rework_verdicts_run_id)
     
     sentinel_home.mkdir(parents=True, exist_ok=True)
     interrupt_manager.setup_sentinel(sentinel_home)
 
     confirm_callback = _confirm_agent_invocation if config.confirm else None
     engine = OrchestratorEngine(
-        config=config, 
-        dry_run=args.dry_run, 
+        config=config,
+        dry_run=args.dry_run,
         interrupt_manager=interrupt_manager,
         confirm_callback=confirm_callback,
     )
+
+    # --- Rework verdicts mode: scan a previous run for unresolved verdicts ---
+    if args.rework_verdicts_run_id:
+        try:
+            state = asyncio.run(engine.rework_verdicts(
+                run_id=args.rework_verdicts_run_id,
+                feature_request=args.feature_request or "",
+            ))
+        except KeyboardInterrupt:
+            console.print(f"\n[bold red]Hard interrupt.[/bold red]")
+            sys.exit(130)
+        finally:
+            interrupt_manager.restore_signal_handler()
+
+        _ring_alarm()
+        _print_summary(state, console)
+        return
 
     try:
         state = asyncio.run(engine.run(

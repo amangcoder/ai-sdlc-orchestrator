@@ -33,7 +33,7 @@ def dry_engine(tmp_workspace) -> OrchestratorEngine:
 
 class TestPhaseOrder:
     def test_phase_order(self):
-        assert PHASE_ORDER == ["pm", "architect", "engineer", "qa", "reviewer"]
+        assert PHASE_ORDER == ["pm", "architect", "engineer", "qa", "env_setup", "qa_browser", "reviewer"]
 
 
 class TestTasksHaveFileConflicts:

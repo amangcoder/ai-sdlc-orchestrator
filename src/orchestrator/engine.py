@@ -707,6 +707,70 @@ class OrchestratorEngine:
 
         await engine.execute()
 
+    async def rework_verdicts(
+        self,
+        run_id: str,
+        feature_request: str = "",
+    ) -> RunState:
+        """Load a previous run and rework any unresolved negative verdicts.
+
+        Scans the run's artifacts for review/QA/security artifacts that have
+        failing verdicts and re-enters the targeted fix → re-review loop.
+        """
+        self.project_root = Path.cwd()
+
+        workspace_root = Path(self.config.workspace_root or self.config.workspace_dir).resolve()
+        project_name = self.config.project_name or self.project_root.name
+        self.manager = WorkspaceManager(workspace_root, project_name, project_root=self.project_root)
+
+        if not self.config.workspace_root:
+            workspace = Path(self.config.workspace_dir).resolve()
+        else:
+            workspace = self.manager.project_workspace
+
+        state = self._load_state(workspace, run_id=run_id)
+        if state is None:
+            raise ValueError(
+                f"No saved state found for run '{run_id}'. "
+                f"Check workspace: {workspace}"
+            )
+
+        # Override feature request if provided
+        if feature_request:
+            state.feature_request = feature_request
+
+        # Resolve per-run workspace
+        if self.config.workspace_root:
+            workspace = self.manager.run_workspace(state.run_id)
+
+        ensure_gitignore_entries(self.project_root)
+
+        # Initialize run logger if not already set (rework_verdicts can be
+        # called without run() having been called first).
+        if not self.run_logger:
+            self.run_logger = RunLogger(workspace / "logs", state.run_id)
+
+        if state.workflow_type == WorkflowType.CUSTOM and state.custom_workflow_definition:
+            workflow = parse_custom_workflow(state.custom_workflow_definition)
+        else:
+            workflow = select_workflow(state.workflow_type)
+
+        engine = WorkflowEngine(
+            workflow=workflow,
+            state=state,
+            config=self.config,
+            run_logger=self.run_logger,
+            project_root=self.project_root,
+            dry_run=self.dry_run,
+            interrupt_manager=self.interrupt_manager,
+            confirm_callback=self.confirm_callback,
+        )
+
+        state = await engine.rework_unresolved_verdicts()
+
+        self._save_state(state, workspace)
+        return state
+
     async def _run_debate_phase(
         self,
         state: RunState,
