@@ -96,6 +96,18 @@ knowledge_base_mcp:
     - frontend_engineer
     - flutter_engineer
 
+# --- Google Stitch MCP server (frontend generation for engineer agents) ---
+stitch_mcp:
+  enabled: true                     # set to true to enable Stitch frontend generation
+  url: "https://stitch.googleapis.com/mcp"
+  api_key: "AQ.Ab8RN6IZH8nh6-LDX5E8Yaz7A8GN4hHcunLi6YLHSlo1kR2oZg"                        # X-Goog-Api-Key; empty = read from STITCH_API_KEY env var
+  inject_into_roles:                 # agent roles that receive the Stitch MCP server
+    - technical_project_manager
+    - frontend_engineer
+    - flutter_engineer
+    - designer
+    - ux_specifier
+
 # --- Test runner MCP server (structured test execution for QA agents) ---
 test_runner:
   enabled: true                      # set to false to disable test-runner MCP integration

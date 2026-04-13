@@ -852,6 +852,12 @@ class WorkflowDefinition(BaseModel):
 
 # --- Task State (replaces EngTaskState for universal tracking) ---
 
+class StitchScreen(BaseModel):
+    """A Stitch screen reference assigned to a task by the TPM."""
+    name: str
+    screen_id: str
+
+
 class WorkflowTaskState(BaseModel):
     """State of a single task within a workflow step."""
     task_id: str
@@ -862,14 +868,16 @@ class WorkflowTaskState(BaseModel):
     expected_outputs: list[str] = Field(default_factory=list)
     acceptance_criteria: list[str] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
+    stitch_screens: list[StitchScreen] = Field(default_factory=list)
     status: TaskStatus = TaskStatus.PENDING
     retry_count: int = 0
     started_at: datetime | None = None
     completed_at: datetime | None = None
     error: str | None = None
     error_code: str | None = None
-    # Crash recovery fields
+    # Crash recovery / conversation resumption fields
     last_agent_output_path: str | None = None
+    session_id: str | None = None  # Claude Code conversation ID for resumption
     cost_usd: float = 0.0
     input_tokens: int = 0
     output_tokens: int = 0
@@ -1021,6 +1029,20 @@ class TestRunnerConfig(BaseModel):
     enabled: bool = True
     server_path: str = ""            # empty = auto-detect from sibling dirs
     cleanup_mcp_config: bool = True
+
+
+class StitchMcpConfig(BaseModel):
+    """Configuration for Google Stitch MCP server (frontend generation)."""
+    enabled: bool = False
+    url: str = "https://stitch.googleapis.com/mcp"
+    api_key: str = ""               # X-Goog-Api-Key; empty = read from STITCH_API_KEY env var
+    inject_into_roles: list[str] = Field(
+        default_factory=lambda: [
+            "technical_project_manager",
+            "frontend_engineer", "flutter_engineer", "designer",
+            "ux_specifier",
+        ]
+    )
 
 
 class ResearchCacheConfig(BaseModel):
@@ -1292,6 +1314,7 @@ class OrchestratorConfig(BaseModel):
     test_runner: TestRunnerConfig = Field(default_factory=TestRunnerConfig)
     research_cache: ResearchCacheConfig = Field(default_factory=ResearchCacheConfig)
     research_cache_context: ResearchCacheContext | None = None
+    stitch_mcp: StitchMcpConfig = Field(default_factory=StitchMcpConfig)
     monitoring: MonitoringConfig = Field(default_factory=MonitoringConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
     routing_mode: str | None = None

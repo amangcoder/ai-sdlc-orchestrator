@@ -569,7 +569,7 @@ class TaskScheduler:
             Dictionary mapping task_id to result
         """
         iteration = 0
-        rebuild_frequency = max(1, len(self.tasks) // 3)  # Rebuild every ~3 tasks
+        rebuild_frequency = 1  # Rebuild after every task completion
 
         while self.readiness.has_pending():
             iteration += 1
@@ -733,6 +733,48 @@ class WorkflowEngine:
             servers.update(rc.mcp_server_config.get("mcpServers", {}))
 
         return servers or None
+
+    def _stitch_mcp_config(self) -> dict[str, Any] | None:
+        """Build the Stitch MCP server config dict if enabled.
+
+        Reads the API key from config or the STITCH_API_KEY env var.
+        Returns a dict suitable for merging into mcp_servers, or None.
+        """
+        import os
+
+        sc = self.config.stitch_mcp
+        if not sc.enabled:
+            return None
+
+        api_key = sc.api_key or os.environ.get("STITCH_API_KEY", "")
+        if not api_key:
+            logger.warning("Stitch MCP enabled but no API key found (config or STITCH_API_KEY env var)")
+            return None
+
+        return {
+            "stitch": {
+                "type": "http",
+                "url": sc.url,
+                "headers": {"X-Goog-Api-Key": api_key},
+            }
+        }
+
+    def _mcp_servers_for_role(self, role: str) -> dict[str, Any] | None:
+        """Return MCP servers for a specific agent role.
+
+        Merges the base _mcp_servers with role-specific servers (e.g. Stitch
+        for frontend roles).
+        """
+        base = dict(self._mcp_servers or {})
+
+        # Inject Stitch for matching roles
+        sc = self.config.stitch_mcp
+        if sc.enabled and role in sc.inject_into_roles:
+            stitch_cfg = self._stitch_mcp_config()
+            if stitch_cfg:
+                base.update(stitch_cfg)
+
+        return base or None
 
     def _checkpoint_state(self) -> None:
         """Persist RunState to disk after each task completes (sub-task-level checkpointing).
@@ -2714,8 +2756,8 @@ class WorkflowEngine:
                     timeout_seconds=self.config.knowledge.build_timeout_seconds,
                     skip_if_fresh_minutes=0,
                     richness=self.config.knowledge.richness,
-                    skip_vectors=True,   # Skip slow vector phase
-                    skip_features=True,  # Skip slow feature phase
+                    skip_vectors=False,
+                    skip_features=False,
                 )
                 if result.success and self.config.knowledge.inject_brief:
                     brief = synthesize_brief(
@@ -2832,6 +2874,14 @@ class WorkflowEngine:
                 if budget_status == "warning":
                     logger.warning(f"Budget at 80%+ (${self.run_logger.cumulative_cost_usd:.2f}/${self.config.max_budget_usd:.2f})")
 
+            if task.session_id:
+                logger.info(
+                    f"Resuming conversation {task.session_id[:12]}... for {task.task_id}"
+                )
+
+            mcp_for_role = self._mcp_servers_for_role(task.assigned_role.value)
+            has_stitch = bool(mcp_for_role and "stitch" in mcp_for_role)
+
             if self.run_logger:
                 self.run_logger.log_event("task_invoke", {
                     "task_id": task.task_id,
@@ -2840,6 +2890,8 @@ class WorkflowEngine:
                     "role": task.assigned_role.value,
                     "model": model.value,
                     "attempt": attempt + 1,
+                    "resuming_session": task.session_id,
+                    "stitch_enabled": has_stitch,
                 })
 
             invocation = AgentInvocation(
@@ -2849,7 +2901,8 @@ class WorkflowEngine:
                 max_turns=max_turns,
                 workspace_dir=str(workspace),
                 project_root=str(self.project_root),
-                mcp_servers=self._mcp_servers,
+                mcp_servers=mcp_for_role,
+                resume_session_id=task.session_id,  # Resume prior conversation if available
             )
 
             if self.confirm_callback:
@@ -2859,6 +2912,11 @@ class WorkflowEngine:
                 invocation = confirmed
 
             result = await invoke_agent(invocation, run_state=self.state)
+
+            # Persist conversation ID for crash recovery / resumption.
+            # Captured even on failure so we can resume the conversation on retry.
+            if result.session_id:
+                task.session_id = result.session_id
 
             if self.run_logger:
                 self.run_logger.log_event("task_result", {
@@ -3008,7 +3066,7 @@ class WorkflowEngine:
             max_concurrent=self.config.max_concurrent_agents,
             agents_config=self.config.agents,
             run_logger=self.run_logger,
-            mcp_servers=self._mcp_servers,
+            mcp_servers=self._mcp_servers_for_role(parent_role),
         )
 
         # Record spawn history in run state
@@ -3278,6 +3336,14 @@ class WorkflowEngine:
                             pass  # unclaimed by any step — first step picks it up
                         else:
                             continue
+                    # Parse stitch_screens from task data (TPM embeds these for frontend tasks)
+                    raw_screens = t.get("stitch_screens", [])
+                    from orchestrator.models import StitchScreen
+                    stitch_screens = []
+                    for s in raw_screens:
+                        if isinstance(s, dict) and "name" in s and "screen_id" in s:
+                            stitch_screens.append(StitchScreen(name=s["name"], screen_id=s["screen_id"]))
+
                     result.append(WorkflowTaskState(
                         task_id=t.get("task_id", f"TASK-{existing_count + i + 1:03d}"),
                         workflow_step=step.name,
@@ -3287,6 +3353,7 @@ class WorkflowEngine:
                         expected_outputs=step.outputs,
                         acceptance_criteria=t.get("acceptance_criteria", []),
                         dependencies=t.get("dependencies", []),
+                        stitch_screens=stitch_screens,
                     ))
                 if result:
                     return result
@@ -3413,6 +3480,11 @@ class WorkflowEngine:
                     "acceptance_criteria": task.acceptance_criteria,
                     "dependencies": task.dependencies,
                 }
+                if task.stitch_screens:
+                    task_data["stitch_screens"] = [
+                        {"name": s.name, "screen_id": s.screen_id}
+                        for s in task.stitch_screens
+                    ]
             return builder(
                 feature_request=self.state.feature_request,
                 workspace=workspace,
@@ -3751,8 +3823,8 @@ existing working code intact.
                 step, workspace, feedback_data, rejected_artifact, cycle,
             )
 
-            # Use the implementation agent role (Backend Engineer) for fixes
-            fix_agent_role = AgentRole.BACKEND_ENGINEER
+            # Use the same agent role that owns this step
+            fix_agent_role = step.agent_role
             agent_name = role_to_legacy_agent_name(fix_agent_role)
             agent_config = self.config.agents.get(agent_name)
             model = agent_config.model if agent_config else ModelTier.SONNET
@@ -3766,7 +3838,7 @@ existing working code intact.
                 max_turns=max_turns,
                 workspace_dir=str(workspace),
                 project_root=str(self.project_root),
-                mcp_servers=self._mcp_servers,
+                mcp_servers=self._mcp_servers_for_role(fix_agent_role.value),
             )
 
             if self.run_logger:
@@ -3937,7 +4009,7 @@ Do NOT re-check acceptance criteria that were already passing — focus only on 
             max_turns=max_turns,
             workspace_dir=str(workspace),
             project_root=str(self.project_root),
-            mcp_servers=self._mcp_servers,
+            mcp_servers=self._mcp_servers_for_role(step.agent_role.value),
         )
 
         if self.run_logger:

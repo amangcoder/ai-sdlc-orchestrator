@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.19.0] - 2026-04-13
+
+### Added
+
+**Google Stitch MCP Integration — Design-to-Code for Frontend Agents**
+- `StitchMcpConfig` model — configures Stitch MCP server URL, API key, and role injection targets
+- `StitchScreen` model — structured screen reference (`name` + `screen_id`) assigned to tasks by the TPM
+- `_stitch_mcp_config()` in both `OrchestratorEngine` and `WorkflowEngine` — builds the HTTP MCP server config with API key from config or `STITCH_API_KEY` env var
+- `_mcp_servers_for_role()` in both engines — merges base MCP servers with role-specific Stitch injection for frontend/flutter/designer/TPM roles
+- `_inject_stitch_section()` in `phases.py` — generates role-scoped Stitch guidance: TPM gets browsing + screen assignment instructions; engineers get only their assigned screen IDs
+- `stitch_screens` field on `WorkflowTaskState` — carries screen assignments from TPM to downstream engineers
+- Stitch MCP tool call tracking in `AgentActivityTracker` — counts and highlights `mcp__stitch__*` calls in magenta
+- Frontend engineer agent updated with Stitch design fetch workflow (step 2) and `Stitch MCP Integration` section
+- `config/default.yaml` — `stitch_mcp:` block with URL, API key, and `inject_into_roles` list
+
+**Session Resumption — Resume Agent Conversations Across Retries**
+- `session_id` field on `AgentResult` — captured from SDK messages (including early `TaskStarted`/`TaskProgress` messages)
+- `session_id` field on `WorkflowTaskState` — persisted even on failure for crash recovery resumption
+- `resume_session_id` on `AgentInvocation` — passed to both SDK (`resume`) and CLI (`--resume`) invocation paths
+- On task retry, the workflow engine resumes the prior conversation instead of starting fresh
+
+### Changed
+- Task scheduler `rebuild_frequency` changed from `len(tasks) // 3` to `1` — readiness graph rebuilds after every task completion for more accurate dependency tracking
+- Knowledge base build now runs with `skip_vectors=False` and `skip_features=False` (previously skipped both)
+- Verdict rework fix agent now uses the step's own `agent_role` instead of always defaulting to `BACKEND_ENGINEER`
+- All `mcp_servers` passed to agent invocations now go through `_mcp_servers_for_role()` for role-aware injection (including spawn, fixer, and rework paths)
+
+---
+
 ## [0.18.0] - 2026-04-08
 
 ### Added

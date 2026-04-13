@@ -45,6 +45,7 @@ class AgentResult:
     output_tokens: int = 0
     error: str | None = None
     error_code: str | None = None
+    session_id: str | None = None
     written_files: list[str] = field(default_factory=list)
 
 
@@ -78,6 +79,7 @@ class AgentInvocation(BaseModel):
     isolation: str | None = None  # "worktree" for parallel engineers
     display_name: str | None = None  # codename for parallel agents
     mcp_servers: dict[str, Any] | None = None  # MCP server config for direct SDK injection
+    resume_session_id: str | None = None  # Resume a prior conversation by session ID
 
 
 def _create_worktree(project_root: Path, branch_suffix: str) -> tuple[Path, str]:
@@ -335,6 +337,7 @@ class AgentActivityTracker:
         self.max_turns = max_turns
         self.turn_count = 0
         self.tool_calls = 0
+        self.stitch_tool_calls = 0
         self.start_time = time.time()
         self.written_files: list[str] = []
         self._spinner_idx = 0
@@ -417,10 +420,11 @@ class AgentActivityTracker:
         self.stop_spinner()
         elapsed = self._elapsed()
         status = "\033[32m✔ done\033[0m" if success else "\033[31m✘ failed\033[0m"
+        stitch_info = f" │ \033[35m{self.stitch_tool_calls} stitch\033[0m\033[2m" if self.stitch_tool_calls else ""
         print(
             f"  \033[36m{'─'*50}\033[0m\n"
             f"  {status}  \033[2m{self.agent_name} │ "
-            f"{self.turn_count} turns │ {self.tool_calls} tool calls │ "
+            f"{self.turn_count} turns │ {self.tool_calls} tool calls{stitch_info} │ "
             f"{elapsed} │ ${cost:.4f}\033[0m\n",
             flush=True,
         )
@@ -464,7 +468,12 @@ class AgentActivityTracker:
                         if file_path:
                             self.written_files.append(file_path)
                     input_summary = str(block.input)[:80]
-                    tool_display = f"\033[33m{block.name}\033[0m"
+                    # Highlight Stitch MCP tool calls with a distinct color
+                    if block.name.startswith("mcp__stitch__"):
+                        self.stitch_tool_calls += 1
+                        tool_display = f"\033[35m{block.name}\033[0m"  # magenta
+                    else:
+                        tool_display = f"\033[33m{block.name}\033[0m"
                     print(
                         f"{prefix} \033[2m→\033[0m {tool_display} {input_summary}",
                         flush=True,
@@ -528,7 +537,20 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
     except ImportError:
         pass
 
-    full_system_prompt = autonomous_prefix + tools_section + claude_flow_section + (system_prompt or "")
+    # Inject Stitch MCP tool instructions when the server is present
+    stitch_section = ""
+    if invocation.mcp_servers and "stitch" in invocation.mcp_servers:
+        stitch_section = (
+            "## Google Stitch MCP Tools\n\n"
+            "You have access to the Google Stitch MCP server (`mcp__stitch__*`).\n\n"
+            "**RESTRICTION:** Only fetch screen IDs explicitly listed in your task's "
+            "`stitch_screens` field or the \"Your Assigned Screens\" section of your prompt. "
+            "Do NOT browse, list, or fetch any other screens. Other engineers handle those.\n\n"
+            "**Adapt Stitch output** to match the project's existing patterns, components, "
+            "and styling conventions. Never paste Stitch output verbatim.\n\n"
+        )
+
+    full_system_prompt = autonomous_prefix + tools_section + stitch_section + claude_flow_section + (system_prompt or "")
 
     # Use project root as cwd so the agent can explore the actual codebase.
     # Artifact paths in the prompt are absolute, so cwd only affects exploration.
@@ -546,6 +568,12 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
     if invocation.mcp_servers:
         for server_name in invocation.mcp_servers:
             allowed_tools.append(f"mcp__{server_name}__*")
+        if "stitch" in invocation.mcp_servers:
+            logger.info(
+                "Stitch MCP server injected for agent %s (url: %s)",
+                invocation.agent_name,
+                invocation.mcp_servers["stitch"].get("url", "unknown"),
+            )
 
     options = ClaudeAgentOptions(
         model=model,
@@ -553,6 +581,7 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
         cwd=cwd,
         system_prompt=full_system_prompt,
         permission_mode=permission_mode,
+        **({"resume": invocation.resume_session_id} if invocation.resume_session_id else {}),
         **({"mcp_servers": invocation.mcp_servers} if invocation.mcp_servers else {}),
         **({"allowed_tools": allowed_tools} if allowed_tools else {}),
     )
@@ -563,11 +592,21 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
     tracker.start_spinner()
 
     result_msg: ResultMessage | None = None
+    # Capture session_id early from any message that carries it so we have it
+    # even if the agent is interrupted before ResultMessage arrives.
+    captured_session_id: str | None = None
     try:
         async for message in query(prompt=invocation.prompt, options=options):
             if isinstance(message, ResultMessage):
                 result_msg = message
+                captured_session_id = message.session_id
             else:
+                # SystemMessage subclasses (TaskStarted, TaskProgress, etc.)
+                # carry session_id — grab it on the first message we see.
+                if captured_session_id is None:
+                    sid = getattr(message, "session_id", None)
+                    if sid:
+                        captured_session_id = sid
                 tracker.log_message(message)
     except (KeyboardInterrupt, asyncio.CancelledError):
         tracker.stop_spinner()
@@ -576,6 +615,7 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
             success=False,
             error="Agent interrupted by user (SIGINT)",
             cost_usd=0.0,
+            session_id=captured_session_id,
         )
     except Exception as e:
         error_msg = str(e)
@@ -587,6 +627,7 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
                 success=False,
                 error="Agent interrupted by user (SIGINT)",
                 cost_usd=0.0,
+                session_id=captured_session_id,
             )
         # Any other SDK/subprocess error — return a failed result instead of
         # crashing the entire pipeline (e.g. output token limit exceeded).
@@ -598,6 +639,7 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
             error=error_msg,
             cost_usd=0.0,
             error_code="INFRA_ERROR",
+            session_id=captured_session_id,
         )
     finally:
         tracker.stop_spinner()
@@ -608,6 +650,7 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
             success=False,
             error="No result message received from SDK",
             error_code="INFRA_ERROR",
+            session_id=captured_session_id,
         )
 
     cost = result_msg.total_cost_usd or 0.0
@@ -626,6 +669,7 @@ async def _invoke_via_sdk(invocation: AgentInvocation) -> AgentResult:
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         error=result_msg.result if result_msg.is_error else None,
+        session_id=captured_session_id,
         written_files=tracker.written_files,
     )
 
@@ -638,8 +682,13 @@ async def _invoke_via_cli(invocation: AgentInvocation) -> AgentResult:
         "--model", model,
         "--max-turns", str(invocation.max_turns),
         "--output-format", "json",
-        "-p", invocation.prompt,
     ]
+
+    # Resume a prior conversation if session ID is available
+    if invocation.resume_session_id:
+        cmd.extend(["--resume", invocation.resume_session_id])
+
+    cmd.extend(["-p", invocation.prompt])
 
     agent_file = AGENTS_DIR / f"{invocation.agent_name}.md"
     if agent_file.exists():
@@ -662,9 +711,11 @@ async def _invoke_via_cli(invocation: AgentInvocation) -> AgentResult:
 
     output_text = stdout.decode()
     cost = 0.0
+    session_id: str | None = None
     try:
         result_data = json.loads(output_text)
         cost = result_data.get("cost_usd", 0.0)
+        session_id = result_data.get("session_id")
         output_text = result_data.get("result", output_text)
     except (json.JSONDecodeError, KeyError):
         pass
@@ -673,6 +724,7 @@ async def _invoke_via_cli(invocation: AgentInvocation) -> AgentResult:
         success=True,
         output=output_text,
         cost_usd=cost,
+        session_id=session_id,
     )
 
 

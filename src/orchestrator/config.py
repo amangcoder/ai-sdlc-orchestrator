@@ -20,6 +20,7 @@ from orchestrator.models import (
     PhaseConfig,
     RAGConfig,
     SpawnConfig,
+    StitchMcpConfig,
     TestRunnerConfig,
     WorkflowType,
 )
@@ -170,6 +171,13 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
     except ValidationError as exc:
         raise ConfigurationError(_format_validation_error("rag", exc)) from exc
 
+    # Parse stitch_mcp config
+    stitch_mcp_raw = raw.get("stitch_mcp", {})
+    try:
+        stitch_mcp_config = StitchMcpConfig(**stitch_mcp_raw) if stitch_mcp_raw else StitchMcpConfig()
+    except ValidationError as exc:
+        raise ConfigurationError(_format_validation_error("stitch_mcp", exc)) from exc
+
     try:
         workspace_root = raw.get("workspace_root")
         project_name = raw.get("project_name") or Path.cwd().name
@@ -205,6 +213,7 @@ def load_config(config_path: Path | None = None) -> OrchestratorConfig:
             database=database_config,
             monitoring=monitoring_config,
             rag=rag_config,
+            stitch_mcp=stitch_mcp_config,
             allowed_directories=allowed_directories,
             # Dynamic directory browsing (new mobile API features)
             projects_root=raw.get("projects_root"),

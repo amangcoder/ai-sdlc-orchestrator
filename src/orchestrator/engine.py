@@ -174,6 +174,39 @@ class OrchestratorEngine:
                 pass  # RAG deps optional — never crash the engine
         return servers or None
 
+    def _stitch_mcp_config(self) -> dict[str, Any] | None:
+        """Build the Stitch MCP server config dict if enabled."""
+        import os
+
+        sc = self.config.stitch_mcp
+        if not sc.enabled:
+            return None
+
+        api_key = sc.api_key or os.environ.get("STITCH_API_KEY", "")
+        if not api_key:
+            logger.warning("Stitch MCP enabled but no API key found (config or STITCH_API_KEY env var)")
+            return None
+
+        return {
+            "stitch": {
+                "type": "http",
+                "url": sc.url,
+                "headers": {"X-Goog-Api-Key": api_key},
+            }
+        }
+
+    def _mcp_servers_for_role(self, role: str) -> dict[str, Any] | None:
+        """Return MCP servers for a specific agent role, including Stitch for frontend roles."""
+        base = dict(self._mcp_servers or {})
+
+        sc = self.config.stitch_mcp
+        if sc.enabled and role in sc.inject_into_roles:
+            stitch_cfg = self._stitch_mcp_config()
+            if stitch_cfg:
+                base.update(stitch_cfg)
+
+        return base or None
+
     async def run(
         self,
         feature_request: str,
